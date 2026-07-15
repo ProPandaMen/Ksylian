@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, type Component } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   Archive,
@@ -16,9 +16,7 @@ import {
   Folder,
   Gauge,
   HardDrive,
-  Heart,
   Home,
-  LayoutDashboard,
   ListRestart,
   MemoryStick,
   PackagePlus,
@@ -26,158 +24,30 @@ import {
   Plus,
   RefreshCw,
   Server,
-  Settings,
   ShieldCheck,
   Trash2,
   UploadCloud,
   Users,
-  X,
 } from "@lucide/vue";
-import catLogo from "./assets/cat-logo.svg";
 import catPaw from "./assets/cat-paw.svg";
 import catMascot from "./assets/ksylian-cat.png";
-
-type ServerState = "online" | "deploying" | "offline";
-type TabId = "overview" | "servers" | "monitoring" | "modpacks" | "files" | "backups" | "settings";
-type CurseForgeKind = "mods" | "modpacks";
-type CurseForgeLoader = "any" | "forge" | "fabric" | "quilt" | "neoforge";
-type CurseForgeSort = "popularity" | "updated" | "name" | "downloads";
-
-interface GameServer {
-  id: string;
-  name: string;
-  pack: string;
-  version: string;
-  state: ServerState;
-  players: string;
-  ram: string;
-  cpu: number;
-  disk: string;
-  address: string;
-}
-
-interface BackupItem {
-  id: string;
-  name: string;
-  size: string;
-  created: string;
-  server_id: string;
-}
-
-interface ModItem {
-  id: string;
-  name: string;
-  status: string;
-  tag: "required" | "update" | "review";
-}
-
-interface FileItem {
-  name: string;
-  meta: string;
-  kind: "folder" | "file";
-}
-
-interface DashboardPayload {
-  servers: GameServer[];
-  logs: string[];
-  backups: BackupItem[];
-  mods: ModItem[];
-  files: FileItem[];
-}
-
-interface SettingsPayload {
-  has_curseforge_api_key: boolean;
-  curseforge_api_key_mask: string;
-}
-
-interface MetricUsage {
-  used: number;
-  total: number;
-  percent: number;
-  used_label: string;
-  total_label: string;
-}
-
-interface DiskUsage {
-  mount: string;
-  filesystem: string;
-  used: number;
-  total: number;
-  percent: number;
-  used_label: string;
-  total_label: string;
-}
-
-interface ProcessUsage {
-  pid: number;
-  name: string;
-  cpu: number;
-  memory: number;
-  command: string;
-}
-
-interface ServiceUsage {
-  id: string;
-  name: string;
-  state: ServerState;
-  cpu: number;
-  ram: string;
-}
-
-interface HostMonitoring {
-  hostname: string;
-  ip_addresses: string[];
-  uptime: string;
-  load_average: number[];
-  cpu_percent: number;
-  cpu_cores: number;
-  memory: MetricUsage;
-  swap: MetricUsage;
-  disks: DiskUsage[];
-  top_processes: ProcessUsage[];
-  services: ServiceUsage[];
-  temperature: string;
-  collected_at: string;
-}
-
-interface CurseForgeProject {
-  id: number;
-  name: string;
-  slug: string;
-  summary: string;
-  type: CurseForgeKind;
-  downloads: number;
-  date_modified: string;
-  icon_url: string;
-  website_url: string;
-  latest_file_id: number | null;
-  game_versions: string[];
-  loaders: string[];
-}
-
-interface CurseForgeSearchPayload {
-  items: CurseForgeProject[];
-  total_count: number;
-  has_api_key: boolean;
-}
-
-const navItems: Array<{ id: TabId; label: string; icon: Component; disabled?: boolean }> = [
-  { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "servers", label: "Серверы", icon: Server },
-  { id: "monitoring", label: "Мониторинг", icon: Gauge },
-  { id: "modpacks", label: "CurseForge", icon: PackagePlus, disabled: true },
-  { id: "settings", label: "Настройки", icon: Settings },
-];
-
-const tabCopy: Record<TabId, { title: string; eyebrow: string }> = {
-  overview: { title: "Панель управления серверами", eyebrow: "Minecraft orchestration" },
-  servers: { title: "Серверы", eyebrow: "instances" },
-  monitoring: { title: "Мониторинг", eyebrow: "host health" },
-  modpacks: { title: "CurseForge", eyebrow: "integration" },
-  files: { title: "Файловый менеджер", eyebrow: "server files" },
-  backups: { title: "Резервные копии", eyebrow: "snapshots" },
-  settings: { title: "Настройки", eyebrow: "configuration" },
-};
+import AppSidebar from "./components/AppSidebar.vue";
+import CreateServerModal from "./components/CreateServerModal.vue";
+import { navItems, routePaths, tabCopy } from "./navigation";
+import CurseForgePage from "./pages/CurseForgePage.vue";
+import MonitoringPage from "./pages/MonitoringPage.vue";
+import SettingsPage from "./pages/SettingsPage.vue";
+import type {
+  BackupItem,
+  DashboardPayload,
+  FileItem,
+  GameServer,
+  HostMonitoring,
+  ModItem,
+  SettingsPayload,
+  ServerState,
+  TabId,
+} from "./types";
 
 const fallbackServers: GameServer[] = [
   {
@@ -252,16 +122,6 @@ const stateLabels: Record<ServerState, string> = {
   offline: "Выключен",
 };
 
-const routePaths: Record<TabId, string> = {
-  overview: "/",
-  servers: "/servers",
-  monitoring: "/monitoring",
-  modpacks: "/modpacks",
-  files: "/files",
-  backups: "/backups",
-  settings: "/settings",
-};
-
 const route = useRoute();
 const router = useRouter();
 const appVersionLabel = __APP_VERSION__.startsWith("v") || __APP_VERSION__ === "dev"
@@ -284,19 +144,9 @@ const settings = ref<SettingsPayload>({
   has_curseforge_api_key: false,
   curseforge_api_key_mask: "",
 });
-const curseForgeKind = ref<CurseForgeKind>("modpacks");
-const curseForgeQuery = ref("");
-const curseForgeVersion = ref("1.20.1");
-const curseForgeLoader = ref<CurseForgeLoader>("fabric");
-const curseForgeSort = ref<CurseForgeSort>("popularity");
-const curseForgeItems = ref<CurseForgeProject[]>([]);
-const selectedCurseForgeProject = ref<CurseForgeProject | null>(null);
-const isCurseForgeLoading = ref(false);
-const curseForgeError = ref("");
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(fallbackLogs);
 const isCreateServerOpen = ref(false);
-const isCurseForgeIntegrationEnabled = false;
 const monitoring = ref<HostMonitoring>({
   hostname: "server",
   ip_addresses: [],
@@ -336,15 +186,6 @@ const selectedServer = computed(
 );
 const selectedServerBackups = computed(() =>
   backups.value.filter((backup) => backup.server_id === selectedServer.value?.id),
-);
-const curseForgeKindLabel = computed(() =>
-  curseForgeKind.value === "modpacks" ? "сборок" : "модов",
-);
-const selectedProjectVersions = computed(() =>
-  selectedCurseForgeProject.value?.game_versions.slice(0, 6).join(", ") || "версии не указаны",
-);
-const selectedProjectLoaders = computed(() =>
-  selectedCurseForgeProject.value?.loaders.join(", ") || "любой совместимый лоадер",
 );
 const monitoringStatus = computed(() => {
   const maxDisk = Math.max(0, ...monitoring.value.disks.map((disk) => disk.percent));
@@ -475,61 +316,6 @@ function selectTab(tabId: TabId) {
   router.push(routePaths[tabId]);
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatDate(value: string) {
-  if (!value) {
-    return "дата неизвестна";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "дата неизвестна";
-  }
-
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", year: "numeric" }).format(date);
-}
-
-function setCurseForgeKind(kind: CurseForgeKind) {
-  curseForgeKind.value = kind;
-  selectedCurseForgeProject.value = null;
-}
-
-async function searchCurseForge() {
-  isCurseForgeLoading.value = true;
-  curseForgeError.value = "";
-  apiError.value = "";
-
-  const params = new URLSearchParams({
-    kind: curseForgeKind.value,
-    query: curseForgeQuery.value,
-    minecraft_version: curseForgeVersion.value,
-    loader: curseForgeLoader.value,
-    sort: curseForgeSort.value,
-    page_size: "24",
-  });
-
-  try {
-    const data = await requestJson<CurseForgeSearchPayload>(`/api/curseforge/search?${params.toString()}`);
-    curseForgeItems.value = data.items;
-    selectedCurseForgeProject.value = data.items[0] ?? null;
-    if (!data.items.length) {
-      curseForgeError.value = "По таким фильтрам ничего не найдено";
-    }
-  } catch (error) {
-    curseForgeItems.value = [];
-    selectedCurseForgeProject.value = null;
-    curseForgeError.value = settings.value.has_curseforge_api_key
-      ? "Не удалось получить каталог CurseForge. Проверь ключ или попробуй другие фильтры"
-      : "Добавь CurseForge API key в настройках, чтобы открыть каталог";
-    console.error(error);
-  } finally {
-    isCurseForgeLoading.value = false;
-  }
-}
-
 async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "backup") {
   try {
     await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
@@ -631,9 +417,6 @@ watch(
     if (tabId === "monitoring") {
       loadMonitoring();
     }
-    if (tabId === "modpacks" && isCurseForgeIntegrationEnabled && !curseForgeItems.value.length && !isCurseForgeLoading.value) {
-      searchCurseForge();
-    }
   },
 );
 
@@ -643,9 +426,7 @@ onMounted(() => {
     loadMonitoring();
   }
   loadSettings().then(() => {
-    if (activeTab.value === "modpacks" && isCurseForgeIntegrationEnabled) {
-      searchCurseForge();
-    }
+    return undefined;
   });
 });
 </script>
@@ -658,41 +439,7 @@ onMounted(() => {
     <div class="scene-ribbon ribbon-one"></div>
     <div class="scene-ribbon ribbon-two"></div>
 
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">
-          <img :src="catLogo" alt="" />
-        </div>
-        <div>
-          <strong>Ksylian</strong>
-          <span>server panel</span>
-        </div>
-      </div>
-
-      <nav class="nav-list" aria-label="Основная навигация">
-        <button
-          v-for="item in navItems"
-          :key="item.label"
-          class="nav-item"
-          :class="{ active: activeTab === item.id, disabled: item.disabled }"
-          type="button"
-          :disabled="item.disabled"
-          :title="item.disabled ? 'Ждем доступ к CurseForge API' : item.label"
-          @click="selectTab(item.id)"
-        >
-          <component :is="item.icon" :size="18" />
-          <span>{{ item.label }}</span>
-        </button>
-      </nav>
-
-      <section class="mascot-card">
-        <img :src="catMascot" alt="Розовый кот-талисман Ksylian" />
-        <div>
-          <strong>Ксю-контроль</strong>
-          <span>3 мира под присмотром</span>
-        </div>
-      </section>
-    </aside>
+    <AppSidebar :active-tab="activeTab" :nav-items="navItems" @select="selectTab" />
 
     <section class="workspace">
       <header class="topbar">
@@ -1011,148 +758,16 @@ onMounted(() => {
             </section>
           </section>
 
-          <section v-if="activeTab === 'monitoring'" class="monitoring-page">
-            <section class="panel monitor-hero">
-              <div>
-                <p class="eyebrow">host health</p>
-                <h2>{{ monitoring.hostname }}</h2>
-                <p>
-                  {{ monitoring.ip_addresses.join(', ') || 'IP не определён' }} · uptime {{ monitoring.uptime }}
-                </p>
-              </div>
-              <div class="monitor-hero-actions">
-                <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
-                <button class="ghost-button compact" type="button" @click="loadMonitoring">
-                  <RefreshCw :size="16" />
-                  <span>{{ isMonitoringLoading ? 'Обновляю' : 'Обновить' }}</span>
-                </button>
-              </div>
-            </section>
+          <MonitoringPage
+            v-if="activeTab === 'monitoring'"
+            :monitoring="monitoring"
+            :monitoring-status="monitoringStatus"
+            :is-loading="isMonitoringLoading"
+            :state-labels="stateLabels"
+            @refresh="loadMonitoring"
+          />
 
-            <section class="monitor-grid">
-              <article class="metric-tile">
-                <Cpu :size="20" />
-                <span>CPU</span>
-                <strong>{{ monitoring.cpu_percent }}%</strong>
-                <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
-              </article>
-              <article class="metric-tile mint">
-                <MemoryStick :size="20" />
-                <span>RAM</span>
-                <strong>{{ monitoring.memory.percent }}%</strong>
-                <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
-              </article>
-              <article class="metric-tile amber">
-                <HardDrive :size="20" />
-                <span>Swap</span>
-                <strong>{{ monitoring.swap.percent }}%</strong>
-                <small>{{ monitoring.swap.used_label }} / {{ monitoring.swap.total_label }}</small>
-              </article>
-              <article class="metric-tile graphite">
-                <Gauge :size="20" />
-                <span>Температура</span>
-                <strong>{{ monitoring.temperature }}</strong>
-                <small>Снято {{ monitoring.collected_at || 'только что' }}</small>
-              </article>
-            </section>
-
-            <section class="monitor-columns">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <p class="eyebrow">storage</p>
-                    <h2>Диски</h2>
-                  </div>
-                </div>
-                <div class="disk-list">
-                  <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-row">
-                    <div>
-                      <strong>{{ disk.mount }}</strong>
-                      <span>{{ disk.filesystem }} · {{ disk.used_label }} / {{ disk.total_label }}</span>
-                    </div>
-                    <b>{{ disk.percent }}%</b>
-                    <div class="progress-line static">
-                      <span :style="{ width: `${disk.percent}%` }"></span>
-                    </div>
-                  </article>
-                  <article v-if="!monitoring.disks.length" class="stack-item muted">
-                    <HardDrive :size="18" />
-                    <div>
-                      <strong>Диски пока не прочитаны</strong>
-                      <span>Agent не вернул mount points</span>
-                    </div>
-                  </article>
-                </div>
-              </section>
-
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <p class="eyebrow">systemd</p>
-                    <h2>Сервисы</h2>
-                  </div>
-                </div>
-                <div class="stack-list">
-                  <article v-for="service in monitoring.services" :key="service.id" class="stack-item service-item">
-                    <span class="server-state" :class="service.state"></span>
-                    <div>
-                      <strong>{{ service.name }}</strong>
-                      <span>{{ stateLabels[service.state] }} · CPU {{ service.cpu }}% · RAM {{ service.ram }}</span>
-                    </div>
-                  </article>
-                </div>
-              </section>
-            </section>
-
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">processes</p>
-                  <h2>Топ процессов</h2>
-                </div>
-              </div>
-              <div class="process-table">
-                <div class="process-row head">
-                  <span>PID</span>
-                  <span>Процесс</span>
-                  <span>CPU</span>
-                  <span>RAM</span>
-                </div>
-                <div v-for="process in monitoring.top_processes" :key="process.pid" class="process-row">
-                  <span>{{ process.pid }}</span>
-                  <strong>{{ process.name }}</strong>
-                  <span>{{ process.cpu }}%</span>
-                  <span>{{ process.memory }}%</span>
-                  <small>{{ process.command }}</small>
-                </div>
-                <div v-if="!monitoring.top_processes.length" class="process-row">
-                  <span>-</span>
-                  <strong>Нет данных</strong>
-                  <span>-</span>
-                  <span>-</span>
-                </div>
-              </div>
-            </section>
-          </section>
-
-          <section v-if="activeTab === 'modpacks'" class="panel curseforge-panel inactive-integration">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">integration paused</p>
-                <h2>CurseForge пока не активен</h2>
-              </div>
-              <span class="settings-status">Ждем API key</span>
-            </div>
-
-            <div class="empty-details integration-waiting">
-              <PackagePlus :size="32" />
-              <strong>Вернемся после одобрения заявки</strong>
-              <span>
-                Каталог модов и сборок выключен, чтобы не показывать ошибку доступа.
-                После получения 3rd Party API key снова активируем поиск, фильтры и установку.
-              </span>
-            </div>
-          </section>
+          <CurseForgePage v-if="activeTab === 'modpacks'" />
 
           <section v-if="activeTab === 'backups'" class="panel">
             <div class="panel-heading">
@@ -1194,90 +809,16 @@ onMounted(() => {
             </div>
           </section>
 
-          <section v-if="activeTab === 'settings'" class="panel settings-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">configuration</p>
-                <h2>Настройки проекта</h2>
-              </div>
-              <button class="icon-button" type="button" title="Обновить" @click="loadDashboard">
-                <RefreshCw :size="18" />
-              </button>
-            </div>
-            <div class="settings-layout">
-              <form class="settings-form" @submit.prevent="saveSettings">
-                <div class="settings-section-head">
-                  <div>
-                    <p class="eyebrow">curseforge</p>
-                    <h3>Интеграция с каталогом</h3>
-                  </div>
-                  <span class="settings-status" :class="{ connected: settings.has_curseforge_api_key }">
-                    {{ settings.has_curseforge_api_key ? 'Подключено' : 'Не подключено' }}
-                  </span>
-                </div>
-
-                <div class="settings-current">
-                  <span>Текущий ключ</span>
-                  <strong>
-                    {{ settings.has_curseforge_api_key ? settings.curseforge_api_key_mask : 'не задан' }}
-                  </strong>
-                </div>
-
-                <label>
-                  <span>CurseForge API key</span>
-                  <input
-                    v-model="curseForgeApiKey"
-                    autocomplete="off"
-                    spellcheck="false"
-                    type="password"
-                    placeholder="Вставь новый ключ"
-                  />
-                </label>
-
-                <p class="settings-hint">
-                  Ключ хранится только на backend. В браузер возвращается только статус и маска.
-                </p>
-
-                <div class="form-actions">
-                  <button class="ghost-button" type="button" @click="clearCurseForgeKey">
-                    Очистить
-                  </button>
-                  <button class="primary-button" type="submit" :disabled="isSavingSettings">
-                    <ShieldCheck :size="18" />
-                    <span>{{ isSavingSettings ? 'Сохраняю' : 'Сохранить' }}</span>
-                  </button>
-                </div>
-                <p v-if="settingsMessage" class="settings-message">{{ settingsMessage }}</p>
-              </form>
-
-              <section class="settings-summary" aria-label="Системная информация">
-                <div class="settings-section-head">
-                  <div>
-                    <p class="eyebrow">system</p>
-                    <h3>Окружение</h3>
-                  </div>
-                </div>
-                <dl>
-                  <div>
-                    <dt>Backend</dt>
-                    <dd>Подключён через /api</dd>
-                  </div>
-                  <div>
-                    <dt>Deploy</dt>
-                    <dd>GitHub tag → self-hosted runner</dd>
-                  </div>
-                  <div>
-                    <dt>Frontend port</dt>
-                    <dd>8088</dd>
-                  </div>
-                  <div>
-                    <dt>Backend port</dt>
-                    <dd>8090</dd>
-                  </div>
-                </dl>
-              </section>
-            </div>
-          </section>
+          <SettingsPage
+            v-if="activeTab === 'settings'"
+            v-model:curse-forge-api-key="curseForgeApiKey"
+            :settings="settings"
+            :is-saving="isSavingSettings"
+            :message="settingsMessage"
+            @refresh="loadDashboard"
+            @save="saveSettings"
+            @clear="clearCurseForgeKey"
+          />
         </div>
 
         <aside v-if="activeTab === 'overview'" class="side-column">
@@ -1352,51 +893,12 @@ onMounted(() => {
       </section>
     </section>
 
-    <div v-if="isCreateServerOpen" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="create-server-title">
-      <section class="modal-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">new instance</p>
-            <h2 id="create-server-title">Новый сервер</h2>
-          </div>
-          <button class="icon-button" type="button" title="Закрыть" @click="isCreateServerOpen = false">
-            <X :size="18" />
-          </button>
-        </div>
-
-        <form class="server-form" @submit.prevent="createServer">
-          <label>
-            <span>Название</span>
-            <input v-model="newServer.name" required type="text" placeholder="Например, Ksy Survival" />
-          </label>
-          <label>
-            <span>Сборка</span>
-            <input v-model="newServer.pack" required type="text" placeholder="CurseForge pack или manifest" />
-          </label>
-          <label>
-            <span>Версия Minecraft</span>
-            <input v-model="newServer.version" required type="text" placeholder="1.20.1" />
-          </label>
-          <label>
-            <span>Адрес</span>
-            <input v-model="newServer.address" type="text" placeholder="server.ksylian.ru:25566" />
-          </label>
-
-          <p class="form-note">
-            Сейчас форма готовит контракт интерфейса. Для реального создания ещё нужен provisioner,
-            который будет скачивать сборку, выделять порт, создавать папку и systemd-службу.
-          </p>
-
-          <div class="form-actions">
-            <button class="ghost-button" type="button" @click="isCreateServerOpen = false">Отмена</button>
-            <button class="primary-button" type="submit">
-              <Plus :size="18" />
-              <span>Создать</span>
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+    <CreateServerModal
+      v-if="isCreateServerOpen"
+      v-model="newServer"
+      @close="isCreateServerOpen = false"
+      @submit="createServer"
+    />
 
     <span class="build-badge">{{ buildLabel }}</span>
   </main>
