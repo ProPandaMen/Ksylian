@@ -1,5 +1,12 @@
 export type ServerState = "online" | "deploying" | "offline";
 export type TabId = "overview" | "servers" | "monitoring" | "modpacks" | "files" | "backups" | "settings";
+export type MinecraftServerType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "paper" | "purpur";
+
+export interface NewServerDraft {
+  name: string;
+  type: MinecraftServerType;
+  version: string;
+}
 
 export interface GameServer {
   id: string;

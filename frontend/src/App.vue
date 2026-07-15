@@ -32,10 +32,10 @@ import {
 import catPaw from "./assets/cat-paw.svg";
 import catMascot from "./assets/ksylian-cat.png";
 import AppSidebar from "./components/AppSidebar.vue";
-import CreateServerModal from "./components/CreateServerModal.vue";
 import { navItems, routePaths, tabCopy } from "./navigation";
 import CurseForgePage from "./pages/CurseForgePage.vue";
 import MonitoringPage from "./pages/MonitoringPage.vue";
+import NewServerPage from "./pages/NewServerPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import type {
   BackupItem,
@@ -44,6 +44,7 @@ import type {
   GameServer,
   HostMonitoring,
   ModItem,
+  NewServerDraft,
   SettingsPayload,
   ServerState,
   TabId,
@@ -122,6 +123,16 @@ const stateLabels: Record<ServerState, string> = {
   offline: "Выключен",
 };
 
+const serverTypeLabels: Record<NewServerDraft["type"], string> = {
+  vanilla: "Vanilla",
+  fabric: "Fabric",
+  forge: "Forge",
+  neoforge: "NeoForge",
+  quilt: "Quilt",
+  paper: "Paper / Purpur",
+  purpur: "Paper / Purpur",
+};
+
 const route = useRoute();
 const router = useRouter();
 const appVersionLabel = __APP_VERSION__.startsWith("v") || __APP_VERSION__ === "dev"
@@ -146,7 +157,6 @@ const settings = ref<SettingsPayload>({
 });
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(fallbackLogs);
-const isCreateServerOpen = ref(false);
 const monitoring = ref<HostMonitoring>({
   hostname: "server",
   ip_addresses: [],
@@ -162,11 +172,10 @@ const monitoring = ref<HostMonitoring>({
   temperature: "n/a",
   collected_at: "",
 });
-const newServer = ref({
+const newServer = ref<NewServerDraft>({
   name: "",
-  pack: "",
+  type: "vanilla",
   version: "1.20.1",
-  address: "",
 });
 
 const onlineServersCount = computed(
@@ -199,21 +208,27 @@ const monitoringStatus = computed(() => {
   return { label: "Нагрузка в норме", tone: "ok" };
 });
 const activeTab = computed<TabId>(() => {
-  if (route.name === "server-detail") {
+  if (route.name === "server-detail" || route.name === "server-new") {
     return "servers";
   }
   return (route.name as TabId | undefined) ?? "overview";
 });
-const serverView = computed<"list" | "detail">(() =>
-  route.name === "server-detail" ? "detail" : "list",
+const serverView = computed<"list" | "detail" | "new">(() =>
+  route.name === "server-detail" ? "detail" : route.name === "server-new" ? "new" : "list",
 );
 const activeTabCopy = computed(() => tabCopy[activeTab.value]);
 const pageEyebrow = computed(() =>
-  activeTab.value === "servers" && serverView.value === "detail" ? "server control" : activeTabCopy.value.eyebrow,
+  activeTab.value === "servers" && serverView.value === "detail"
+    ? "server control"
+    : activeTab.value === "servers" && serverView.value === "new"
+      ? "new instance"
+      : activeTabCopy.value.eyebrow,
 );
 const pageTitle = computed(() =>
   activeTab.value === "servers" && serverView.value === "detail" && selectedServer.value
     ? selectedServer.value.name
+    : activeTab.value === "servers" && serverView.value === "new"
+      ? "Новый сервер"
     : activeTabCopy.value.title,
 );
 
@@ -309,6 +324,10 @@ function backToServerList() {
   router.push("/servers");
 }
 
+function openNewServerPage() {
+  router.push("/servers/new");
+}
+
 function selectTab(tabId: TabId) {
   if (navItems.find((item) => item.id === tabId)?.disabled) {
     return;
@@ -332,11 +351,16 @@ async function createServer() {
   try {
     await requestJson("/api/servers", {
       method: "POST",
-      body: JSON.stringify(newServer.value),
+      body: JSON.stringify({
+        name: newServer.value.name,
+        pack: serverTypeLabels[newServer.value.type],
+        version: newServer.value.version,
+        address: "",
+      }),
     });
-    isCreateServerOpen.value = false;
-    newServer.value = { name: "", pack: "", version: "1.20.1", address: "" };
+    newServer.value = { name: "", type: "vanilla", version: "1.20.1" };
     await loadDashboard();
+    await router.push("/servers");
   } catch (error) {
     apiError.value = "Создание настоящих серверов ещё требует provisioner на backend";
     console.error(error);
@@ -449,7 +473,7 @@ onMounted(() => {
         </div>
 
         <div class="topbar-actions">
-          <button class="primary-button" type="button" @click="isCreateServerOpen = true">
+          <button class="primary-button" type="button" @click="openNewServerPage">
             <Plus :size="18" />
             <span>Новый сервер</span>
           </button>
@@ -509,6 +533,13 @@ onMounted(() => {
 
       <section class="content-grid" :class="{ 'single-column': activeTab !== 'overview' }">
         <div class="main-column">
+          <NewServerPage
+            v-if="activeTab === 'servers' && serverView === 'new'"
+            v-model="newServer"
+            @cancel="backToServerList"
+            @submit="createServer"
+          />
+
           <section v-if="activeTab === 'servers' && serverView === 'list'" class="server-summary-grid" aria-label="Сводка серверов">
             <article class="summary-tile">
               <span>Стабильно работают</span>
@@ -892,13 +923,6 @@ onMounted(() => {
         </aside>
       </section>
     </section>
-
-    <CreateServerModal
-      v-if="isCreateServerOpen"
-      v-model="newServer"
-      @close="isCreateServerOpen = false"
-      @submit="createServer"
-    />
 
     <span class="build-badge">{{ buildLabel }}</span>
   </main>

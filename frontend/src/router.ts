@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 const routes = [
   { path: "/", name: "overview", component: {} },
   { path: "/servers", name: "servers", component: {} },
+  { path: "/servers/new", name: "server-new", component: {} },
   { path: "/servers/:serverId", name: "server-detail", component: {}, props: true },
   { path: "/monitoring", name: "monitoring", component: {} },
   { path: "/modpacks", name: "modpacks", component: {} },
