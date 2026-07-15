@@ -642,10 +642,10 @@ onMounted(() => {
                 <div>
                   <strong>Серверов пока нет</strong>
                   <span>
-                    Здесь появятся Minecraft-серверы после создания или подключения через agent.
+                    Создай первый Minecraft-сервер или подключи существующий через agent.
                   </span>
                 </div>
-                <button class="primary-button" type="button" @click="openNewServerPage">
+                <button class="ghost-button compact" type="button" @click="openNewServerPage">
                   <Plus :size="18" />
                   <span>Создать сервер</span>
                 </button>
