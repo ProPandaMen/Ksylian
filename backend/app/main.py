@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -70,6 +70,27 @@ class ModItem(BaseModel):
     tag: Literal["required", "update", "review"]
 
 
+class CurseForgeProject(BaseModel):
+    id: int
+    name: str
+    slug: str
+    summary: str = ""
+    type: Literal["mods", "modpacks"]
+    downloads: int = 0
+    date_modified: str = ""
+    icon_url: str = ""
+    website_url: str = ""
+    latest_file_id: int | None = None
+    game_versions: list[str] = []
+    loaders: list[str] = []
+
+
+class CurseForgeSearchPayload(BaseModel):
+    items: list[CurseForgeProject]
+    total_count: int = 0
+    has_api_key: bool
+
+
 class FileItem(BaseModel):
     name: str
     meta: str
@@ -103,6 +124,12 @@ app.add_middleware(
 AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
 AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 SETTINGS_PATH = Path(os.getenv("KSYLIAN_SETTINGS_PATH", "/data/settings.json"))
+CURSEFORGE_BASE_URL = "https://api.curseforge.com"
+MINECRAFT_GAME_ID = 432
+CURSEFORGE_CLASS_IDS = {"mods": 6, "modpacks": 4471}
+CURSEFORGE_SORT_FIELDS = {"popularity": 2, "updated": 3, "name": 4, "downloads": 6}
+CURSEFORGE_LOADER_TYPES = {"any": None, "forge": 1, "fabric": 4, "quilt": 5, "neoforge": 6}
+CURSEFORGE_LOADER_LABELS = {1: "Forge", 4: "Fabric", 5: "Quilt", 6: "NeoForge"}
 
 servers: dict[str, GameServer] = {
     "ksy-vanilla": GameServer(
@@ -256,6 +283,103 @@ def mask_secret(value: str) -> str:
     if len(value) <= 8:
         return "••••"
     return f"{value[:4]}••••{value[-4:]}"
+
+
+def curseforge_headers() -> dict[str, str]:
+    key = curseforge_api_key()
+    if not key:
+        raise HTTPException(status_code=400, detail="CurseForge API key is not configured")
+    return {"Accept": "application/json", "x-api-key": key}
+
+
+def curseforge_get(path: str, params: dict[str, int | str]) -> dict:
+    try:
+        response = httpx.get(
+            f"{CURSEFORGE_BASE_URL}{path}",
+            headers=curseforge_headers(),
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as error:
+        status_code = error.response.status_code
+        if status_code in {401, 403}:
+            detail = "CurseForge API key was rejected"
+        else:
+            detail = f"CurseForge API returned {status_code}"
+        raise HTTPException(status_code=502, detail=detail) from error
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=502, detail="CurseForge API is unavailable") from error
+
+    data = response.json()
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="CurseForge API returned an unexpected response")
+    return data
+
+
+def compact_unique(values: list[str], limit: int = 6) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = value.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def transform_curseforge_project(item: dict, kind: Literal["mods", "modpacks"]) -> CurseForgeProject:
+    latest_indexes = item.get("latestFilesIndexes") or []
+    latest_files = item.get("latestFiles") or []
+    logo = item.get("logo") or {}
+    links = item.get("links") or {}
+    versions: list[str] = []
+    loader_ids: list[int] = []
+
+    if isinstance(latest_indexes, list):
+        for latest in latest_indexes:
+            if not isinstance(latest, dict):
+                continue
+            game_version = latest.get("gameVersion")
+            mod_loader = latest.get("modLoader")
+            if isinstance(game_version, str):
+                versions.append(game_version)
+            if isinstance(mod_loader, int):
+                loader_ids.append(mod_loader)
+
+    if not versions and isinstance(latest_files, list):
+        for latest in latest_files[:3]:
+            if not isinstance(latest, dict):
+                continue
+            for game_version in latest.get("gameVersions") or []:
+                if isinstance(game_version, str):
+                    versions.append(game_version)
+
+    latest_file_id = None
+    if isinstance(latest_indexes, list) and latest_indexes:
+        latest_file_id = latest_indexes[0].get("fileId")
+    if latest_file_id is None and isinstance(latest_files, list) and latest_files:
+        latest_file_id = latest_files[0].get("id")
+
+    return CurseForgeProject(
+        id=int(item.get("id") or 0),
+        name=str(item.get("name") or "Untitled project"),
+        slug=str(item.get("slug") or ""),
+        summary=str(item.get("summary") or ""),
+        type=kind,
+        downloads=int(item.get("downloadCount") or 0),
+        date_modified=str(item.get("dateModified") or ""),
+        icon_url=str(logo.get("thumbnailUrl") or logo.get("url") or ""),
+        website_url=str(links.get("websiteUrl") or ""),
+        latest_file_id=latest_file_id if isinstance(latest_file_id, int) else None,
+        game_versions=compact_unique(versions),
+        loaders=compact_unique([CURSEFORGE_LOADER_LABELS.get(loader_id, "") for loader_id in loader_ids], 4),
+    )
 
 
 def get_server(server_id: str) -> GameServer:
@@ -492,6 +616,53 @@ def list_mods() -> list[ModItem]:
 def check_mod_updates() -> dict[str, str]:
     append_log("CurseForge update check requested")
     return {"status": "queued"}
+
+
+@app.get("/api/curseforge/search", response_model=CurseForgeSearchPayload)
+def search_curseforge(
+    kind: Literal["mods", "modpacks"] = "modpacks",
+    query: str = "",
+    minecraft_version: str = "",
+    loader: Literal["any", "forge", "fabric", "quilt", "neoforge"] = "any",
+    sort: Literal["popularity", "updated", "name", "downloads"] = "popularity",
+    page_size: int = Query(default=20, ge=1, le=50),
+    index: int = Query(default=0, ge=0, le=9950),
+) -> CurseForgeSearchPayload:
+    params: dict[str, int | str] = {
+        "gameId": MINECRAFT_GAME_ID,
+        "classId": CURSEFORGE_CLASS_IDS[kind],
+        "pageSize": page_size,
+        "index": index,
+        "sortField": CURSEFORGE_SORT_FIELDS[sort],
+        "sortOrder": "desc",
+    }
+
+    search_filter = query.strip()
+    if search_filter:
+        params["searchFilter"] = search_filter
+
+    game_version = minecraft_version.strip()
+    if game_version:
+        params["gameVersion"] = game_version
+
+    mod_loader_type = CURSEFORGE_LOADER_TYPES[loader]
+    if mod_loader_type is not None:
+        params["modLoaderType"] = mod_loader_type
+
+    data = curseforge_get("/v1/mods/search", params)
+    raw_items = data.get("data") or []
+    pagination = data.get("pagination") or {}
+    items = [
+        transform_curseforge_project(item, kind)
+        for item in raw_items
+        if isinstance(item, dict)
+    ]
+
+    return CurseForgeSearchPayload(
+        items=items,
+        total_count=int(pagination.get("totalCount") or len(items)),
+        has_api_key=True,
+    )
 
 
 @app.get("/api/files", response_model=list[FileItem])

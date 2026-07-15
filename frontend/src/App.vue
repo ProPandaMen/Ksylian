@@ -11,6 +11,7 @@ import {
   Clock3,
   Cpu,
   Download,
+  ExternalLink,
   FileArchive,
   FileText,
   Folder,
@@ -25,6 +26,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Search,
   Server,
   Settings,
   ShieldCheck,
@@ -39,6 +41,9 @@ import catMascot from "./assets/ksylian-cat.png";
 
 type ServerState = "online" | "deploying" | "offline";
 type TabId = "overview" | "servers" | "modpacks" | "files" | "backups" | "settings";
+type CurseForgeKind = "mods" | "modpacks";
+type CurseForgeLoader = "any" | "forge" | "fabric" | "quilt" | "neoforge";
+type CurseForgeSort = "popularity" | "updated" | "name" | "downloads";
 
 interface GameServer {
   id: string;
@@ -85,6 +90,27 @@ interface DashboardPayload {
 interface SettingsPayload {
   has_curseforge_api_key: boolean;
   curseforge_api_key_mask: string;
+}
+
+interface CurseForgeProject {
+  id: number;
+  name: string;
+  slug: string;
+  summary: string;
+  type: CurseForgeKind;
+  downloads: number;
+  date_modified: string;
+  icon_url: string;
+  website_url: string;
+  latest_file_id: number | null;
+  game_versions: string[];
+  loaders: string[];
+}
+
+interface CurseForgeSearchPayload {
+  items: CurseForgeProject[];
+  total_count: number;
+  has_api_key: boolean;
 }
 
 const navItems: Array<{ id: TabId; label: string; icon: Component }> = [
@@ -208,6 +234,15 @@ const settings = ref<SettingsPayload>({
   has_curseforge_api_key: false,
   curseforge_api_key_mask: "",
 });
+const curseForgeKind = ref<CurseForgeKind>("modpacks");
+const curseForgeQuery = ref("");
+const curseForgeVersion = ref("1.20.1");
+const curseForgeLoader = ref<CurseForgeLoader>("fabric");
+const curseForgeSort = ref<CurseForgeSort>("popularity");
+const curseForgeItems = ref<CurseForgeProject[]>([]);
+const selectedCurseForgeProject = ref<CurseForgeProject | null>(null);
+const isCurseForgeLoading = ref(false);
+const curseForgeError = ref("");
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(fallbackLogs);
 const isCreateServerOpen = ref(false);
@@ -235,6 +270,15 @@ const selectedServer = computed(
 );
 const selectedServerBackups = computed(() =>
   backups.value.filter((backup) => backup.server_id === selectedServer.value?.id),
+);
+const curseForgeKindLabel = computed(() =>
+  curseForgeKind.value === "modpacks" ? "сборок" : "модов",
+);
+const selectedProjectVersions = computed(() =>
+  selectedCurseForgeProject.value?.game_versions.slice(0, 6).join(", ") || "версии не указаны",
+);
+const selectedProjectLoaders = computed(() =>
+  selectedCurseForgeProject.value?.loaders.join(", ") || "любой совместимый лоадер",
 );
 const activeTab = computed<TabId>(() => {
   if (route.name === "server-detail") {
@@ -337,6 +381,61 @@ function selectTab(tabId: TabId) {
   router.push(routePaths[tabId]);
 }
 
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function formatDate(value: string) {
+  if (!value) {
+    return "дата неизвестна";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "дата неизвестна";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+function setCurseForgeKind(kind: CurseForgeKind) {
+  curseForgeKind.value = kind;
+  selectedCurseForgeProject.value = null;
+}
+
+async function searchCurseForge() {
+  isCurseForgeLoading.value = true;
+  curseForgeError.value = "";
+  apiError.value = "";
+
+  const params = new URLSearchParams({
+    kind: curseForgeKind.value,
+    query: curseForgeQuery.value,
+    minecraft_version: curseForgeVersion.value,
+    loader: curseForgeLoader.value,
+    sort: curseForgeSort.value,
+    page_size: "24",
+  });
+
+  try {
+    const data = await requestJson<CurseForgeSearchPayload>(`/api/curseforge/search?${params.toString()}`);
+    curseForgeItems.value = data.items;
+    selectedCurseForgeProject.value = data.items[0] ?? null;
+    if (!data.items.length) {
+      curseForgeError.value = "По таким фильтрам ничего не найдено";
+    }
+  } catch (error) {
+    curseForgeItems.value = [];
+    selectedCurseForgeProject.value = null;
+    curseForgeError.value = settings.value.has_curseforge_api_key
+      ? "Не удалось получить каталог CurseForge. Проверь ключ или попробуй другие фильтры"
+      : "Добавь CurseForge API key в настройках, чтобы открыть каталог";
+    console.error(error);
+  } finally {
+    isCurseForgeLoading.value = false;
+  }
+}
+
 async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "backup") {
   try {
     await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
@@ -432,9 +531,22 @@ watch(
   },
 );
 
+watch(
+  () => activeTab.value,
+  (tabId) => {
+    if (tabId === "modpacks" && !curseForgeItems.value.length && !isCurseForgeLoading.value) {
+      searchCurseForge();
+    }
+  },
+);
+
 onMounted(() => {
   loadDashboard();
-  loadSettings();
+  loadSettings().then(() => {
+    if (activeTab.value === "modpacks") {
+      searchCurseForge();
+    }
+  });
 });
 </script>
 
@@ -797,25 +909,176 @@ onMounted(() => {
             </section>
           </section>
 
-          <section v-if="activeTab === 'modpacks'" class="panel">
+          <section v-if="activeTab === 'modpacks'" class="panel curseforge-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">curseforge</p>
-                <h2>Моды</h2>
+                <h2>Каталог модов и сборок</h2>
               </div>
-              <button class="icon-button" type="button" title="Проверить обновления" @click="checkMods">
+              <button class="icon-button" type="button" title="Обновить каталог" @click="searchCurseForge">
                 <RefreshCw :size="18" />
               </button>
             </div>
-            <div class="stack-list expanded-list">
-              <article v-for="mod in mods" :key="mod.id" class="stack-item">
-                <Box :size="18" />
-                <div>
-                  <strong>{{ mod.name }}</strong>
-                  <span>{{ mod.status }}</span>
-                </div>
-                <i :class="mod.tag"></i>
-              </article>
+
+            <form class="catalog-toolbar" @submit.prevent="searchCurseForge">
+              <div class="segmented-control" aria-label="Тип проекта">
+                <button
+                  type="button"
+                  :class="{ active: curseForgeKind === 'modpacks' }"
+                  @click="setCurseForgeKind('modpacks')"
+                >
+                  Сборки
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: curseForgeKind === 'mods' }"
+                  @click="setCurseForgeKind('mods')"
+                >
+                  Моды
+                </button>
+              </div>
+
+              <label class="catalog-search">
+                <Search :size="18" />
+                <input v-model="curseForgeQuery" type="search" placeholder="Поиск по CurseForge" />
+              </label>
+
+              <label>
+                <span>Версия</span>
+                <select v-model="curseForgeVersion">
+                  <option value="">Любая</option>
+                  <option value="1.21.1">1.21.1</option>
+                  <option value="1.20.1">1.20.1</option>
+                  <option value="1.19.2">1.19.2</option>
+                  <option value="1.18.2">1.18.2</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Лоадер</span>
+                <select v-model="curseForgeLoader">
+                  <option value="any">Любой</option>
+                  <option value="fabric">Fabric</option>
+                  <option value="forge">Forge</option>
+                  <option value="neoforge">NeoForge</option>
+                  <option value="quilt">Quilt</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Сортировка</span>
+                <select v-model="curseForgeSort">
+                  <option value="popularity">Популярные</option>
+                  <option value="downloads">Скачивания</option>
+                  <option value="updated">Недавно обновлены</option>
+                  <option value="name">По названию</option>
+                </select>
+              </label>
+
+              <button class="primary-button" type="submit" :disabled="isCurseForgeLoading">
+                <Search :size="18" />
+                <span>{{ isCurseForgeLoading ? 'Ищу' : 'Найти' }}</span>
+              </button>
+            </form>
+
+            <div v-if="curseForgeError" class="catalog-notice">
+              {{ curseForgeError }}
+            </div>
+
+            <div class="catalog-layout">
+              <section class="catalog-results" :aria-label="`Каталог ${curseForgeKindLabel}`">
+                <button
+                  v-for="project in curseForgeItems"
+                  :key="project.id"
+                  class="project-card"
+                  :class="{ selected: selectedCurseForgeProject?.id === project.id }"
+                  type="button"
+                  @click="selectedCurseForgeProject = project"
+                >
+                  <img v-if="project.icon_url" :src="project.icon_url" alt="" />
+                  <span v-else class="project-icon-fallback">
+                    <PackagePlus :size="22" />
+                  </span>
+                  <div>
+                    <strong>{{ project.name }}</strong>
+                    <p>{{ project.summary || 'Описание пока не заполнено автором проекта' }}</p>
+                    <span>
+                      {{ formatNumber(project.downloads) }} скачиваний · {{ formatDate(project.date_modified) }}
+                    </span>
+                  </div>
+                </button>
+
+                <article v-if="isCurseForgeLoading" class="project-card muted">
+                  <span class="project-icon-fallback">
+                    <RefreshCw :size="22" />
+                  </span>
+                  <div>
+                    <strong>Загружаю каталог</strong>
+                    <p>Подбираю проекты по текущим фильтрам.</p>
+                  </div>
+                </article>
+              </section>
+
+              <aside class="project-details">
+                <template v-if="selectedCurseForgeProject">
+                  <div class="project-details-head">
+                    <img v-if="selectedCurseForgeProject.icon_url" :src="selectedCurseForgeProject.icon_url" alt="" />
+                    <span v-else class="project-icon-fallback">
+                      <PackagePlus :size="24" />
+                    </span>
+                    <div>
+                      <p class="eyebrow">{{ selectedCurseForgeProject.type === 'modpacks' ? 'modpack' : 'mod' }}</p>
+                      <h3>{{ selectedCurseForgeProject.name }}</h3>
+                    </div>
+                  </div>
+
+                  <p class="project-summary">{{ selectedCurseForgeProject.summary }}</p>
+
+                  <dl class="project-facts">
+                    <div>
+                      <dt>Скачивания</dt>
+                      <dd>{{ formatNumber(selectedCurseForgeProject.downloads) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Версии</dt>
+                      <dd>{{ selectedProjectVersions }}</dd>
+                    </div>
+                    <div>
+                      <dt>Лоадеры</dt>
+                      <dd>{{ selectedProjectLoaders }}</dd>
+                    </div>
+                    <div>
+                      <dt>Обновлено</dt>
+                      <dd>{{ formatDate(selectedCurseForgeProject.date_modified) }}</dd>
+                    </div>
+                  </dl>
+
+                  <div class="project-actions">
+                    <a
+                      v-if="selectedCurseForgeProject.website_url"
+                      class="ghost-button"
+                      :href="selectedCurseForgeProject.website_url"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink :size="17" />
+                      <span>Открыть CurseForge</span>
+                    </a>
+                    <button class="primary-button" type="button" disabled>
+                      <PackagePlus :size="18" />
+                      <span>Подключить позже</span>
+                    </button>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <div class="empty-details">
+                    <PackagePlus :size="28" />
+                    <strong>Выбери проект</strong>
+                    <span>Здесь появятся версии, лоадеры, скачивания и ссылка на CurseForge.</span>
+                  </div>
+                </template>
+              </aside>
             </div>
           </section>
 
