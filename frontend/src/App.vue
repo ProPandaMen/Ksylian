@@ -869,56 +869,78 @@ onMounted(() => {
                 <RefreshCw :size="18" />
               </button>
             </div>
-            <form class="settings-form" @submit.prevent="saveSettings">
-              <div>
-                <p class="eyebrow">curseforge</p>
-                <h3>API key</h3>
-                <p>
-                  Ключ хранится на backend и не возвращается в браузер целиком.
-                  Текущий статус:
+            <div class="settings-layout">
+              <form class="settings-form" @submit.prevent="saveSettings">
+                <div class="settings-section-head">
+                  <div>
+                    <p class="eyebrow">curseforge</p>
+                    <h3>Интеграция с каталогом</h3>
+                  </div>
+                  <span class="settings-status" :class="{ connected: settings.has_curseforge_api_key }">
+                    {{ settings.has_curseforge_api_key ? 'Подключено' : 'Не подключено' }}
+                  </span>
+                </div>
+
+                <div class="settings-current">
+                  <span>Текущий ключ</span>
                   <strong>
                     {{ settings.has_curseforge_api_key ? settings.curseforge_api_key_mask : 'не задан' }}
                   </strong>
+                </div>
+
+                <label>
+                  <span>CurseForge API key</span>
+                  <input
+                    v-model="curseForgeApiKey"
+                    autocomplete="off"
+                    spellcheck="false"
+                    type="password"
+                    placeholder="Вставь новый ключ"
+                  />
+                </label>
+
+                <p class="settings-hint">
+                  Ключ хранится только на backend. В браузер возвращается только статус и маска.
                 </p>
-              </div>
-              <label>
-                <span>Новый CurseForge API key</span>
-                <input
-                  v-model="curseForgeApiKey"
-                  autocomplete="off"
-                  spellcheck="false"
-                  type="password"
-                  placeholder="Вставь ключ и нажми сохранить"
-                />
-              </label>
-              <div class="form-actions">
-                <button class="ghost-button" type="button" @click="clearCurseForgeKey">
-                  Очистить
-                </button>
-                <button class="primary-button" type="submit" :disabled="isSavingSettings">
-                  <ShieldCheck :size="18" />
-                  <span>{{ isSavingSettings ? 'Сохраняю' : 'Сохранить ключ' }}</span>
-                </button>
-              </div>
-              <p v-if="settingsMessage" class="settings-message">{{ settingsMessage }}</p>
-            </form>
-            <div class="settings-grid">
-              <article class="setting-item">
-                <strong>Backend</strong>
-                <span>Подключён через /api</span>
-              </article>
-              <article class="setting-item">
-                <strong>Deploy</strong>
-                <span>GitHub tag → self-hosted runner</span>
-              </article>
-              <article class="setting-item">
-                <strong>Frontend port</strong>
-                <span>8088</span>
-              </article>
-              <article class="setting-item">
-                <strong>Backend port</strong>
-                <span>8090</span>
-              </article>
+
+                <div class="form-actions">
+                  <button class="ghost-button" type="button" @click="clearCurseForgeKey">
+                    Очистить
+                  </button>
+                  <button class="primary-button" type="submit" :disabled="isSavingSettings">
+                    <ShieldCheck :size="18" />
+                    <span>{{ isSavingSettings ? 'Сохраняю' : 'Сохранить' }}</span>
+                  </button>
+                </div>
+                <p v-if="settingsMessage" class="settings-message">{{ settingsMessage }}</p>
+              </form>
+
+              <section class="settings-summary" aria-label="Системная информация">
+                <div class="settings-section-head">
+                  <div>
+                    <p class="eyebrow">system</p>
+                    <h3>Окружение</h3>
+                  </div>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Backend</dt>
+                    <dd>Подключён через /api</dd>
+                  </div>
+                  <div>
+                    <dt>Deploy</dt>
+                    <dd>GitHub tag → self-hosted runner</dd>
+                  </div>
+                  <div>
+                    <dt>Frontend port</dt>
+                    <dd>8088</dd>
+                  </div>
+                  <div>
+                    <dt>Backend port</dt>
+                    <dd>8090</dd>
+                  </div>
+                </dl>
+              </section>
             </div>
           </section>
         </div>
