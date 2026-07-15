@@ -15,42 +15,49 @@ const serverTypes: Array<{
   label: string;
   description: string;
   icon: Component;
+  available: boolean;
 }> = [
   {
     id: "vanilla",
     label: "Vanilla",
     description: "Чистый Minecraft без модов и плагинов.",
     icon: Pickaxe,
+    available: true,
   },
   {
     id: "fabric",
     label: "Fabric",
     description: "Лёгкий mod loader для современных сборок.",
     icon: Box,
+    available: false,
   },
   {
     id: "forge",
     label: "Forge",
     description: "Классическая база для больших модовых сборок.",
     icon: Layers3,
+    available: false,
   },
   {
     id: "neoforge",
     label: "NeoForge",
     description: "Новая ветка Forge-экосистемы.",
     icon: Sparkles,
+    available: false,
   },
   {
     id: "quilt",
     label: "Quilt",
     description: "Совместимый loader для Quilt/Fabric-модов.",
     icon: CheckCircle2,
+    available: false,
   },
   {
     id: "paper",
     label: "Paper / Purpur",
     description: "Производительная база для плагин-серверов.",
     icon: Server,
+    available: true,
   },
 ];
 
@@ -61,7 +68,11 @@ function updateField(field: keyof NewServerDraft, value: string) {
   };
 }
 
-function selectType(type: MinecraftServerType) {
+function selectType(type: MinecraftServerType, isAvailable: boolean) {
+  if (!isAvailable) {
+    return;
+  }
+
   updateField("type", type);
 }
 </script>
@@ -97,14 +108,19 @@ function selectType(type: MinecraftServerType) {
             v-for="serverType in serverTypes"
             :key="serverType.id"
             class="server-type-card"
-            :class="{ selected: modelValue.type === serverType.id }"
+            :class="{ selected: modelValue.type === serverType.id, disabled: !serverType.available }"
             type="button"
             role="radio"
+            :disabled="!serverType.available"
             :aria-checked="modelValue.type === serverType.id"
-            @click="selectType(serverType.id)"
+            :aria-disabled="!serverType.available"
+            @click="selectType(serverType.id, serverType.available)"
           >
             <component :is="serverType.icon" :size="22" />
-            <strong>{{ serverType.label }}</strong>
+            <div class="server-type-title">
+              <strong>{{ serverType.label }}</strong>
+              <small v-if="!serverType.available">скоро</small>
+            </div>
             <span>{{ serverType.description }}</span>
           </button>
         </div>
