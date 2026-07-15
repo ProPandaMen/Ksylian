@@ -29,6 +29,9 @@ jobs:
       - name: Prepare environment
         run: |
           test -f deploy/.env || cp deploy/.env.example deploy/.env
+          if [ -n "${{ secrets.KSYLIAN_AGENT_TOKEN }}" ]; then
+            sed -i "s/^KSYLIAN_AGENT_TOKEN=.*/KSYLIAN_AGENT_TOKEN=${{ secrets.KSYLIAN_AGENT_TOKEN }}/" deploy/.env
+          fi
 
       - name: Build and restart services
         run: |

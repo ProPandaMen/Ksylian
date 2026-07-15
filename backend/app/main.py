@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from enum import Enum
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -43,6 +45,13 @@ class BackupItem(BaseModel):
     server_id: str
 
 
+class CreateServerRequest(BaseModel):
+    name: str
+    pack: str
+    version: str = "1.20.1"
+    address: str = ""
+
+
 class ModItem(BaseModel):
     id: str
     name: str
@@ -79,6 +88,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
+AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 
 servers: dict[str, GameServer] = {
     "ksy-vanilla": GameServer(
@@ -148,6 +160,54 @@ files: list[FileItem] = [
 ]
 
 
+def agent_headers() -> dict[str, str]:
+    if not AGENT_TOKEN:
+        return {}
+    return {"x-ksylian-token": AGENT_TOKEN}
+
+
+def agent_get(path: str) -> httpx.Response:
+    if not AGENT_URL:
+        raise RuntimeError("Agent is not configured")
+    return httpx.get(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=10)
+
+
+def agent_post(path: str) -> httpx.Response:
+    if not AGENT_URL:
+        raise RuntimeError("Agent is not configured")
+    return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=90)
+
+
+def load_agent_servers() -> list[GameServer] | None:
+    try:
+        response = agent_get("/servers")
+        response.raise_for_status()
+        return [GameServer(**item) for item in response.json()]
+    except Exception as error:
+        append_log(f"agent unavailable: {error}")
+        return None
+
+
+def load_agent_logs(server_id: str) -> list[str]:
+    try:
+        response = agent_get(f"/servers/{server_id}/logs")
+        response.raise_for_status()
+        return response.json()
+    except Exception as error:
+        append_log(f"agent logs unavailable for {server_id}: {error}")
+        return []
+
+
+def load_agent_backups() -> list[BackupItem] | None:
+    try:
+        response = agent_get("/backups")
+        response.raise_for_status()
+        return [BackupItem(**item) for item in response.json()]
+    except Exception as error:
+        append_log(f"agent backups unavailable: {error}")
+        return None
+
+
 def append_log(message: str) -> None:
     timestamp = datetime.now().strftime("%H:%M:%S")
     logs.append(f"[{timestamp}] Ksylian/API {message}")
@@ -168,10 +228,22 @@ def health() -> dict[str, str]:
 
 @app.get("/api/dashboard", response_model=DashboardPayload)
 def dashboard() -> DashboardPayload:
+    agent_servers = load_agent_servers()
+    current_servers = agent_servers if agent_servers is not None else list(servers.values())
+    agent_backups = load_agent_backups()
+    current_backups = agent_backups if agent_backups is not None else backups
+    current_logs = logs[-20:]
+
+    if agent_servers:
+        real_logs: list[str] = []
+        for server in agent_servers:
+            real_logs.extend(load_agent_logs(server.id)[-12:])
+        current_logs = real_logs[-40:] if real_logs else logs[-20:]
+
     return DashboardPayload(
-        servers=list(servers.values()),
-        logs=logs[-20:],
-        backups=backups,
+        servers=current_servers,
+        logs=current_logs,
+        backups=current_backups,
         mods=mods,
         files=files,
     )
@@ -179,11 +251,72 @@ def dashboard() -> DashboardPayload:
 
 @app.get("/api/servers", response_model=list[GameServer])
 def list_servers() -> list[GameServer]:
+    agent_servers = load_agent_servers()
+    if agent_servers is not None:
+        return agent_servers
     return list(servers.values())
+
+
+@app.post("/api/servers", response_model=GameServer)
+def create_server(payload: CreateServerRequest) -> GameServer:
+    if AGENT_URL:
+        raise HTTPException(
+            status_code=501,
+            detail="Creating real servers is not implemented yet. Ksylian needs a provisioner first.",
+        )
+
+    server_id = payload.name.lower().strip().replace(" ", "-")
+    if not server_id:
+        raise HTTPException(status_code=400, detail="Server name is required")
+    if server_id in servers:
+        raise HTTPException(status_code=409, detail="Server already exists")
+
+    server = GameServer(
+        id=server_id,
+        name=payload.name,
+        pack=payload.pack,
+        version=payload.version,
+        state=ServerState.offline,
+        players="0 / 24",
+        ram="0 MB",
+        cpu=0,
+        disk="0 MB",
+        address=payload.address or f"{server_id}.ksylian.local:25565",
+    )
+    servers[server.id] = server
+    append_log(f"{server.name}: server draft created")
+    return server
+
+
+@app.delete("/api/servers/{server_id}")
+def delete_server(server_id: str) -> dict[str, bool]:
+    if AGENT_URL:
+        raise HTTPException(
+            status_code=501,
+            detail="Deleting real systemd servers is not implemented yet. Stop and detach policy is required first.",
+        )
+
+    if server_id not in servers:
+        raise HTTPException(status_code=404, detail="Server not found")
+    del servers[server_id]
+    append_log(f"{server_id}: server draft deleted")
+    return {"ok": True}
 
 
 @app.post("/api/servers/{server_id}/actions/{action}", response_model=ActionResult)
 def run_server_action(server_id: str, action: ServerAction) -> ActionResult:
+    if AGENT_URL:
+        try:
+            response = agent_post(f"/servers/{server_id}/actions/{action.value}")
+            response.raise_for_status()
+            data = response.json()
+            server = GameServer(**data["server"])
+            append_log(data["message"])
+            return ActionResult(ok=True, message=data["message"], server=server)
+        except Exception as error:
+            append_log(f"agent action failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent action failed") from error
+
     server = get_server(server_id)
 
     if action == ServerAction.start:
@@ -218,16 +351,52 @@ def run_server_action(server_id: str, action: ServerAction) -> ActionResult:
 
 @app.get("/api/logs", response_model=list[str])
 def list_logs() -> list[str]:
+    agent_servers = load_agent_servers()
+    if agent_servers:
+        real_logs: list[str] = []
+        for server in agent_servers:
+            real_logs.extend(load_agent_logs(server.id)[-40:])
+        return real_logs[-80:] if real_logs else logs[-80:]
     return logs[-80:]
+
+
+@app.get("/api/servers/{server_id}/logs", response_model=list[str])
+def list_server_logs(server_id: str) -> list[str]:
+    if AGENT_URL:
+        agent_logs = load_agent_logs(server_id)
+        if agent_logs:
+            return agent_logs[-120:]
+        agent_servers = load_agent_servers()
+        if agent_servers is not None and all(server.id != server_id for server in agent_servers):
+            raise HTTPException(status_code=404, detail="Server not found")
+        return []
+
+    get_server(server_id)
+    return [line for line in logs[-80:] if server_id in line or "Server thread" in line]
 
 
 @app.get("/api/backups", response_model=list[BackupItem])
 def list_backups() -> list[BackupItem]:
+    agent_backups = load_agent_backups()
+    if agent_backups is not None:
+        return agent_backups
     return backups
 
 
 @app.post("/api/backups", response_model=BackupItem)
 def create_backup(server_id: str = "ksy-vanilla") -> BackupItem:
+    if AGENT_URL:
+        try:
+            response = agent_post(f"/servers/{server_id}/actions/backup")
+            response.raise_for_status()
+            append_log(response.json()["message"])
+            agent_backups = load_agent_backups()
+            if agent_backups:
+                return agent_backups[0]
+        except Exception as error:
+            append_log(f"agent backup failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent backup failed") from error
+
     server = get_server(server_id)
     backup = BackupItem(
         id=f"backup-{len(backups) + 1}",

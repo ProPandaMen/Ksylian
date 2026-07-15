@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, type Component } from "vue";
+import { computed, onMounted, ref, watch, type Component } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   Archive,
+  ArrowLeft,
   Box,
   CheckCircle2,
   ChevronRight,
   CircleStop,
   Clock3,
+  Cpu,
   Download,
   FileArchive,
   FileText,
@@ -18,6 +21,7 @@ import {
   Home,
   LayoutDashboard,
   ListRestart,
+  MemoryStick,
   PackagePlus,
   Play,
   Plus,
@@ -26,7 +30,10 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Trash2,
   UploadCloud,
+  Users,
+  X,
 } from "@lucide/vue";
 import catLogo from "./assets/cat-logo.svg";
 import catPaw from "./assets/cat-paw.svg";
@@ -168,19 +175,71 @@ const stateLabels: Record<ServerState, string> = {
   offline: "Выключен",
 };
 
+const routePaths: Record<TabId, string> = {
+  overview: "/",
+  servers: "/servers",
+  modpacks: "/modpacks",
+  files: "/files",
+  backups: "/backups",
+  settings: "/settings",
+};
+
+const route = useRoute();
+const router = useRouter();
 const servers = ref<GameServer[]>(fallbackServers);
 const logs = ref<string[]>(fallbackLogs);
 const backups = ref<BackupItem[]>(fallbackBackups);
 const mods = ref<ModItem[]>(fallbackMods);
 const files = ref<FileItem[]>(fallbackFiles);
 const isLoading = ref(false);
+const isLogLoading = ref(false);
 const apiError = ref("");
-const activeTab = ref<TabId>("overview");
+const selectedServerId = ref("");
+const selectedServerLogs = ref<string[]>(fallbackLogs);
+const isCreateServerOpen = ref(false);
+const newServer = ref({
+  name: "",
+  pack: "",
+  version: "1.20.1",
+  address: "",
+});
 
 const onlineServersCount = computed(
   () => servers.value.filter((server) => server.state !== "offline").length,
 );
+const offlineServersCount = computed(
+  () => servers.value.filter((server) => server.state === "offline").length,
+);
+const deployingServersCount = computed(
+  () => servers.value.filter((server) => server.state === "deploying").length,
+);
+const stableServersCount = computed(
+  () => servers.value.filter((server) => server.state === "online").length,
+);
+const selectedServer = computed(
+  () => servers.value.find((server) => server.id === selectedServerId.value) ?? servers.value[0],
+);
+const selectedServerBackups = computed(() =>
+  backups.value.filter((backup) => backup.server_id === selectedServer.value?.id),
+);
+const activeTab = computed<TabId>(() => {
+  if (route.name === "server-detail") {
+    return "servers";
+  }
+  return (route.name as TabId | undefined) ?? "overview";
+});
+const serverView = computed<"list" | "detail">(() =>
+  route.name === "server-detail" ? "detail" : "list",
+);
 const activeTabCopy = computed(() => tabCopy[activeTab.value]);
+const pageEyebrow = computed(() =>
+  activeTab.value === "servers" && serverView.value === "detail" ? "server control" : activeTabCopy.value.eyebrow,
+);
+const pageTitle = computed(() =>
+  activeTab.value === "servers" && serverView.value === "detail" && selectedServer.value
+    ? selectedServer.value.name
+    : activeTabCopy.value.title,
+);
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -206,12 +265,53 @@ async function loadDashboard() {
     backups.value = data.backups;
     mods.value = data.mods;
     files.value = data.files;
+    const routeServerId = typeof route.params.serverId === "string" ? route.params.serverId : "";
+    const nextServerId = routeServerId || selectedServerId.value || data.servers[0]?.id || "";
+    if (nextServerId) {
+      selectedServerId.value = nextServerId;
+    }
+    if (route.name === "server-detail" && selectedServerId.value) {
+      await loadServerLogs(selectedServerId.value);
+    }
   } catch (error) {
     apiError.value = "Backend пока недоступен, показываю локальные данные";
     console.error(error);
   } finally {
     isLoading.value = false;
   }
+}
+
+async function loadServerLogs(serverId = selectedServerId.value) {
+  if (!serverId) {
+    selectedServerLogs.value = [];
+    return;
+  }
+
+  selectedServerId.value = serverId;
+  isLogLoading.value = true;
+
+  try {
+    selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${serverId}/logs`);
+  } catch (error) {
+    apiError.value = "Не удалось загрузить логи выбранного сервера";
+    selectedServerLogs.value = [];
+    console.error(error);
+  } finally {
+    isLogLoading.value = false;
+  }
+}
+
+async function openServerPanel(serverId: string) {
+  selectedServerId.value = serverId;
+  await router.push(`/servers/${serverId}`);
+}
+
+function backToServerList() {
+  router.push("/servers");
+}
+
+function selectTab(tabId: TabId) {
+  router.push(routePaths[tabId]);
 }
 
 async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "backup") {
@@ -224,8 +324,36 @@ async function runServerAction(serverId: string, action: "start" | "restart" | "
   }
 }
 
-async function createBackup() {
-  const serverId = servers.value[0]?.id ?? "ksy-vanilla";
+async function createServer() {
+  apiError.value = "";
+
+  try {
+    await requestJson("/api/servers", {
+      method: "POST",
+      body: JSON.stringify(newServer.value),
+    });
+    isCreateServerOpen.value = false;
+    newServer.value = { name: "", pack: "", version: "1.20.1", address: "" };
+    await loadDashboard();
+  } catch (error) {
+    apiError.value = "Создание настоящих серверов ещё требует provisioner на backend";
+    console.error(error);
+  }
+}
+
+async function deleteServer(serverId: string) {
+  apiError.value = "";
+
+  try {
+    await requestJson(`/api/servers/${serverId}`, { method: "DELETE" });
+    await loadDashboard();
+  } catch (error) {
+    apiError.value = "Удаление настоящих systemd-серверов пока заблокировано";
+    console.error(error);
+  }
+}
+
+async function createBackup(serverId = selectedServer.value?.id ?? servers.value[0]?.id ?? "ksy-vanilla") {
   try {
     await requestJson(`/api/backups?server_id=${encodeURIComponent(serverId)}`, { method: "POST" });
     await loadDashboard();
@@ -244,6 +372,15 @@ async function checkMods() {
     console.error(error);
   }
 }
+
+watch(
+  () => route.params.serverId,
+  async (serverId) => {
+    if (typeof serverId === "string" && serverId) {
+      await loadServerLogs(serverId);
+    }
+  },
+);
 
 onMounted(loadDashboard);
 </script>
@@ -274,7 +411,7 @@ onMounted(loadDashboard);
           class="nav-item"
           :class="{ active: activeTab === item.id }"
           type="button"
-          @click="activeTab = item.id"
+          @click="selectTab(item.id)"
         >
           <component :is="item.icon" :size="18" />
           <span>{{ item.label }}</span>
@@ -293,8 +430,8 @@ onMounted(loadDashboard);
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">{{ activeTabCopy.eyebrow }}</p>
-          <h1>{{ activeTabCopy.title }}</h1>
+          <p class="eyebrow">{{ pageEyebrow }}</p>
+          <h1>{{ pageTitle }}</h1>
         </div>
 
         <div class="topbar-actions">
@@ -305,7 +442,7 @@ onMounted(loadDashboard);
           <button class="icon-button" type="button" title="История задач">
             <History :size="20" />
           </button>
-          <button class="primary-button" type="button">
+          <button class="primary-button" type="button" @click="isCreateServerOpen = true">
             <Plus :size="18" />
             <span>Новый сервер</span>
           </button>
@@ -365,11 +502,30 @@ onMounted(loadDashboard);
 
       <section class="content-grid" :class="{ 'single-column': activeTab !== 'overview' }">
         <div class="main-column">
-          <section v-if="activeTab === 'overview' || activeTab === 'servers'" class="panel">
+          <section v-if="activeTab === 'servers' && serverView === 'list'" class="server-summary-grid" aria-label="Сводка серверов">
+            <article class="summary-tile">
+              <span>Стабильно работают</span>
+              <strong>{{ stableServersCount }}</strong>
+            </article>
+            <article class="summary-tile amber">
+              <span>Перезагружаются</span>
+              <strong>{{ deployingServersCount }}</strong>
+            </article>
+            <article class="summary-tile graphite">
+              <span>Выключены</span>
+              <strong>{{ offlineServersCount }}</strong>
+            </article>
+            <article class="summary-tile violet">
+              <span>Всего серверов</span>
+              <strong>{{ servers.length }}</strong>
+            </article>
+          </section>
+
+          <section v-if="activeTab === 'overview' || (activeTab === 'servers' && serverView === 'list')" class="panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">instances</p>
-                <h2>Серверы</h2>
+                <h2>{{ activeTab === 'servers' ? 'Полный список серверов' : 'Серверы' }}</h2>
               </div>
               <button class="ghost-button compact" type="button" @click="loadDashboard">
                 <RefreshCw :size="16" />
@@ -378,14 +534,19 @@ onMounted(loadDashboard);
             </div>
 
             <div class="server-list">
-              <article v-for="server in servers" :key="server.name" class="server-row">
-                <div class="server-main">
+              <article
+                v-for="server in servers"
+                :key="server.id"
+                class="server-row"
+                :class="{ selected: selectedServerId === server.id }"
+              >
+                <button class="server-main server-select" type="button" @click="openServerPanel(server.id)">
                   <span class="server-state" :class="server.state"></span>
                   <div>
                     <h3>{{ server.name }}</h3>
                     <p>{{ server.pack }} · {{ server.version }} · {{ server.address }}</p>
                   </div>
-                </div>
+                </button>
 
                 <div class="server-metrics">
                   <span>{{ server.players }}</span>
@@ -418,8 +579,17 @@ onMounted(loadDashboard);
                   >
                     <CircleStop :size="17" />
                   </button>
-                  <button class="icon-button" type="button" title="Открыть">
+                  <button class="icon-button" type="button" title="Открыть" @click="openServerPanel(server.id)">
                     <ChevronRight :size="17" />
+                  </button>
+                  <button
+                    v-if="activeTab === 'servers'"
+                    class="icon-button danger"
+                    type="button"
+                    title="Удалить"
+                    @click="deleteServer(server.id)"
+                  >
+                    <Trash2 :size="17" />
                   </button>
                 </div>
 
@@ -432,7 +602,7 @@ onMounted(loadDashboard);
             </div>
           </section>
 
-          <section v-if="activeTab === 'overview' || activeTab === 'servers'" class="panel terminal-panel">
+          <section v-if="activeTab === 'overview'" class="panel terminal-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">live output</p>
@@ -445,6 +615,140 @@ onMounted(loadDashboard);
             </div>
             <pre><code v-for="line in logs" :key="line">{{ line }}
 </code></pre>
+          </section>
+
+          <section v-if="activeTab === 'servers' && serverView === 'detail' && selectedServer" class="server-control">
+            <div class="server-control-header">
+              <button class="ghost-button compact" type="button" @click="backToServerList">
+                <ArrowLeft :size="16" />
+                <span>К списку</span>
+              </button>
+              <div class="server-control-actions">
+                <button class="ghost-button compact" type="button" @click="loadDashboard">
+                  <RefreshCw :size="16" />
+                  <span>Обновить</span>
+                </button>
+                <button class="primary-button" type="button" @click="createBackup(selectedServer.id)">
+                  <FileArchive :size="18" />
+                  <span>Бэкап</span>
+                </button>
+              </div>
+            </div>
+
+            <section class="server-hero panel">
+              <div class="server-hero-main">
+                <span class="server-state" :class="selectedServer.state"></span>
+                <div>
+                  <p class="eyebrow">{{ selectedServer.pack }}</p>
+                  <h2>{{ selectedServer.name }}</h2>
+                  <p>{{ selectedServer.version }} · {{ selectedServer.address }}</p>
+                </div>
+              </div>
+              <div class="server-actions">
+                <button class="icon-button" type="button" title="Запустить" @click="runServerAction(selectedServer.id, 'start')">
+                  <Play :size="17" />
+                </button>
+                <button class="icon-button" type="button" title="Перезагрузить" @click="runServerAction(selectedServer.id, 'restart')">
+                  <ListRestart :size="17" />
+                </button>
+                <button class="icon-button danger" type="button" title="Остановить" @click="runServerAction(selectedServer.id, 'stop')">
+                  <CircleStop :size="17" />
+                </button>
+              </div>
+            </section>
+
+            <section class="server-detail-grid">
+              <article class="metric-tile">
+                <Cpu :size="20" />
+                <span>Процессор</span>
+                <strong>{{ selectedServer.cpu }}%</strong>
+              </article>
+              <article class="metric-tile mint">
+                <MemoryStick :size="20" />
+                <span>Оперативка</span>
+                <strong>{{ selectedServer.ram }}</strong>
+              </article>
+              <article class="metric-tile amber">
+                <HardDrive :size="20" />
+                <span>Память</span>
+                <strong>{{ selectedServer.disk }}</strong>
+              </article>
+              <article class="metric-tile graphite">
+                <Users :size="20" />
+                <span>Онлайн</span>
+                <strong>{{ selectedServer.players }}</strong>
+              </article>
+            </section>
+
+            <section class="server-management-grid">
+              <section class="panel terminal-panel">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">server output</p>
+                    <h2>Логи</h2>
+                  </div>
+                  <button class="ghost-button compact" type="button" @click="loadServerLogs()">
+                    <RefreshCw :size="16" />
+                    <span>{{ isLogLoading ? 'Загрузка' : 'Обновить' }}</span>
+                  </button>
+                </div>
+                <pre><code v-for="line in selectedServerLogs" :key="line">{{ line }}
+</code><code v-if="!selectedServerLogs.length">Логов для выбранного сервера пока нет.
+</code></pre>
+              </section>
+
+              <div class="server-side-stack">
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <p class="eyebrow">mods</p>
+                      <h2>Моды</h2>
+                    </div>
+                    <button class="icon-button" type="button" title="Проверить обновления" @click="checkMods">
+                      <PackagePlus :size="18" />
+                    </button>
+                  </div>
+                  <div class="stack-list">
+                    <article v-for="mod in mods" :key="mod.id" class="stack-item">
+                      <Box :size="18" />
+                      <div>
+                        <strong>{{ mod.name }}</strong>
+                        <span>{{ mod.status }}</span>
+                      </div>
+                      <i :class="mod.tag"></i>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <p class="eyebrow">snapshots</p>
+                      <h2>Бэкапы</h2>
+                    </div>
+                    <button class="icon-button" type="button" title="Создать бэкап" @click="createBackup(selectedServer.id)">
+                      <FileArchive :size="18" />
+                    </button>
+                  </div>
+                  <div class="stack-list">
+                    <article v-for="backup in selectedServerBackups" :key="backup.id" class="stack-item">
+                      <Archive :size="18" />
+                      <div>
+                        <strong>{{ backup.name }}</strong>
+                        <span>{{ backup.size }} · {{ backup.created }}</span>
+                      </div>
+                    </article>
+                    <article v-if="!selectedServerBackups.length" class="stack-item muted">
+                      <Archive :size="18" />
+                      <div>
+                        <strong>Бэкапов пока нет</strong>
+                        <span>Можно создать первый вручную</span>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+              </div>
+            </section>
           </section>
 
           <section v-if="activeTab === 'modpacks'" class="panel">
@@ -475,7 +779,7 @@ onMounted(loadDashboard);
                 <p class="eyebrow">snapshots</p>
                 <h2>Резервные копии</h2>
               </div>
-              <button class="icon-button" type="button" title="Создать бэкап" @click="createBackup">
+              <button class="icon-button" type="button" title="Создать бэкап" @click="() => createBackup()">
                 <FileArchive :size="18" />
               </button>
             </div>
@@ -547,7 +851,7 @@ onMounted(loadDashboard);
                 <p class="eyebrow">backups</p>
                 <h2>Резервные копии</h2>
               </div>
-              <button class="icon-button" type="button" title="Создать бэкап" @click="createBackup">
+              <button class="icon-button" type="button" title="Создать бэкап" @click="() => createBackup()">
                 <FileArchive :size="18" />
               </button>
             </div>
@@ -611,5 +915,51 @@ onMounted(loadDashboard);
         </aside>
       </section>
     </section>
+
+    <div v-if="isCreateServerOpen" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="create-server-title">
+      <section class="modal-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">new instance</p>
+            <h2 id="create-server-title">Новый сервер</h2>
+          </div>
+          <button class="icon-button" type="button" title="Закрыть" @click="isCreateServerOpen = false">
+            <X :size="18" />
+          </button>
+        </div>
+
+        <form class="server-form" @submit.prevent="createServer">
+          <label>
+            <span>Название</span>
+            <input v-model="newServer.name" required type="text" placeholder="Например, Ksy Survival" />
+          </label>
+          <label>
+            <span>Сборка</span>
+            <input v-model="newServer.pack" required type="text" placeholder="CurseForge pack или manifest" />
+          </label>
+          <label>
+            <span>Версия Minecraft</span>
+            <input v-model="newServer.version" required type="text" placeholder="1.20.1" />
+          </label>
+          <label>
+            <span>Адрес</span>
+            <input v-model="newServer.address" type="text" placeholder="server.ksylian.ru:25566" />
+          </label>
+
+          <p class="form-note">
+            Сейчас форма готовит контракт интерфейса. Для реального создания ещё нужен provisioner,
+            который будет скачивать сборку, выделять порт, создавать папку и systemd-службу.
+          </p>
+
+          <div class="form-actions">
+            <button class="ghost-button" type="button" @click="isCreateServerOpen = false">Отмена</button>
+            <button class="primary-button" type="submit">
+              <Plus :size="18" />
+              <span>Создать</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   </main>
 </template>
