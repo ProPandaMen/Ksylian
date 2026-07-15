@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ksylian-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to ilya-server
+    runs-on: [self-hosted, linux, x64, ksylian]
+
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+
+      - name: Show release
+        run: |
+          echo "Deploying ${GITHUB_REF_NAME}"
+          git rev-parse --short HEAD
+
+      - name: Prepare environment
+        run: |
+          test -f deploy/.env || cp deploy/.env.example deploy/.env
+
+      - name: Build and restart services
+        run: |
+          docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+
+      - name: Show running services
+        run: |
+          docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
+
+      - name: Cleanup old Docker layers
+        run: |
+          docker image prune -f

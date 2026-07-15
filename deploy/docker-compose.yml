@@ -1,0 +1,10 @@
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: ksylian-frontend
+    restart: unless-stopped
+    ports:
+      - "${KSYLIAN_FRONTEND_PORT:-8088}:80"
+
