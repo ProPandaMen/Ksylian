@@ -245,6 +245,15 @@ button:disabled {
     inset 0 -12px 28px rgba(255, 92, 176, 0.13);
 }
 
+.nav-item.disabled,
+.nav-item.disabled:hover {
+  cursor: not-allowed;
+  color: rgba(87, 64, 82, 0.46);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .mascot-card {
   gap: 12px;
   margin-top: auto;
@@ -1200,6 +1209,23 @@ h3 {
 
 .empty-details strong {
   color: #332634;
+}
+
+.inactive-integration {
+  min-height: 420px;
+}
+
+.integration-waiting {
+  min-height: 300px;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 16px;
+  background: rgba(255, 247, 251, 0.52);
+}
+
+.integration-waiting span {
+  max-width: 560px;
+  line-height: 1.55;
 }
 
 .file-row {

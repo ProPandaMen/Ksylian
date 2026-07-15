@@ -11,7 +11,6 @@ import {
   Clock3,
   Cpu,
   Download,
-  ExternalLink,
   FileArchive,
   FileText,
   Folder,
@@ -26,7 +25,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Search,
   Server,
   Settings,
   ShieldCheck,
@@ -113,10 +111,10 @@ interface CurseForgeSearchPayload {
   has_api_key: boolean;
 }
 
-const navItems: Array<{ id: TabId; label: string; icon: Component }> = [
+const navItems: Array<{ id: TabId; label: string; icon: Component; disabled?: boolean }> = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "servers", label: "Серверы", icon: Server },
-  { id: "modpacks", label: "CurseForge", icon: PackagePlus },
+  { id: "modpacks", label: "CurseForge", icon: PackagePlus, disabled: true },
   { id: "files", label: "Файлы", icon: Folder },
   { id: "backups", label: "Бэкапы", icon: Archive },
   { id: "settings", label: "Настройки", icon: Settings },
@@ -246,6 +244,7 @@ const curseForgeError = ref("");
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(fallbackLogs);
 const isCreateServerOpen = ref(false);
+const isCurseForgeIntegrationEnabled = false;
 const newServer = ref({
   name: "",
   pack: "",
@@ -378,6 +377,9 @@ function backToServerList() {
 }
 
 function selectTab(tabId: TabId) {
+  if (navItems.find((item) => item.id === tabId)?.disabled) {
+    return;
+  }
   router.push(routePaths[tabId]);
 }
 
@@ -534,7 +536,7 @@ watch(
 watch(
   () => activeTab.value,
   (tabId) => {
-    if (tabId === "modpacks" && !curseForgeItems.value.length && !isCurseForgeLoading.value) {
+    if (tabId === "modpacks" && isCurseForgeIntegrationEnabled && !curseForgeItems.value.length && !isCurseForgeLoading.value) {
       searchCurseForge();
     }
   },
@@ -543,7 +545,7 @@ watch(
 onMounted(() => {
   loadDashboard();
   loadSettings().then(() => {
-    if (activeTab.value === "modpacks") {
+    if (activeTab.value === "modpacks" && isCurseForgeIntegrationEnabled) {
       searchCurseForge();
     }
   });
@@ -574,8 +576,10 @@ onMounted(() => {
           v-for="item in navItems"
           :key="item.label"
           class="nav-item"
-          :class="{ active: activeTab === item.id }"
+          :class="{ active: activeTab === item.id, disabled: item.disabled }"
           type="button"
+          :disabled="item.disabled"
+          :title="item.disabled ? 'Ждем доступ к CurseForge API' : item.label"
           @click="selectTab(item.id)"
         >
           <component :is="item.icon" :size="18" />
@@ -909,176 +913,22 @@ onMounted(() => {
             </section>
           </section>
 
-          <section v-if="activeTab === 'modpacks'" class="panel curseforge-panel">
+          <section v-if="activeTab === 'modpacks'" class="panel curseforge-panel inactive-integration">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">curseforge</p>
-                <h2>Интеграция CurseForge</h2>
+                <p class="eyebrow">integration paused</p>
+                <h2>CurseForge пока не активен</h2>
               </div>
-              <button class="icon-button" type="button" title="Обновить каталог" @click="searchCurseForge">
-                <RefreshCw :size="18" />
-              </button>
+              <span class="settings-status">Ждем API key</span>
             </div>
 
-            <form class="catalog-toolbar" @submit.prevent="searchCurseForge">
-              <div class="segmented-control" aria-label="Тип проекта">
-                <button
-                  type="button"
-                  :class="{ active: curseForgeKind === 'modpacks' }"
-                  @click="setCurseForgeKind('modpacks')"
-                >
-                  Сборки
-                </button>
-                <button
-                  type="button"
-                  :class="{ active: curseForgeKind === 'mods' }"
-                  @click="setCurseForgeKind('mods')"
-                >
-                  Моды
-                </button>
-              </div>
-
-              <label class="catalog-search">
-                <Search :size="18" />
-                <input v-model="curseForgeQuery" type="search" placeholder="Поиск по CurseForge" />
-              </label>
-
-              <label>
-                <span>Версия</span>
-                <select v-model="curseForgeVersion">
-                  <option value="">Любая</option>
-                  <option value="1.21.1">1.21.1</option>
-                  <option value="1.20.1">1.20.1</option>
-                  <option value="1.19.2">1.19.2</option>
-                  <option value="1.18.2">1.18.2</option>
-                </select>
-              </label>
-
-              <label>
-                <span>Лоадер</span>
-                <select v-model="curseForgeLoader">
-                  <option value="any">Любой</option>
-                  <option value="fabric">Fabric</option>
-                  <option value="forge">Forge</option>
-                  <option value="neoforge">NeoForge</option>
-                  <option value="quilt">Quilt</option>
-                </select>
-              </label>
-
-              <label>
-                <span>Сортировка</span>
-                <select v-model="curseForgeSort">
-                  <option value="popularity">Популярные</option>
-                  <option value="downloads">Скачивания</option>
-                  <option value="updated">Недавно обновлены</option>
-                  <option value="name">По названию</option>
-                </select>
-              </label>
-
-              <button class="primary-button" type="submit" :disabled="isCurseForgeLoading">
-                <Search :size="18" />
-                <span>{{ isCurseForgeLoading ? 'Ищу' : 'Найти' }}</span>
-              </button>
-            </form>
-
-            <div v-if="curseForgeError" class="catalog-notice">
-              {{ curseForgeError }}
-            </div>
-
-            <div class="catalog-layout">
-              <section class="catalog-results" :aria-label="`Каталог ${curseForgeKindLabel}`">
-                <button
-                  v-for="project in curseForgeItems"
-                  :key="project.id"
-                  class="project-card"
-                  :class="{ selected: selectedCurseForgeProject?.id === project.id }"
-                  type="button"
-                  @click="selectedCurseForgeProject = project"
-                >
-                  <img v-if="project.icon_url" :src="project.icon_url" alt="" />
-                  <span v-else class="project-icon-fallback">
-                    <PackagePlus :size="22" />
-                  </span>
-                  <div>
-                    <strong>{{ project.name }}</strong>
-                    <p>{{ project.summary || 'Описание пока не заполнено автором проекта' }}</p>
-                    <span>
-                      {{ formatNumber(project.downloads) }} скачиваний · {{ formatDate(project.date_modified) }}
-                    </span>
-                  </div>
-                </button>
-
-                <article v-if="isCurseForgeLoading" class="project-card muted">
-                  <span class="project-icon-fallback">
-                    <RefreshCw :size="22" />
-                  </span>
-                  <div>
-                    <strong>Загружаю каталог</strong>
-                    <p>Подбираю проекты по текущим фильтрам.</p>
-                  </div>
-                </article>
-              </section>
-
-              <aside class="project-details">
-                <template v-if="selectedCurseForgeProject">
-                  <div class="project-details-head">
-                    <img v-if="selectedCurseForgeProject.icon_url" :src="selectedCurseForgeProject.icon_url" alt="" />
-                    <span v-else class="project-icon-fallback">
-                      <PackagePlus :size="24" />
-                    </span>
-                    <div>
-                      <p class="eyebrow">{{ selectedCurseForgeProject.type === 'modpacks' ? 'modpack' : 'mod' }}</p>
-                      <h3>{{ selectedCurseForgeProject.name }}</h3>
-                    </div>
-                  </div>
-
-                  <p class="project-summary">{{ selectedCurseForgeProject.summary }}</p>
-
-                  <dl class="project-facts">
-                    <div>
-                      <dt>Скачивания</dt>
-                      <dd>{{ formatNumber(selectedCurseForgeProject.downloads) }}</dd>
-                    </div>
-                    <div>
-                      <dt>Версии</dt>
-                      <dd>{{ selectedProjectVersions }}</dd>
-                    </div>
-                    <div>
-                      <dt>Лоадеры</dt>
-                      <dd>{{ selectedProjectLoaders }}</dd>
-                    </div>
-                    <div>
-                      <dt>Обновлено</dt>
-                      <dd>{{ formatDate(selectedCurseForgeProject.date_modified) }}</dd>
-                    </div>
-                  </dl>
-
-                  <div class="project-actions">
-                    <a
-                      v-if="selectedCurseForgeProject.website_url"
-                      class="ghost-button"
-                      :href="selectedCurseForgeProject.website_url"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <ExternalLink :size="17" />
-                      <span>Открыть CurseForge</span>
-                    </a>
-                    <button class="primary-button" type="button" disabled>
-                      <PackagePlus :size="18" />
-                      <span>Подключить позже</span>
-                    </button>
-                  </div>
-                </template>
-
-                <template v-else>
-                  <div class="empty-details">
-                    <PackagePlus :size="28" />
-                    <strong>Выбери проект</strong>
-                    <span>Здесь появятся версии, лоадеры, скачивания и ссылка на CurseForge.</span>
-                  </div>
-                </template>
-              </aside>
+            <div class="empty-details integration-waiting">
+              <PackagePlus :size="32" />
+              <strong>Вернемся после одобрения заявки</strong>
+              <span>
+                Каталог модов и сборок выключен, чтобы не показывать ошибку доступа.
+                После получения 3rd Party API key снова активируем поиск, фильтры и установку.
+              </span>
             </div>
           </section>
 
