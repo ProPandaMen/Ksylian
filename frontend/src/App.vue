@@ -628,10 +628,20 @@ onMounted(() => {
 
                 <span class="state-label" :class="server.state">{{ stateLabels[server.state] }}</span>
               </article>
-              <article v-if="!servers.length" class="empty-details compact-empty">
-                <Server :size="28" />
-                <strong>Серверов пока нет</strong>
-                <span>Создай первый сервер или проверь подключение agent.</span>
+              <article v-if="!servers.length" class="server-empty-state">
+                <div class="empty-icon">
+                  <Server :size="28" />
+                </div>
+                <div>
+                  <strong>Серверов пока нет</strong>
+                  <span>
+                    Здесь появятся Minecraft-серверы после создания или подключения через agent.
+                  </span>
+                </div>
+                <button class="primary-button" type="button" @click="openNewServerPage">
+                  <Plus :size="18" />
+                  <span>Создать сервер</span>
+                </button>
               </article>
             </div>
           </section>
