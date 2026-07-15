@@ -103,6 +103,56 @@ class ActionResult(BaseModel):
     server: GameServer
 
 
+class MetricUsage(BaseModel):
+    used: int
+    total: int
+    percent: int
+    used_label: str
+    total_label: str
+
+
+class DiskUsage(BaseModel):
+    mount: str
+    filesystem: str
+    used: int
+    total: int
+    percent: int
+    used_label: str
+    total_label: str
+
+
+class ProcessUsage(BaseModel):
+    pid: int
+    name: str
+    cpu: float
+    memory: float
+    command: str
+
+
+class ServiceUsage(BaseModel):
+    id: str
+    name: str
+    state: ServerState
+    cpu: int
+    ram: str
+
+
+class HostMonitoring(BaseModel):
+    hostname: str
+    ip_addresses: list[str]
+    uptime: str
+    load_average: list[float]
+    cpu_percent: int
+    cpu_cores: int
+    memory: MetricUsage
+    swap: MetricUsage
+    disks: list[DiskUsage]
+    top_processes: list[ProcessUsage]
+    services: list[ServiceUsage]
+    temperature: str
+    collected_at: str
+
+
 class DashboardPayload(BaseModel):
     servers: list[GameServer]
     logs: list[str]
@@ -244,6 +294,16 @@ def load_agent_backups() -> list[BackupItem] | None:
         return [BackupItem(**item) for item in response.json()]
     except Exception as error:
         append_log(f"agent backups unavailable: {error}")
+        return None
+
+
+def load_agent_monitoring() -> HostMonitoring | None:
+    try:
+        response = agent_get("/monitoring")
+        response.raise_for_status()
+        return HostMonitoring(**response.json())
+    except Exception as error:
+        append_log(f"agent monitoring unavailable: {error}")
         return None
 
 
@@ -423,6 +483,29 @@ def list_servers() -> list[GameServer]:
     if agent_servers is not None:
         return agent_servers
     return list(servers.values())
+
+
+@app.get("/api/monitoring", response_model=HostMonitoring)
+def host_monitoring() -> HostMonitoring:
+    agent_monitoring = load_agent_monitoring()
+    if agent_monitoring is not None:
+        return agent_monitoring
+
+    return HostMonitoring(
+        hostname="demo-host",
+        ip_addresses=["192.168.31.254"],
+        uptime="0m",
+        load_average=[0, 0, 0],
+        cpu_percent=0,
+        cpu_cores=1,
+        memory=MetricUsage(used=0, total=1, percent=0, used_label="0 MB", total_label="0 MB"),
+        swap=MetricUsage(used=0, total=0, percent=0, used_label="0 MB", total_label="0 MB"),
+        disks=[],
+        top_processes=[],
+        services=[],
+        temperature="n/a",
+        collected_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
 
 @app.post("/api/servers", response_model=GameServer)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import tarfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -28,6 +30,56 @@ class AgentActionResult(BaseModel):
     ok: bool
     message: str
     server: AgentServer
+
+
+class MetricUsage(BaseModel):
+    used: int
+    total: int
+    percent: int
+    used_label: str
+    total_label: str
+
+
+class DiskUsage(BaseModel):
+    mount: str
+    filesystem: str
+    used: int
+    total: int
+    percent: int
+    used_label: str
+    total_label: str
+
+
+class ProcessUsage(BaseModel):
+    pid: int
+    name: str
+    cpu: float
+    memory: float
+    command: str
+
+
+class ServiceUsage(BaseModel):
+    id: str
+    name: str
+    state: Literal["online", "deploying", "offline"]
+    cpu: int
+    ram: str
+
+
+class HostMonitoring(BaseModel):
+    hostname: str
+    ip_addresses: list[str]
+    uptime: str
+    load_average: list[float]
+    cpu_percent: int
+    cpu_cores: int
+    memory: MetricUsage
+    swap: MetricUsage
+    disks: list[DiskUsage]
+    top_processes: list[ProcessUsage]
+    services: list[ServiceUsage]
+    temperature: str
+    collected_at: str
 
 
 SERVERS = {
@@ -79,6 +131,142 @@ def format_bytes(value: int) -> str:
     if value >= 1024**3:
         return f"{value / 1024**3:.1f} GB"
     return f"{round(value / 1024**2)} MB"
+
+
+def format_duration(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    days, minutes = divmod(minutes, 60 * 24)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def read_cpu_totals() -> tuple[int, int]:
+    line = Path("/proc/stat").read_text().splitlines()[0]
+    values = [int(value) for value in line.split()[1:]]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    total = sum(values)
+    return idle, total
+
+
+def cpu_percent() -> int:
+    idle_a, total_a = read_cpu_totals()
+    time.sleep(0.2)
+    idle_b, total_b = read_cpu_totals()
+    total_delta = total_b - total_a
+    idle_delta = idle_b - idle_a
+    if total_delta <= 0:
+        return 0
+    return round((1 - idle_delta / total_delta) * 100)
+
+
+def meminfo() -> dict[str, int]:
+    result: dict[str, int] = {}
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        key, raw_value = line.split(":", 1)
+        value = raw_value.strip().split()[0]
+        result[key] = int(value) * 1024
+    return result
+
+
+def metric_usage(used: int, total: int) -> MetricUsage:
+    percent = round((used / total) * 100) if total else 0
+    return MetricUsage(
+        used=used,
+        total=total,
+        percent=percent,
+        used_label=format_bytes(used),
+        total_label=format_bytes(total),
+    )
+
+
+def memory_usage() -> tuple[MetricUsage, MetricUsage]:
+    info = meminfo()
+    memory_total = info.get("MemTotal", 0)
+    memory_available = info.get("MemAvailable", 0)
+    swap_total = info.get("SwapTotal", 0)
+    swap_free = info.get("SwapFree", 0)
+    return (
+        metric_usage(memory_total - memory_available, memory_total),
+        metric_usage(swap_total - swap_free, swap_total),
+    )
+
+
+def disk_usage() -> list[DiskUsage]:
+    mounts = ["/", "/home", "/mnt/hdd"]
+    existing_mounts = [mount for mount in mounts if Path(mount).exists()]
+    result = run(["df", "-B1", "-P", *existing_mounts])
+    disks: list[DiskUsage] = []
+    seen: set[str] = set()
+
+    for line in result.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        filesystem, total, used, _available, percent, mount = parts[:6]
+        if mount in seen:
+            continue
+        seen.add(mount)
+        total_bytes = int(total)
+        used_bytes = int(used)
+        disks.append(
+            DiskUsage(
+                mount=mount,
+                filesystem=filesystem,
+                used=used_bytes,
+                total=total_bytes,
+                percent=int(percent.rstrip("%")),
+                used_label=format_bytes(used_bytes),
+                total_label=format_bytes(total_bytes),
+            )
+        )
+
+    return disks
+
+
+def top_processes() -> list[ProcessUsage]:
+    result = run(["ps", "-eo", "pid,comm,%cpu,%mem,args", "--sort=-%cpu"], timeout=20)
+    processes: list[ProcessUsage] = []
+    for line in result.stdout.splitlines()[1:8]:
+        parts = line.split(maxsplit=4)
+        if len(parts) < 5:
+            continue
+        pid, name, cpu, memory, command = parts
+        processes.append(
+            ProcessUsage(
+                pid=int(pid),
+                name=name,
+                cpu=round(float(cpu), 1),
+                memory=round(float(memory), 1),
+                command=command[:120],
+            )
+        )
+    return processes
+
+
+def host_ips() -> list[str]:
+    result = run(["hostname", "-I"])
+    ips = [item for item in result.stdout.split() if item]
+    if ips:
+        return ips
+    try:
+        return [socket.gethostbyname(socket.gethostname())]
+    except OSError:
+        return []
+
+
+def temperature_label() -> str:
+    for path in Path("/sys/class/thermal").glob("thermal_zone*/temp"):
+        try:
+            value = int(path.read_text().strip())
+        except ValueError:
+            continue
+        if value > 0:
+            return f"{value / 1000:.0f}°C"
+    return "n/a"
 
 
 def service_cgroup_path(service: str) -> Path | None:
@@ -154,6 +342,58 @@ def health() -> dict[str, str]:
 def servers(x_ksylian_token: str | None = Header(default=None)) -> list[AgentServer]:
     require_token(x_ksylian_token)
     return [to_agent_server(server_id) for server_id in SERVERS]
+
+
+@app.get("/monitoring", response_model=HostMonitoring)
+def monitoring(x_ksylian_token: str | None = Header(default=None)) -> HostMonitoring:
+    require_token(x_ksylian_token)
+    memory, swap = memory_usage()
+    load_average = [round(value, 2) for value in os.getloadavg()]
+
+    try:
+        uptime_seconds = float(Path("/proc/uptime").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        uptime_seconds = 0
+
+    services = []
+    for server_id, config in SERVERS.items():
+        cpu, ram = service_usage(config["service"])
+        services.append(
+            ServiceUsage(
+                id=server_id,
+                name=config["name"],
+                state=service_state(config["service"]),
+                cpu=cpu,
+                ram=ram,
+            )
+        )
+
+    agent_cpu, agent_ram = service_usage("ksylian-agent.service")
+    services.append(
+        ServiceUsage(
+            id="ksylian-agent",
+            name="Ksylian Agent",
+            state=service_state("ksylian-agent.service"),
+            cpu=agent_cpu,
+            ram=agent_ram,
+        )
+    )
+
+    return HostMonitoring(
+        hostname=socket.gethostname(),
+        ip_addresses=host_ips(),
+        uptime=format_duration(uptime_seconds),
+        load_average=load_average,
+        cpu_percent=cpu_percent(),
+        cpu_cores=os.cpu_count() or 1,
+        memory=memory,
+        swap=swap,
+        disks=disk_usage(),
+        top_processes=top_processes(),
+        services=services,
+        temperature=temperature_label(),
+        collected_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
 
 @app.get("/servers/{server_id}/logs", response_model=list[str])

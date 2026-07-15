@@ -625,6 +625,165 @@ h3 {
   line-height: 1.1;
 }
 
+.metric-tile small {
+  overflow-wrap: anywhere;
+  color: #80687c;
+  line-height: 1.35;
+}
+
+.monitoring-page {
+  display: grid;
+  gap: 18px;
+}
+
+.monitor-hero,
+.monitor-hero-actions {
+  display: flex;
+  align-items: center;
+}
+
+.monitor-hero {
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 112px;
+}
+
+.monitor-hero h2 {
+  margin-bottom: 4px;
+  font-size: 1.5rem;
+}
+
+.monitor-hero p {
+  color: #80687c;
+}
+
+.monitor-hero-actions {
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.monitor-status {
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.monitor-status.ok {
+  color: #176a50;
+  background: rgba(222, 250, 236, 0.82);
+}
+
+.monitor-status.warning {
+  color: #9a5c10;
+  background: rgba(255, 247, 232, 0.86);
+}
+
+.monitor-status.danger {
+  color: #bc315f;
+  background: rgba(255, 232, 240, 0.86);
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.monitor-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.disk-list {
+  display: grid;
+  gap: 12px;
+}
+
+.disk-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 76px;
+  padding: 12px 12px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 14px;
+  background: rgba(255, 247, 251, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.disk-row strong,
+.disk-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-row span {
+  margin-top: 4px;
+  color: #80687c;
+}
+
+.disk-row b {
+  color: #a20f6d;
+}
+
+.progress-line.static {
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+}
+
+.service-item .server-state {
+  margin-left: 4px;
+}
+
+.process-table {
+  display: grid;
+  gap: 8px;
+}
+
+.process-row {
+  display: grid;
+  grid-template-columns: 74px minmax(120px, 1fr) 72px 72px;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 12px;
+  background: rgba(255, 247, 251, 0.5);
+}
+
+.process-row.head {
+  min-height: 34px;
+  color: #80687c;
+  background: rgba(255, 255, 255, 0.42);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.process-row strong,
+.process-row span,
+.process-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.process-row small {
+  grid-column: 2 / -1;
+  color: #8f7d8c;
+}
+
 .server-management-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
@@ -1513,6 +1672,11 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .monitor-grid,
+  .monitor-columns {
+    grid-template-columns: 1fr;
+  }
+
   .settings-layout {
     grid-template-columns: 1fr;
   }
@@ -1636,6 +1800,16 @@ h3 {
     flex-wrap: wrap;
   }
 
+  .monitor-hero,
+  .monitor-hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .monitor-hero-actions {
+    justify-content: flex-start;
+  }
+
   .settings-section-head,
   .settings-current,
   .settings-summary dl div {
@@ -1678,6 +1852,22 @@ h3 {
 
   .server-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .process-row {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .process-row.head {
+    display: none;
+  }
+
+  .process-row small {
+    grid-column: 1 / -1;
   }
 
   .primary-button,
