@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, type Component } from "vue";
 import {
   Archive,
   Box,
@@ -33,6 +33,7 @@ import catPaw from "./assets/cat-paw.svg";
 import catMascot from "./assets/ksylian-cat.png";
 
 type ServerState = "online" | "deploying" | "offline";
+type TabId = "overview" | "servers" | "modpacks" | "files" | "backups" | "settings";
 
 interface GameServer {
   id: string;
@@ -76,14 +77,23 @@ interface DashboardPayload {
   files: FileItem[];
 }
 
-const navItems = [
-  { label: "Обзор", icon: LayoutDashboard, active: true },
-  { label: "Серверы", icon: Server, active: false },
-  { label: "Модпаки", icon: PackagePlus, active: false },
-  { label: "Файлы", icon: Folder, active: false },
-  { label: "Бэкапы", icon: Archive, active: false },
-  { label: "Настройки", icon: Settings, active: false },
+const navItems: Array<{ id: TabId; label: string; icon: Component }> = [
+  { id: "overview", label: "Обзор", icon: LayoutDashboard },
+  { id: "servers", label: "Серверы", icon: Server },
+  { id: "modpacks", label: "Модпаки", icon: PackagePlus },
+  { id: "files", label: "Файлы", icon: Folder },
+  { id: "backups", label: "Бэкапы", icon: Archive },
+  { id: "settings", label: "Настройки", icon: Settings },
 ];
+
+const tabCopy: Record<TabId, { title: string; eyebrow: string }> = {
+  overview: { title: "Панель управления серверами", eyebrow: "Minecraft orchestration" },
+  servers: { title: "Серверы", eyebrow: "instances" },
+  modpacks: { title: "Модпаки и обновления", eyebrow: "curseforge" },
+  files: { title: "Файловый менеджер", eyebrow: "server files" },
+  backups: { title: "Резервные копии", eyebrow: "snapshots" },
+  settings: { title: "Настройки", eyebrow: "configuration" },
+};
 
 const fallbackServers: GameServer[] = [
   {
@@ -165,10 +175,12 @@ const mods = ref<ModItem[]>(fallbackMods);
 const files = ref<FileItem[]>(fallbackFiles);
 const isLoading = ref(false);
 const apiError = ref("");
+const activeTab = ref<TabId>("overview");
 
 const onlineServersCount = computed(
   () => servers.value.filter((server) => server.state !== "offline").length,
 );
+const activeTabCopy = computed(() => tabCopy[activeTab.value]);
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -260,8 +272,9 @@ onMounted(loadDashboard);
           v-for="item in navItems"
           :key="item.label"
           class="nav-item"
-          :class="{ active: item.active }"
+          :class="{ active: activeTab === item.id }"
           type="button"
+          @click="activeTab = item.id"
         >
           <component :is="item.icon" :size="18" />
           <span>{{ item.label }}</span>
@@ -280,8 +293,8 @@ onMounted(loadDashboard);
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Minecraft orchestration</p>
-          <h1>Панель управления серверами</h1>
+          <p class="eyebrow">{{ activeTabCopy.eyebrow }}</p>
+          <h1>{{ activeTabCopy.title }}</h1>
         </div>
 
         <div class="topbar-actions">
@@ -299,7 +312,7 @@ onMounted(loadDashboard);
         </div>
       </header>
 
-      <section class="hero-panel">
+      <section v-if="activeTab === 'overview'" class="hero-panel">
         <div class="hero-copy">
           <div class="status-pill">
             <CheckCircle2 :size="16" />
@@ -327,7 +340,7 @@ onMounted(loadDashboard);
         </div>
       </section>
 
-      <section class="stats-grid" aria-label="Сводка">
+      <section v-if="activeTab === 'overview'" class="stats-grid" aria-label="Сводка">
         <article class="stat-tile">
           <Server :size="20" />
           <span>Серверы</span>
@@ -350,9 +363,9 @@ onMounted(loadDashboard);
         </article>
       </section>
 
-      <section class="content-grid">
+      <section class="content-grid" :class="{ 'single-column': activeTab !== 'overview' }">
         <div class="main-column">
-          <section class="panel">
+          <section v-if="activeTab === 'overview' || activeTab === 'servers'" class="panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">instances</p>
@@ -419,7 +432,7 @@ onMounted(loadDashboard);
             </div>
           </section>
 
-          <section class="panel terminal-panel">
+          <section v-if="activeTab === 'overview' || activeTab === 'servers'" class="panel terminal-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">live output</p>
@@ -433,9 +446,101 @@ onMounted(loadDashboard);
             <pre><code v-for="line in logs" :key="line">{{ line }}
 </code></pre>
           </section>
+
+          <section v-if="activeTab === 'modpacks'" class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">curseforge</p>
+                <h2>Моды</h2>
+              </div>
+              <button class="icon-button" type="button" title="Проверить обновления" @click="checkMods">
+                <RefreshCw :size="18" />
+              </button>
+            </div>
+            <div class="stack-list expanded-list">
+              <article v-for="mod in mods" :key="mod.id" class="stack-item">
+                <Box :size="18" />
+                <div>
+                  <strong>{{ mod.name }}</strong>
+                  <span>{{ mod.status }}</span>
+                </div>
+                <i :class="mod.tag"></i>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="activeTab === 'backups'" class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">snapshots</p>
+                <h2>Резервные копии</h2>
+              </div>
+              <button class="icon-button" type="button" title="Создать бэкап" @click="createBackup">
+                <FileArchive :size="18" />
+              </button>
+            </div>
+            <div class="stack-list expanded-list">
+              <article v-for="backup in backups" :key="backup.id" class="stack-item">
+                <Archive :size="18" />
+                <div>
+                  <strong>{{ backup.name }}</strong>
+                  <span>{{ backup.size }} · {{ backup.created }}</span>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="activeTab === 'files'" class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">server files</p>
+                <h2>Файлы</h2>
+              </div>
+              <button class="icon-button" type="button" title="Домой">
+                <Home :size="18" />
+              </button>
+            </div>
+            <div class="file-list expanded-list">
+              <button v-for="file in files" :key="file.name" type="button" class="file-row">
+                <component :is="file.kind === 'folder' ? Folder : FileText" :size="18" />
+                <span>{{ file.name }}</span>
+                <small>{{ file.meta }}</small>
+              </button>
+            </div>
+          </section>
+
+          <section v-if="activeTab === 'settings'" class="panel settings-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">configuration</p>
+                <h2>Настройки проекта</h2>
+              </div>
+              <button class="icon-button" type="button" title="Обновить" @click="loadDashboard">
+                <RefreshCw :size="18" />
+              </button>
+            </div>
+            <div class="settings-grid">
+              <article class="setting-item">
+                <strong>Backend</strong>
+                <span>Подключён через /api</span>
+              </article>
+              <article class="setting-item">
+                <strong>Deploy</strong>
+                <span>GitHub tag → self-hosted runner</span>
+              </article>
+              <article class="setting-item">
+                <strong>Frontend port</strong>
+                <span>8088</span>
+              </article>
+              <article class="setting-item">
+                <strong>Backend port</strong>
+                <span>8090</span>
+              </article>
+            </div>
+          </section>
         </div>
 
-        <aside class="side-column">
+        <aside v-if="activeTab === 'overview'" class="side-column">
           <section class="panel">
             <div class="panel-heading">
               <div>
