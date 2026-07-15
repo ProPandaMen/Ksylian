@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
 import {
   Archive,
   Box,
@@ -25,8 +26,6 @@ import {
   Server,
   Settings,
   ShieldCheck,
-  Sparkles,
-  TerminalSquare,
   UploadCloud,
 } from "@lucide/vue";
 import catLogo from "./assets/cat-logo.svg";
@@ -36,6 +35,7 @@ import catMascot from "./assets/ksylian-cat.png";
 type ServerState = "online" | "deploying" | "offline";
 
 interface GameServer {
+  id: string;
   name: string;
   pack: string;
   version: string;
@@ -48,9 +48,32 @@ interface GameServer {
 }
 
 interface BackupItem {
+  id: string;
   name: string;
   size: string;
   created: string;
+  server_id: string;
+}
+
+interface ModItem {
+  id: string;
+  name: string;
+  status: string;
+  tag: "required" | "update" | "review";
+}
+
+interface FileItem {
+  name: string;
+  meta: string;
+  kind: "folder" | "file";
+}
+
+interface DashboardPayload {
+  servers: GameServer[];
+  logs: string[];
+  backups: BackupItem[];
+  mods: ModItem[];
+  files: FileItem[];
 }
 
 const navItems = [
@@ -62,8 +85,9 @@ const navItems = [
   { label: "Настройки", icon: Settings, active: false },
 ];
 
-const servers: GameServer[] = [
+const fallbackServers: GameServer[] = [
   {
+    id: "ksy-vanilla",
     name: "Ksy Vanilla+",
     pack: "Better MC Fabric",
     version: "1.20.1",
@@ -75,6 +99,7 @@ const servers: GameServer[] = [
     address: "play.ksylian.local:25565",
   },
   {
+    id: "pink-nether",
     name: "Pink Nether",
     pack: "Prominence II",
     version: "1.20.1",
@@ -86,6 +111,7 @@ const servers: GameServer[] = [
     address: "pink.ksylian.local:25566",
   },
   {
+    id: "archive-realm",
     name: "Archive Realm",
     pack: "Create: Perfect World",
     version: "1.19.2",
@@ -98,7 +124,7 @@ const servers: GameServer[] = [
   },
 ];
 
-const logs = [
+const fallbackLogs = [
   "[23:04:11] Server thread/INFO Starting Minecraft server version 1.20.1",
   "[23:04:19] Loader/INFO Loaded 143 mods from CurseForge manifest",
   "[23:04:28] Backup/INFO Snapshot world-2026-07-15 completed",
@@ -106,24 +132,24 @@ const logs = [
   "[23:05:35] Mods/INFO 4 updates available for review",
 ];
 
-const backups: BackupItem[] = [
-  { name: "world-before-update", size: "6.8 GB", created: "Сегодня, 22:40" },
-  { name: "pink-nether-auto", size: "3.1 GB", created: "Сегодня, 20:15" },
-  { name: "archive-realm-monthly", size: "12.4 GB", created: "13 июля" },
+const fallbackBackups: BackupItem[] = [
+  { id: "backup-1", name: "world-before-update", size: "6.8 GB", created: "Сегодня, 22:40", server_id: "ksy-vanilla" },
+  { id: "backup-2", name: "pink-nether-auto", size: "3.1 GB", created: "Сегодня, 20:15", server_id: "pink-nether" },
+  { id: "backup-3", name: "archive-realm-monthly", size: "12.4 GB", created: "13 июля", server_id: "archive-realm" },
 ];
 
-const mods = [
-  { name: "Fabric API", status: "Обновлён", tag: "required" },
-  { name: "Simple Voice Chat", status: "Есть апдейт", tag: "update" },
-  { name: "WorldEdit", status: "Обновлён", tag: "required" },
-  { name: "Dynmap", status: "Проверить", tag: "review" },
+const fallbackMods: ModItem[] = [
+  { id: "fabric-api", name: "Fabric API", status: "Обновлён", tag: "required" },
+  { id: "voice-chat", name: "Simple Voice Chat", status: "Есть апдейт", tag: "update" },
+  { id: "world-edit", name: "WorldEdit", status: "Обновлён", tag: "required" },
+  { id: "dynmap", name: "Dynmap", status: "Проверить", tag: "review" },
 ];
 
-const files = [
-  { name: "world", meta: "Папка мира", icon: Folder },
-  { name: "mods", meta: "143 файла", icon: Folder },
-  { name: "server.properties", meta: "1.2 KB", icon: FileText },
-  { name: "latest.log", meta: "284 KB", icon: FileText },
+const fallbackFiles: FileItem[] = [
+  { name: "world", meta: "Папка мира", kind: "folder" },
+  { name: "mods", meta: "143 файла", kind: "folder" },
+  { name: "server.properties", meta: "1.2 KB", kind: "file" },
+  { name: "latest.log", meta: "284 KB", kind: "file" },
 ];
 
 const stateLabels: Record<ServerState, string> = {
@@ -131,6 +157,83 @@ const stateLabels: Record<ServerState, string> = {
   deploying: "Разворачивается",
   offline: "Выключен",
 };
+
+const servers = ref<GameServer[]>(fallbackServers);
+const logs = ref<string[]>(fallbackLogs);
+const backups = ref<BackupItem[]>(fallbackBackups);
+const mods = ref<ModItem[]>(fallbackMods);
+const files = ref<FileItem[]>(fallbackFiles);
+const isLoading = ref(false);
+const apiError = ref("");
+
+const onlineServersCount = computed(
+  () => servers.value.filter((server) => server.state !== "offline").length,
+);
+
+async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+
+  if (!response.ok) {
+    throw new Error(`API returned ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function loadDashboard() {
+  isLoading.value = true;
+  apiError.value = "";
+
+  try {
+    const data = await requestJson<DashboardPayload>("/api/dashboard");
+    servers.value = data.servers;
+    logs.value = data.logs;
+    backups.value = data.backups;
+    mods.value = data.mods;
+    files.value = data.files;
+  } catch (error) {
+    apiError.value = "Backend пока недоступен, показываю локальные данные";
+    console.error(error);
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "backup") {
+  try {
+    await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
+    await loadDashboard();
+  } catch (error) {
+    apiError.value = "Не удалось выполнить действие";
+    console.error(error);
+  }
+}
+
+async function createBackup() {
+  const serverId = servers.value[0]?.id ?? "ksy-vanilla";
+  try {
+    await requestJson(`/api/backups?server_id=${encodeURIComponent(serverId)}`, { method: "POST" });
+    await loadDashboard();
+  } catch (error) {
+    apiError.value = "Не удалось создать резервную копию";
+    console.error(error);
+  }
+}
+
+async function checkMods() {
+  try {
+    await requestJson("/api/mods/check", { method: "POST" });
+    await loadDashboard();
+  } catch (error) {
+    apiError.value = "Не удалось проверить обновления модов";
+    console.error(error);
+  }
+}
+
+onMounted(loadDashboard);
 </script>
 
 <template>
@@ -200,13 +303,14 @@ const stateLabels: Record<ServerState, string> = {
         <div class="hero-copy">
           <div class="status-pill">
             <CheckCircle2 :size="16" />
-            <span>Агент сервера активен</span>
+            <span>{{ isLoading ? "Синхронизация с backend" : "Агент сервера активен" }}</span>
           </div>
           <h2>Выбираешь сборку, Ksylian разворачивает мир</h2>
           <p>
             Черновой интерфейс для установки CurseForge-сборок, управления процессами,
             бэкапов, логов, файлов и обновлений модов.
           </p>
+          <p v-if="apiError" class="api-error">{{ apiError }}</p>
           <div class="hero-actions">
             <button class="primary-button" type="button">
               <PackagePlus :size="18" />
@@ -227,7 +331,7 @@ const stateLabels: Record<ServerState, string> = {
         <article class="stat-tile">
           <Server :size="20" />
           <span>Серверы</span>
-          <strong>3</strong>
+          <strong>{{ onlineServersCount }}</strong>
         </article>
         <article class="stat-tile mint">
           <Gauge :size="20" />
@@ -254,7 +358,7 @@ const stateLabels: Record<ServerState, string> = {
                 <p class="eyebrow">instances</p>
                 <h2>Серверы</h2>
               </div>
-              <button class="ghost-button compact" type="button">
+              <button class="ghost-button compact" type="button" @click="loadDashboard">
                 <RefreshCw :size="16" />
                 <span>Обновить</span>
               </button>
@@ -277,13 +381,28 @@ const stateLabels: Record<ServerState, string> = {
                 </div>
 
                 <div class="server-actions" :aria-label="`Действия для ${server.name}`">
-                  <button class="icon-button" type="button" title="Запустить">
+                  <button
+                    class="icon-button"
+                    type="button"
+                    title="Запустить"
+                    @click="runServerAction(server.id, 'start')"
+                  >
                     <Play :size="17" />
                   </button>
-                  <button class="icon-button" type="button" title="Перезагрузить">
+                  <button
+                    class="icon-button"
+                    type="button"
+                    title="Перезагрузить"
+                    @click="runServerAction(server.id, 'restart')"
+                  >
                     <ListRestart :size="17" />
                   </button>
-                  <button class="icon-button danger" type="button" title="Остановить">
+                  <button
+                    class="icon-button danger"
+                    type="button"
+                    title="Остановить"
+                    @click="runServerAction(server.id, 'stop')"
+                  >
                     <CircleStop :size="17" />
                   </button>
                   <button class="icon-button" type="button" title="Открыть">
@@ -323,12 +442,12 @@ const stateLabels: Record<ServerState, string> = {
                 <p class="eyebrow">backups</p>
                 <h2>Резервные копии</h2>
               </div>
-              <button class="icon-button" type="button" title="Создать бэкап">
+              <button class="icon-button" type="button" title="Создать бэкап" @click="createBackup">
                 <FileArchive :size="18" />
               </button>
             </div>
             <div class="stack-list">
-              <article v-for="backup in backups" :key="backup.name" class="stack-item">
+              <article v-for="backup in backups" :key="backup.id" class="stack-item">
                 <Archive :size="18" />
                 <div>
                   <strong>{{ backup.name }}</strong>
@@ -344,12 +463,12 @@ const stateLabels: Record<ServerState, string> = {
                 <p class="eyebrow">curseforge</p>
                 <h2>Моды</h2>
               </div>
-              <button class="icon-button" type="button" title="Проверить обновления">
+              <button class="icon-button" type="button" title="Проверить обновления" @click="checkMods">
                 <RefreshCw :size="18" />
               </button>
             </div>
             <div class="stack-list">
-              <article v-for="mod in mods" :key="mod.name" class="stack-item">
+              <article v-for="mod in mods" :key="mod.id" class="stack-item">
                 <Box :size="18" />
                 <div>
                   <strong>{{ mod.name }}</strong>
@@ -372,7 +491,7 @@ const stateLabels: Record<ServerState, string> = {
             </div>
             <div class="file-list">
               <button v-for="file in files" :key="file.name" type="button" class="file-row">
-                <component :is="file.icon" :size="18" />
+                <component :is="file.kind === 'folder' ? Folder : FileText" :size="18" />
                 <span>{{ file.name }}</span>
                 <small>{{ file.meta }}</small>
               </button>
