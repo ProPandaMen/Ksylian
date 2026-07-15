@@ -962,6 +962,82 @@ h3 {
   line-height: 1;
 }
 
+.skeleton-tile,
+.skeleton-row {
+  pointer-events: none;
+}
+
+.skeleton-line,
+.skeleton-number,
+.skeleton-pill,
+.skeleton-button,
+.skeleton-dot,
+.skeleton-progress span {
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.34), rgba(255, 215, 238, 0.74), rgba(255, 255, 255, 0.34));
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+.skeleton-line {
+  width: min(100%, 220px);
+  height: 14px;
+}
+
+.skeleton-line.short {
+  width: 62%;
+}
+
+.skeleton-line.title {
+  width: 180px;
+  height: 18px;
+  margin-bottom: 10px;
+}
+
+.skeleton-number {
+  width: 48px;
+  height: 32px;
+  margin-top: 4px;
+}
+
+.skeleton-dot {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.skeleton-pill {
+  width: 78px;
+  height: 30px;
+}
+
+.skeleton-button {
+  width: 40px;
+  height: 40px;
+}
+
+.skeleton-progress span {
+  width: 42%;
+  box-shadow: none;
+}
+
+.compact-empty {
+  min-height: 150px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
 .stat-tile {
   display: grid;
   gap: 10px;

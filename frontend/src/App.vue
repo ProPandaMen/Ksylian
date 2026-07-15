@@ -50,72 +50,11 @@ import type {
   TabId,
 } from "./types";
 
-const fallbackServers: GameServer[] = [
-  {
-    id: "ksy-vanilla",
-    name: "Ksy Vanilla+",
-    pack: "Better MC Fabric",
-    version: "1.20.1",
-    state: "online",
-    players: "12 / 48",
-    ram: "8.2 / 16 GB",
-    cpu: 34,
-    disk: "42 GB",
-    address: "play.ksylian.local:25565",
-  },
-  {
-    id: "pink-nether",
-    name: "Pink Nether",
-    pack: "Prominence II",
-    version: "1.20.1",
-    state: "deploying",
-    players: "0 / 32",
-    ram: "2.1 / 12 GB",
-    cpu: 18,
-    disk: "18 GB",
-    address: "pink.ksylian.local:25566",
-  },
-  {
-    id: "archive-realm",
-    name: "Archive Realm",
-    pack: "Create: Perfect World",
-    version: "1.19.2",
-    state: "offline",
-    players: "0 / 24",
-    ram: "0 / 10 GB",
-    cpu: 0,
-    disk: "31 GB",
-    address: "archive.ksylian.local:25567",
-  },
-];
-
-const fallbackLogs = [
-  "[23:04:11] Server thread/INFO Starting Minecraft server version 1.20.1",
-  "[23:04:19] Loader/INFO Loaded 143 mods from CurseForge manifest",
-  "[23:04:28] Backup/INFO Snapshot world-2026-07-15 completed",
-  "[23:05:02] Proxy/INFO Velocity route registered: pink.ksylian.local",
-  "[23:05:35] Mods/INFO 4 updates available for review",
-];
-
-const fallbackBackups: BackupItem[] = [
-  { id: "backup-1", name: "world-before-update", size: "6.8 GB", created: "Сегодня, 22:40", server_id: "ksy-vanilla" },
-  { id: "backup-2", name: "pink-nether-auto", size: "3.1 GB", created: "Сегодня, 20:15", server_id: "pink-nether" },
-  { id: "backup-3", name: "archive-realm-monthly", size: "12.4 GB", created: "13 июля", server_id: "archive-realm" },
-];
-
-const fallbackMods: ModItem[] = [
-  { id: "fabric-api", name: "Fabric API", status: "Обновлён", tag: "required" },
-  { id: "voice-chat", name: "Simple Voice Chat", status: "Есть апдейт", tag: "update" },
-  { id: "world-edit", name: "WorldEdit", status: "Обновлён", tag: "required" },
-  { id: "dynmap", name: "Dynmap", status: "Проверить", tag: "review" },
-];
-
-const fallbackFiles: FileItem[] = [
-  { name: "world", meta: "Папка мира", kind: "folder" },
-  { name: "mods", meta: "143 файла", kind: "folder" },
-  { name: "server.properties", meta: "1.2 KB", kind: "file" },
-  { name: "latest.log", meta: "284 KB", kind: "file" },
-];
+const emptyServers: GameServer[] = [];
+const emptyLogs: string[] = [];
+const emptyBackups: BackupItem[] = [];
+const emptyMods: ModItem[] = [];
+const emptyFiles: FileItem[] = [];
 
 const stateLabels: Record<ServerState, string> = {
   online: "Онлайн",
@@ -139,12 +78,13 @@ const appVersionLabel = __APP_VERSION__.startsWith("v") || __APP_VERSION__ === "
   ? __APP_VERSION__
   : `v${__APP_VERSION__}`;
 const buildLabel = `${appVersionLabel} · ${__BUILD_SHA__}`;
-const servers = ref<GameServer[]>(fallbackServers);
-const logs = ref<string[]>(fallbackLogs);
-const backups = ref<BackupItem[]>(fallbackBackups);
-const mods = ref<ModItem[]>(fallbackMods);
-const files = ref<FileItem[]>(fallbackFiles);
-const isLoading = ref(false);
+const servers = ref<GameServer[]>(emptyServers);
+const logs = ref<string[]>(emptyLogs);
+const backups = ref<BackupItem[]>(emptyBackups);
+const mods = ref<ModItem[]>(emptyMods);
+const files = ref<FileItem[]>(emptyFiles);
+const isLoading = ref(true);
+const isDashboardLoaded = ref(false);
 const isLogLoading = ref(false);
 const isMonitoringLoading = ref(false);
 const isSavingSettings = ref(false);
@@ -157,7 +97,7 @@ const settings = ref<SettingsPayload>({
   curseforge_api_key_mask: "",
 });
 const selectedServerId = ref("");
-const selectedServerLogs = ref<string[]>(fallbackLogs);
+const selectedServerLogs = ref<string[]>(emptyLogs);
 const monitoring = ref<HostMonitoring>({
   hostname: "server",
   ip_addresses: [],
@@ -197,6 +137,7 @@ const selectedServer = computed(
 const selectedServerBackups = computed(() =>
   backups.value.filter((backup) => backup.server_id === selectedServer.value?.id),
 );
+const isDashboardInitialLoading = computed(() => isLoading.value && !isDashboardLoaded.value);
 const monitoringStatus = computed(() => {
   const maxDisk = Math.max(0, ...monitoring.value.disks.map((disk) => disk.percent));
   const maxUsage = Math.max(monitoring.value.cpu_percent, monitoring.value.memory.percent, maxDisk);
@@ -271,6 +212,7 @@ async function loadDashboard() {
     console.error(error);
   } finally {
     isLoading.value = false;
+    isDashboardLoaded.value = true;
   }
 }
 
@@ -555,7 +497,18 @@ onMounted(() => {
           <p v-if="apiError && activeTab !== 'overview'" class="api-error">{{ apiError }}</p>
           <p v-if="apiMessage" class="api-message">{{ apiMessage }}</p>
 
-          <section v-if="activeTab === 'servers' && serverView === 'list'" class="server-summary-grid" aria-label="Сводка серверов">
+          <section
+            v-if="activeTab === 'servers' && serverView === 'list' && isDashboardInitialLoading"
+            class="server-summary-grid"
+            aria-label="Загрузка сводки серверов"
+          >
+            <article v-for="item in 4" :key="item" class="summary-tile skeleton-tile">
+              <span class="skeleton-line short"></span>
+              <strong class="skeleton-number"></strong>
+            </article>
+          </section>
+
+          <section v-else-if="activeTab === 'servers' && serverView === 'list'" class="server-summary-grid" aria-label="Сводка серверов">
             <article class="summary-tile">
               <span>Стабильно работают</span>
               <strong>{{ stableServersCount }}</strong>
@@ -586,7 +539,30 @@ onMounted(() => {
               </button>
             </div>
 
-            <div class="server-list">
+            <div v-if="isDashboardInitialLoading" class="server-list" aria-label="Загрузка серверов">
+              <article v-for="item in 3" :key="item" class="server-row skeleton-row">
+                <div class="server-main">
+                  <span class="skeleton-dot"></span>
+                  <div>
+                    <span class="skeleton-line title"></span>
+                    <span class="skeleton-line"></span>
+                  </div>
+                </div>
+                <div class="server-metrics">
+                  <span class="skeleton-pill"></span>
+                  <span class="skeleton-pill"></span>
+                  <span class="skeleton-pill"></span>
+                </div>
+                <div class="server-actions">
+                  <span v-for="button in 4" :key="button" class="skeleton-button"></span>
+                </div>
+                <div class="progress-line static skeleton-progress">
+                  <span></span>
+                </div>
+              </article>
+            </div>
+
+            <div v-else class="server-list">
               <article
                 v-for="server in servers"
                 :key="server.id"
@@ -651,6 +627,11 @@ onMounted(() => {
                 </div>
 
                 <span class="state-label" :class="server.state">{{ stateLabels[server.state] }}</span>
+              </article>
+              <article v-if="!servers.length" class="empty-details compact-empty">
+                <Server :size="28" />
+                <strong>Серверов пока нет</strong>
+                <span>Создай первый сервер или проверь подключение agent.</span>
               </article>
             </div>
           </section>
