@@ -189,7 +189,10 @@ const routePaths: Record<TabId, string> = {
 
 const route = useRoute();
 const router = useRouter();
-const buildLabel = `v${__APP_VERSION__} · ${__BUILD_SHA__}`;
+const appVersionLabel = __APP_VERSION__.startsWith("v") || __APP_VERSION__ === "dev"
+  ? __APP_VERSION__
+  : `v${__APP_VERSION__}`;
+const buildLabel = `${appVersionLabel} · ${__BUILD_SHA__}`;
 const servers = ref<GameServer[]>(fallbackServers);
 const logs = ref<string[]>(fallbackLogs);
 const backups = ref<BackupItem[]>(fallbackBackups);
