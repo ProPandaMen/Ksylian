@@ -116,7 +116,7 @@ interface CurseForgeSearchPayload {
 const navItems: Array<{ id: TabId; label: string; icon: Component }> = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "servers", label: "Серверы", icon: Server },
-  { id: "modpacks", label: "Модпаки", icon: PackagePlus },
+  { id: "modpacks", label: "CurseForge", icon: PackagePlus },
   { id: "files", label: "Файлы", icon: Folder },
   { id: "backups", label: "Бэкапы", icon: Archive },
   { id: "settings", label: "Настройки", icon: Settings },
@@ -125,7 +125,7 @@ const navItems: Array<{ id: TabId; label: string; icon: Component }> = [
 const tabCopy: Record<TabId, { title: string; eyebrow: string }> = {
   overview: { title: "Панель управления серверами", eyebrow: "Minecraft orchestration" },
   servers: { title: "Серверы", eyebrow: "instances" },
-  modpacks: { title: "Модпаки и обновления", eyebrow: "curseforge" },
+  modpacks: { title: "CurseForge", eyebrow: "integration" },
   files: { title: "Файловый менеджер", eyebrow: "server files" },
   backups: { title: "Резервные копии", eyebrow: "snapshots" },
   settings: { title: "Настройки", eyebrow: "configuration" },
@@ -913,7 +913,7 @@ onMounted(() => {
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">curseforge</p>
-                <h2>Каталог модов и сборок</h2>
+                <h2>Интеграция CurseForge</h2>
               </div>
               <button class="icon-button" type="button" title="Обновить каталог" @click="searchCurseForge">
                 <RefreshCw :size="18" />
