@@ -115,8 +115,6 @@ const navItems: Array<{ id: TabId; label: string; icon: Component; disabled?: bo
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "servers", label: "Серверы", icon: Server },
   { id: "modpacks", label: "CurseForge", icon: PackagePlus, disabled: true },
-  { id: "files", label: "Файлы", icon: Folder },
-  { id: "backups", label: "Бэкапы", icon: Archive },
   { id: "settings", label: "Настройки", icon: Settings },
 ];
 
