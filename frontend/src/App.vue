@@ -17,7 +17,6 @@ import {
   Gauge,
   HardDrive,
   Heart,
-  History,
   Home,
   LayoutDashboard,
   ListRestart,
@@ -26,7 +25,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Search,
   Server,
   Settings,
   ShieldCheck,
@@ -436,13 +434,6 @@ onMounted(loadDashboard);
         </div>
 
         <div class="topbar-actions">
-          <label class="search-box">
-            <Search :size="18" />
-            <input type="search" placeholder="Найти сервер, мод или файл" />
-          </label>
-          <button class="icon-button" type="button" title="История задач">
-            <History :size="20" />
-          </button>
           <button class="primary-button" type="button" @click="isCreateServerOpen = true">
             <Plus :size="18" />
             <span>Новый сервер</span>
