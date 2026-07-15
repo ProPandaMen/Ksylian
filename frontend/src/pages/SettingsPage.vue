@@ -6,7 +6,6 @@ defineProps<{
   settings: SettingsPayload;
   curseForgeApiKey: string;
   isSaving: boolean;
-  message: string;
 }>();
 
 const emit = defineEmits<{
@@ -72,7 +71,6 @@ const emit = defineEmits<{
             <span>{{ isSaving ? 'Сохраняю' : 'Сохранить' }}</span>
           </button>
         </div>
-        <p v-if="message" class="settings-message">{{ message }}</p>
       </form>
 
       <section class="settings-summary" aria-label="Системная информация">

@@ -28,6 +28,7 @@ import {
   Trash2,
   UploadCloud,
   Users,
+  X,
 } from "@lucide/vue";
 import catPaw from "./assets/cat-paw.svg";
 import catMascot from "./assets/ksylian-cat.png";
@@ -55,6 +56,13 @@ const emptyLogs: string[] = [];
 const emptyBackups: BackupItem[] = [];
 const emptyMods: ModItem[] = [];
 const emptyFiles: FileItem[] = [];
+type ToastTone = "success" | "error" | "info";
+
+interface ToastMessage {
+  id: number;
+  tone: ToastTone;
+  text: string;
+}
 
 const stateLabels: Record<ServerState, string> = {
   online: "Онлайн",
@@ -88,9 +96,8 @@ const isDashboardLoaded = ref(false);
 const isLogLoading = ref(false);
 const isMonitoringLoading = ref(false);
 const isSavingSettings = ref(false);
-const apiError = ref("");
-const apiMessage = ref("");
-const settingsMessage = ref("");
+const toasts = ref<ToastMessage[]>([]);
+let toastId = 0;
 const curseForgeApiKey = ref("");
 const settings = ref<SettingsPayload>({
   has_curseforge_api_key: false,
@@ -118,6 +125,16 @@ const newServer = ref<NewServerDraft>({
   type: "vanilla",
   version: "1.20.1",
 });
+
+function dismissToast(id: number) {
+  toasts.value = toasts.value.filter((toast) => toast.id !== id);
+}
+
+function showToast(text: string, tone: ToastTone = "info") {
+  const id = ++toastId;
+  toasts.value = [...toasts.value, { id, tone, text }].slice(-4);
+  window.setTimeout(() => dismissToast(id), 4200);
+}
 
 const onlineServersCount = computed(
   () => servers.value.filter((server) => server.state !== "offline").length,
@@ -189,8 +206,6 @@ async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 async function loadDashboard() {
   isLoading.value = true;
-  apiError.value = "";
-  apiMessage.value = "";
 
   try {
     const data = await requestJson<DashboardPayload>("/api/dashboard");
@@ -208,7 +223,7 @@ async function loadDashboard() {
       await loadServerLogs(selectedServerId.value);
     }
   } catch (error) {
-    apiError.value = "Backend пока недоступен, показываю локальные данные";
+    showToast("Backend пока недоступен, данные не обновлены", "error");
     console.error(error);
   } finally {
     isLoading.value = false;
@@ -220,7 +235,7 @@ async function loadSettings() {
   try {
     settings.value = await requestJson<SettingsPayload>("/api/settings");
   } catch (error) {
-    apiError.value = "Не удалось загрузить настройки";
+    showToast("Не удалось загрузить настройки", "error");
     console.error(error);
   }
 }
@@ -237,7 +252,7 @@ async function loadServerLogs(serverId = selectedServerId.value) {
   try {
     selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${serverId}/logs`);
   } catch (error) {
-    apiError.value = "Не удалось загрузить логи выбранного сервера";
+    showToast("Не удалось загрузить логи выбранного сервера", "error");
     selectedServerLogs.value = [];
     console.error(error);
   } finally {
@@ -247,12 +262,11 @@ async function loadServerLogs(serverId = selectedServerId.value) {
 
 async function loadMonitoring() {
   isMonitoringLoading.value = true;
-  apiError.value = "";
 
   try {
     monitoring.value = await requestJson<HostMonitoring>("/api/monitoring");
   } catch (error) {
-    apiError.value = "Не удалось загрузить мониторинг хоста";
+    showToast("Не удалось загрузить мониторинг хоста", "error");
     console.error(error);
   } finally {
     isMonitoringLoading.value = false;
@@ -284,14 +298,12 @@ async function runServerAction(serverId: string, action: "start" | "restart" | "
     await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
     await loadDashboard();
   } catch (error) {
-    apiError.value = "Не удалось выполнить действие";
+    showToast("Не удалось выполнить действие", "error");
     console.error(error);
   }
 }
 
 async function createServer() {
-  apiError.value = "";
-
   try {
     await requestJson("/api/servers", {
       method: "POST",
@@ -305,16 +317,14 @@ async function createServer() {
     newServer.value = { name: "", type: "vanilla", version: "1.20.1" };
     await loadDashboard();
     await router.push("/servers");
+    showToast("Сервер создан", "success");
   } catch (error) {
-    apiError.value = "Создание настоящих серверов ещё требует provisioner на backend";
+    showToast("Создание настоящих серверов ещё требует provisioner на backend", "error");
     console.error(error);
   }
 }
 
 async function deleteServer(serverId: string) {
-  apiError.value = "";
-  apiMessage.value = "";
-
   const server = servers.value.find((item) => item.id === serverId);
   const confirmed = window.confirm(
     `Удалить ${server?.name ?? "сервер"} из панели? Сервис будет остановлен и отключен от автозапуска, файлы мира останутся на диске.`,
@@ -326,9 +336,9 @@ async function deleteServer(serverId: string) {
   try {
     await requestJson(`/api/servers/${serverId}`, { method: "DELETE" });
     await loadDashboard();
-    apiMessage.value = `${server?.name ?? "Сервер"} удалён из панели`;
+    showToast(`${server?.name ?? "Сервер"} удалён из панели`, "success");
   } catch (error) {
-    apiError.value = "Не удалось удалить сервер через agent";
+    showToast("Не удалось удалить сервер через agent", "error");
     console.error(error);
   }
 }
@@ -337,8 +347,9 @@ async function createBackup(serverId = selectedServer.value?.id ?? servers.value
   try {
     await requestJson(`/api/backups?server_id=${encodeURIComponent(serverId)}`, { method: "POST" });
     await loadDashboard();
+    showToast("Резервная копия создана", "success");
   } catch (error) {
-    apiError.value = "Не удалось создать резервную копию";
+    showToast("Не удалось создать резервную копию", "error");
     console.error(error);
   }
 }
@@ -347,16 +358,15 @@ async function checkMods() {
   try {
     await requestJson("/api/mods/check", { method: "POST" });
     await loadDashboard();
+    showToast("Проверка модов запущена", "success");
   } catch (error) {
-    apiError.value = "Не удалось проверить обновления модов";
+    showToast("Не удалось проверить обновления модов", "error");
     console.error(error);
   }
 }
 
 async function saveSettings() {
   isSavingSettings.value = true;
-  settingsMessage.value = "";
-  apiError.value = "";
 
   try {
     settings.value = await requestJson<SettingsPayload>("/api/settings", {
@@ -364,11 +374,12 @@ async function saveSettings() {
       body: JSON.stringify({ curseforge_api_key: curseForgeApiKey.value }),
     });
     curseForgeApiKey.value = "";
-    settingsMessage.value = settings.value.has_curseforge_api_key
-      ? "Ключ CurseForge сохранён"
-      : "Ключ CurseForge очищен";
+    showToast(
+      settings.value.has_curseforge_api_key ? "Ключ CurseForge сохранён" : "Ключ CurseForge очищен",
+      "success",
+    );
   } catch (error) {
-    apiError.value = "Не удалось сохранить ключ CurseForge";
+    showToast("Не удалось сохранить ключ CurseForge", "error");
     console.error(error);
   } finally {
     isSavingSettings.value = false;
@@ -445,7 +456,6 @@ onMounted(() => {
             Черновой интерфейс для установки CurseForge-сборок, управления процессами,
             бэкапов, логов, файлов и обновлений модов.
           </p>
-          <p v-if="apiError" class="api-error">{{ apiError }}</p>
           <div class="hero-actions">
             <button class="primary-button" type="button">
               <PackagePlus :size="18" />
@@ -493,9 +503,6 @@ onMounted(() => {
             @cancel="backToServerList"
             @submit="createServer"
           />
-
-          <p v-if="apiError && activeTab !== 'overview'" class="api-error">{{ apiError }}</p>
-          <p v-if="apiMessage" class="api-message">{{ apiMessage }}</p>
 
           <section
             v-if="activeTab === 'servers' && serverView === 'list' && isDashboardInitialLoading"
@@ -851,7 +858,6 @@ onMounted(() => {
             v-model:curse-forge-api-key="curseForgeApiKey"
             :settings="settings"
             :is-saving="isSavingSettings"
-            :message="settingsMessage"
             @refresh="loadDashboard"
             @save="saveSettings"
             @clear="clearCurseForgeKey"
@@ -929,6 +935,16 @@ onMounted(() => {
         </aside>
       </section>
     </section>
+
+    <div class="toast-stack" aria-live="polite" aria-label="Уведомления">
+      <article v-for="toast in toasts" :key="toast.id" class="toast-card" :class="toast.tone">
+        <span class="toast-dot"></span>
+        <p>{{ toast.text }}</p>
+        <button class="toast-close" type="button" title="Закрыть" @click="dismissToast(toast.id)">
+          <X :size="16" />
+        </button>
+      </article>
+    </div>
 
     <span class="build-badge">{{ buildLabel }}</span>
   </main>
