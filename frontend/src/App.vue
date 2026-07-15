@@ -149,6 +149,7 @@ const isLogLoading = ref(false);
 const isMonitoringLoading = ref(false);
 const isSavingSettings = ref(false);
 const apiError = ref("");
+const apiMessage = ref("");
 const settingsMessage = ref("");
 const curseForgeApiKey = ref("");
 const settings = ref<SettingsPayload>({
@@ -248,6 +249,7 @@ async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
 async function loadDashboard() {
   isLoading.value = true;
   apiError.value = "";
+  apiMessage.value = "";
 
   try {
     const data = await requestJson<DashboardPayload>("/api/dashboard");
@@ -369,12 +371,22 @@ async function createServer() {
 
 async function deleteServer(serverId: string) {
   apiError.value = "";
+  apiMessage.value = "";
+
+  const server = servers.value.find((item) => item.id === serverId);
+  const confirmed = window.confirm(
+    `Удалить ${server?.name ?? "сервер"} из панели? Сервис будет остановлен и отключен от автозапуска, файлы мира останутся на диске.`,
+  );
+  if (!confirmed) {
+    return;
+  }
 
   try {
     await requestJson(`/api/servers/${serverId}`, { method: "DELETE" });
     await loadDashboard();
+    apiMessage.value = `${server?.name ?? "Сервер"} удалён из панели`;
   } catch (error) {
-    apiError.value = "Удаление настоящих systemd-серверов пока заблокировано";
+    apiError.value = "Не удалось удалить сервер через agent";
     console.error(error);
   }
 }
@@ -539,6 +551,9 @@ onMounted(() => {
             @cancel="backToServerList"
             @submit="createServer"
           />
+
+          <p v-if="apiError && activeTab !== 'overview'" class="api-error">{{ apiError }}</p>
+          <p v-if="apiMessage" class="api-message">{{ apiMessage }}</p>
 
           <section v-if="activeTab === 'servers' && serverView === 'list'" class="server-summary-grid" aria-label="Сводка серверов">
             <article class="summary-tile">

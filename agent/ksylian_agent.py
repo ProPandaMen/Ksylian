@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import socket
 import subprocess
 import tarfile
@@ -104,6 +105,8 @@ SERVERS = {
 }
 
 BACKUP_DIR = Path(os.getenv("KSYLIAN_BACKUP_DIR", "/mnt/hdd/ksylian-backups"))
+DATA_DIR = Path(os.getenv("KSYLIAN_DATA_DIR", "/var/lib/ksylian-agent"))
+DISABLED_SERVERS_FILE = DATA_DIR / "disabled-servers.json"
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 
 app = FastAPI(title="Ksylian Host Agent", version="0.1.0")
@@ -116,6 +119,28 @@ def require_token(x_ksylian_token: str | None = Header(default=None)) -> None:
 
 def run(command: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def disabled_server_ids() -> set[str]:
+    if not DISABLED_SERVERS_FILE.exists():
+        return set()
+    try:
+        data = json.loads(DISABLED_SERVERS_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if not isinstance(data, list):
+        return set()
+    return {item for item in data if isinstance(item, str)}
+
+
+def save_disabled_server_ids(server_ids: set[str]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DISABLED_SERVERS_FILE.write_text(json.dumps(sorted(server_ids), indent=2))
+
+
+def active_server_ids() -> list[str]:
+    disabled = disabled_server_ids()
+    return [server_id for server_id in SERVERS if server_id not in disabled]
 
 
 def service_state(service: str) -> Literal["online", "deploying", "offline"]:
@@ -341,7 +366,7 @@ def health() -> dict[str, str]:
 @app.get("/servers", response_model=list[AgentServer])
 def servers(x_ksylian_token: str | None = Header(default=None)) -> list[AgentServer]:
     require_token(x_ksylian_token)
-    return [to_agent_server(server_id) for server_id in SERVERS]
+    return [to_agent_server(server_id) for server_id in active_server_ids()]
 
 
 @app.get("/monitoring", response_model=HostMonitoring)
@@ -356,7 +381,8 @@ def monitoring(x_ksylian_token: str | None = Header(default=None)) -> HostMonito
         uptime_seconds = 0
 
     services = []
-    for server_id, config in SERVERS.items():
+    for server_id in active_server_ids():
+        config = SERVERS[server_id]
         cpu, ram = service_usage(config["service"])
         services.append(
             ServiceUsage(
@@ -440,6 +466,27 @@ def action(
         message = f"{config['name']}: backup created at {archive}"
 
     return AgentActionResult(ok=True, message=message, server=to_agent_server(server_id))
+
+
+@app.delete("/servers/{server_id}")
+def delete_server(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> dict[str, bool]:
+    require_token(x_ksylian_token)
+    config = SERVERS.get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    stop_result = run(["systemctl", "stop", config["service"]], timeout=60)
+    if stop_result.returncode != 0:
+        raise HTTPException(status_code=500, detail=stop_result.stderr.strip() or "Failed to stop service")
+
+    disable_result = run(["systemctl", "disable", config["service"]], timeout=60)
+    if disable_result.returncode != 0:
+        raise HTTPException(status_code=500, detail=disable_result.stderr.strip() or "Failed to disable service")
+
+    disabled = disabled_server_ids()
+    disabled.add(server_id)
+    save_disabled_server_ids(disabled)
+    return {"ok": True}
 
 
 @app.get("/backups")

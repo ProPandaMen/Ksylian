@@ -480,6 +480,15 @@ h3 {
   background: rgba(255, 225, 239, 0.72);
 }
 
+.api-message {
+  width: fit-content;
+  padding: 10px 12px;
+  color: #176a50;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 12px;
+  background: rgba(222, 250, 236, 0.78);
+}
+
 .status-pill {
   gap: 8px;
   width: fit-content;

@@ -267,6 +267,12 @@ def agent_post(path: str) -> httpx.Response:
     return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=90)
 
 
+def agent_delete(path: str) -> httpx.Response:
+    if not AGENT_URL:
+        raise RuntimeError("Agent is not configured")
+    return httpx.delete(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=90)
+
+
 def load_agent_servers() -> list[GameServer] | None:
     try:
         response = agent_get("/servers")
@@ -542,10 +548,14 @@ def create_server(payload: CreateServerRequest) -> GameServer:
 @app.delete("/api/servers/{server_id}")
 def delete_server(server_id: str) -> dict[str, bool]:
     if AGENT_URL:
-        raise HTTPException(
-            status_code=501,
-            detail="Deleting real systemd servers is not implemented yet. Stop and detach policy is required first.",
-        )
+        try:
+            response = agent_delete(f"/servers/{server_id}")
+            response.raise_for_status()
+            append_log(f"{server_id}: server stopped, disabled and hidden from panel")
+            return response.json()
+        except Exception as error:
+            append_log(f"agent delete failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent delete failed") from error
 
     if server_id not in servers:
         raise HTTPException(status_code=404, detail="Server not found")
