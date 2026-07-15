@@ -20,9 +20,7 @@ const emit = defineEmits<{
       <div>
         <p class="eyebrow">host health</p>
         <h2>{{ monitoring.hostname }}</h2>
-        <p>
-          {{ monitoring.ip_addresses.join(', ') || 'IP не определён' }} · uptime {{ monitoring.uptime }}
-        </p>
+        <p>Работает {{ monitoring.uptime }}</p>
       </div>
       <div class="monitor-hero-actions">
         <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
