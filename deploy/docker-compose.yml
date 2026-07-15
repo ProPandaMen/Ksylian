@@ -17,6 +17,9 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        VITE_APP_VERSION: "${KSYLIAN_BUILD_VERSION:-0.1.0}"
+        VITE_BUILD_SHA: "${KSYLIAN_BUILD_SHA:-local}"
     container_name: ksylian-frontend
     restart: unless-stopped
     depends_on:

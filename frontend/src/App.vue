@@ -186,6 +186,7 @@ const routePaths: Record<TabId, string> = {
 
 const route = useRoute();
 const router = useRouter();
+const buildLabel = `v${__APP_VERSION__} · ${__BUILD_SHA__}`;
 const servers = ref<GameServer[]>(fallbackServers);
 const logs = ref<string[]>(fallbackLogs);
 const backups = ref<BackupItem[]>(fallbackBackups);
@@ -961,5 +962,7 @@ onMounted(loadDashboard);
         </form>
       </section>
     </div>
+
+    <span class="build-badge">{{ buildLabel }}</span>
   </main>
 </template>
