@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import json
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Literal
 
 import httpx
@@ -52,6 +54,15 @@ class CreateServerRequest(BaseModel):
     address: str = ""
 
 
+class SettingsPayload(BaseModel):
+    has_curseforge_api_key: bool
+    curseforge_api_key_mask: str = ""
+
+
+class UpdateSettingsRequest(BaseModel):
+    curseforge_api_key: str = ""
+
+
 class ModItem(BaseModel):
     id: str
     name: str
@@ -91,6 +102,7 @@ app.add_middleware(
 
 AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
 AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
+SETTINGS_PATH = Path(os.getenv("KSYLIAN_SETTINGS_PATH", "/data/settings.json"))
 
 servers: dict[str, GameServer] = {
     "ksy-vanilla": GameServer(
@@ -212,6 +224,38 @@ def append_log(message: str) -> None:
     timestamp = datetime.now().strftime("%H:%M:%S")
     logs.append(f"[{timestamp}] Ksylian/API {message}")
     del logs[:-80]
+
+
+def load_settings() -> dict[str, str]:
+    if not SETTINGS_PATH.exists():
+        return {}
+
+    try:
+        data = json.loads(SETTINGS_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): str(value) for key, value in data.items() if isinstance(value, str)}
+
+
+def save_settings(data: dict[str, str]) -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    SETTINGS_PATH.chmod(0o600)
+
+
+def curseforge_api_key() -> str:
+    return os.getenv("CURSEFORGE_API_KEY", "") or load_settings().get("curseforge_api_key", "")
+
+
+def mask_secret(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "••••"
+    return f"{value[:4]}••••{value[-4:]}"
 
 
 def get_server(server_id: str) -> GameServer:
@@ -408,6 +452,35 @@ def create_backup(server_id: str = "ksy-vanilla") -> BackupItem:
     backups.insert(0, backup)
     append_log(f"{server.name}: manual backup queued")
     return backup
+
+
+@app.get("/api/settings", response_model=SettingsPayload)
+def get_settings() -> SettingsPayload:
+    key = curseforge_api_key()
+    return SettingsPayload(
+        has_curseforge_api_key=bool(key),
+        curseforge_api_key_mask=mask_secret(key),
+    )
+
+
+@app.put("/api/settings", response_model=SettingsPayload)
+def update_settings(payload: UpdateSettingsRequest) -> SettingsPayload:
+    settings = load_settings()
+    key = payload.curseforge_api_key.strip()
+
+    if key:
+        settings["curseforge_api_key"] = key
+        append_log("settings: CurseForge API key updated")
+    else:
+        settings.pop("curseforge_api_key", None)
+        append_log("settings: CurseForge API key cleared")
+
+    save_settings(settings)
+    key = curseforge_api_key()
+    return SettingsPayload(
+        has_curseforge_api_key=bool(key),
+        curseforge_api_key_mask=mask_secret(key),
+    )
 
 
 @app.get("/api/mods", response_model=list[ModItem])

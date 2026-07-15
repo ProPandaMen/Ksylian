@@ -978,6 +978,54 @@ h3 {
   gap: 12px;
 }
 
+.settings-form {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 14px;
+  background: rgba(255, 247, 251, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.settings-form p {
+  margin-top: 4px;
+  color: #8f7d8c;
+  line-height: 1.5;
+}
+
+.settings-form label,
+.setting-item {
+  display: grid;
+}
+
+.settings-form label {
+  gap: 7px;
+  color: #4b394b;
+  font-weight: 700;
+}
+
+.settings-form input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  color: #332634;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.settings-message {
+  width: fit-content;
+  padding: 8px 10px;
+  color: #176a50;
+  border-radius: 10px;
+  background: rgba(222, 250, 236, 0.72);
+}
+
 .setting-item {
   display: grid;
   gap: 8px;

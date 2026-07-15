@@ -82,6 +82,11 @@ interface DashboardPayload {
   files: FileItem[];
 }
 
+interface SettingsPayload {
+  has_curseforge_api_key: boolean;
+  curseforge_api_key_mask: string;
+}
+
 const navItems: Array<{ id: TabId; label: string; icon: Component }> = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "servers", label: "Серверы", icon: Server },
@@ -192,7 +197,14 @@ const mods = ref<ModItem[]>(fallbackMods);
 const files = ref<FileItem[]>(fallbackFiles);
 const isLoading = ref(false);
 const isLogLoading = ref(false);
+const isSavingSettings = ref(false);
 const apiError = ref("");
+const settingsMessage = ref("");
+const curseForgeApiKey = ref("");
+const settings = ref<SettingsPayload>({
+  has_curseforge_api_key: false,
+  curseforge_api_key_mask: "",
+});
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(fallbackLogs);
 const isCreateServerOpen = ref(false);
@@ -277,6 +289,15 @@ async function loadDashboard() {
     console.error(error);
   } finally {
     isLoading.value = false;
+  }
+}
+
+async function loadSettings() {
+  try {
+    settings.value = await requestJson<SettingsPayload>("/api/settings");
+  } catch (error) {
+    apiError.value = "Не удалось загрузить настройки";
+    console.error(error);
   }
 }
 
@@ -372,6 +393,33 @@ async function checkMods() {
   }
 }
 
+async function saveSettings() {
+  isSavingSettings.value = true;
+  settingsMessage.value = "";
+  apiError.value = "";
+
+  try {
+    settings.value = await requestJson<SettingsPayload>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ curseforge_api_key: curseForgeApiKey.value }),
+    });
+    curseForgeApiKey.value = "";
+    settingsMessage.value = settings.value.has_curseforge_api_key
+      ? "Ключ CurseForge сохранён"
+      : "Ключ CurseForge очищен";
+  } catch (error) {
+    apiError.value = "Не удалось сохранить ключ CurseForge";
+    console.error(error);
+  } finally {
+    isSavingSettings.value = false;
+  }
+}
+
+async function clearCurseForgeKey() {
+  curseForgeApiKey.value = "";
+  await saveSettings();
+}
+
 watch(
   () => route.params.serverId,
   async (serverId) => {
@@ -381,7 +429,10 @@ watch(
   },
 );
 
-onMounted(loadDashboard);
+onMounted(() => {
+  loadDashboard();
+  loadSettings();
+});
 </script>
 
 <template>
@@ -815,6 +866,39 @@ onMounted(loadDashboard);
                 <RefreshCw :size="18" />
               </button>
             </div>
+            <form class="settings-form" @submit.prevent="saveSettings">
+              <div>
+                <p class="eyebrow">curseforge</p>
+                <h3>API key</h3>
+                <p>
+                  Ключ хранится на backend и не возвращается в браузер целиком.
+                  Текущий статус:
+                  <strong>
+                    {{ settings.has_curseforge_api_key ? settings.curseforge_api_key_mask : 'не задан' }}
+                  </strong>
+                </p>
+              </div>
+              <label>
+                <span>Новый CurseForge API key</span>
+                <input
+                  v-model="curseForgeApiKey"
+                  autocomplete="off"
+                  spellcheck="false"
+                  type="password"
+                  placeholder="Вставь ключ и нажми сохранить"
+                />
+              </label>
+              <div class="form-actions">
+                <button class="ghost-button" type="button" @click="clearCurseForgeKey">
+                  Очистить
+                </button>
+                <button class="primary-button" type="submit" :disabled="isSavingSettings">
+                  <ShieldCheck :size="18" />
+                  <span>{{ isSavingSettings ? 'Сохраняю' : 'Сохранить ключ' }}</span>
+                </button>
+              </div>
+              <p v-if="settingsMessage" class="settings-message">{{ settingsMessage }}</p>
+            </form>
             <div class="settings-grid">
               <article class="setting-item">
                 <strong>Backend</strong>

@@ -10,6 +10,10 @@ services:
     environment:
       KSYLIAN_AGENT_URL: "${KSYLIAN_AGENT_URL:-}"
       KSYLIAN_AGENT_TOKEN: "${KSYLIAN_AGENT_TOKEN:-}"
+      KSYLIAN_SETTINGS_PATH: "${KSYLIAN_SETTINGS_PATH:-/data/settings.json}"
+      CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY:-}"
+    volumes:
+      - ksylian-backend-data:/data
     ports:
       - "${KSYLIAN_BACKEND_PORT:-8090}:8000"
 
@@ -26,3 +30,6 @@ services:
       - backend
     ports:
       - "${KSYLIAN_FRONTEND_PORT:-8088}:80"
+
+volumes:
+  ksylian-backend-data:
