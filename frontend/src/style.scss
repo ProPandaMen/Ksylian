@@ -35,6 +35,208 @@ button:disabled {
   opacity: 0.62;
 }
 
+.auth-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 28px;
+  place-items: center;
+  background:
+    radial-gradient(circle at 18% 32%, rgba(255, 47, 163, 0.24), transparent 24%),
+    radial-gradient(circle at 78% 22%, rgba(142, 79, 255, 0.22), transparent 22%),
+    linear-gradient(135deg, #efe2e8, #fff6fb);
+}
+
+.auth-card {
+  display: grid;
+  gap: 22px;
+  width: min(520px, 100%);
+  padding: 26px;
+}
+
+.auth-card h1 {
+  margin-bottom: 8px;
+  color: #2f2531;
+  font-size: clamp(2rem, 8vw, 3.4rem);
+}
+
+.auth-card p:not(.eyebrow) {
+  color: #80687c;
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+  color: #4b394b;
+  font-weight: 800;
+}
+
+.auth-form input,
+.auth-form select,
+.user-menu select,
+.users-actions select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  color: #332634;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.auth-error {
+  color: #b02e66;
+  font-weight: 800;
+}
+
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.theme-picker legend {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  color: #4b394b;
+  font-weight: 800;
+}
+
+.theme-option {
+  display: grid;
+  gap: 6px;
+  min-height: 74px;
+  padding: 10px;
+  color: #574052;
+  border: 1px solid rgba(255, 255, 255, 0.64);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+  font-weight: 800;
+}
+
+.theme-option span {
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff2fa3, #8e4fff);
+}
+
+.theme-option.black span {
+  background: linear-gradient(135deg, #111318, #3b4250);
+}
+
+.theme-option.white span {
+  background: linear-gradient(135deg, #ffffff, #dfe6ef);
+}
+
+.theme-option.green span {
+  background: linear-gradient(135deg, #2fa84f, #8fcf5d);
+}
+
+.theme-option.selected {
+  color: #a20f6d;
+  border-color: rgba(255, 47, 163, 0.48);
+  box-shadow: 0 12px 24px rgba(204, 60, 132, 0.16);
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.user-menu > span {
+  color: #574052;
+  font-weight: 900;
+}
+
+.user-menu select {
+  width: 140px;
+}
+
+.users-page {
+  display: grid;
+  gap: 18px;
+}
+
+.users-toolbar,
+.invite-result,
+.user-row,
+.users-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.users-toolbar,
+.invite-result,
+.user-row {
+  justify-content: space-between;
+}
+
+.users-toolbar p:not(.eyebrow) {
+  color: #80687c;
+  line-height: 1.5;
+}
+
+.users-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.users-actions label {
+  display: grid;
+  gap: 5px;
+  min-width: 140px;
+  color: #72566b;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.invite-result span,
+.user-row span {
+  color: #8f7d8c;
+}
+
+.invite-result > div,
+.user-row > div {
+  display: grid;
+  min-width: 0;
+}
+
+.invite-result span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-list {
+  display: grid;
+  gap: 10px;
+}
+
+.user-row {
+  min-height: 58px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.54);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.user-row.muted {
+  justify-content: flex-start;
+  opacity: 0.72;
+}
+
 .app-shell {
   position: relative;
   display: grid;
@@ -2696,5 +2898,121 @@ h3 {
   .project-facts div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+}
+
+body[data-theme="black"] {
+  color: #eef1f6;
+  background: #101115;
+
+  .app-shell {
+    background:
+      radial-gradient(circle at 16% 50%, rgba(255, 47, 163, 0.18), transparent 22%),
+      radial-gradient(circle at 72% 17%, rgba(91, 118, 255, 0.16), transparent 18%),
+      linear-gradient(135deg, #101115 0%, #1a1d24 52%, #08090d 100%);
+  }
+
+  .workspace,
+  .sidebar,
+  .panel,
+  .summary-tile,
+  .metric-tile,
+  .settings-form,
+  .settings-summary,
+  .panel-lite,
+  .server-row,
+  .user-row {
+    color: #eef1f6;
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(25, 28, 36, 0.74);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  }
+
+  h1,
+  h2,
+  h3,
+  strong,
+  .nav-button.active,
+  .server-hero h2 {
+    color: #f7f8fb;
+  }
+
+  p,
+  span,
+  small,
+  .settings-hint,
+  .settings-summary dd {
+    color: #aeb7c7;
+  }
+
+  .ghost-button,
+  .icon-button,
+  input,
+  select,
+  textarea {
+    color: #eef1f6;
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+body[data-theme="white"] {
+  background: #f7f8fb;
+
+  .app-shell {
+    background:
+      radial-gradient(circle at 20% 34%, rgba(215, 226, 240, 0.72), transparent 24%),
+      radial-gradient(circle at 78% 22%, rgba(255, 210, 232, 0.42), transparent 22%),
+      linear-gradient(135deg, #ffffff, #edf2f8);
+  }
+
+  .workspace,
+  .sidebar,
+  .panel,
+  .summary-tile,
+  .metric-tile,
+  .settings-form,
+  .settings-summary,
+  .panel-lite,
+  .server-row,
+  .user-row {
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .primary-button {
+    background: linear-gradient(135deg, #3b82f6, #7c3aed);
+  }
+}
+
+body[data-theme="green"] {
+  .app-shell {
+    background:
+      radial-gradient(circle at 14% 44%, rgba(64, 176, 84, 0.32), transparent 24%),
+      radial-gradient(circle at 78% 22%, rgba(157, 210, 91, 0.34), transparent 20%),
+      linear-gradient(135deg, #dbe9d4, #f3f7ea 48%, #c8d8bf);
+  }
+
+  .brand-mark,
+  .primary-button,
+  .empty-icon {
+    background:
+      radial-gradient(circle at 28% 10%, rgba(255, 255, 255, 0.42), transparent 16%),
+      linear-gradient(135deg, #2fa84f, #7dbd39);
+    box-shadow: 0 18px 34px rgba(67, 132, 60, 0.28);
+  }
+
+  .nav-button.active,
+  .server-tabs button.active {
+    color: #1f6f3c;
+    background: rgba(232, 248, 221, 0.9);
+  }
+
+  .summary-tile strong,
+  .metric-tile strong {
+    color: #1f7a43;
+  }
+
+  .server-state.online {
+    background: #45c46c;
   }
 }

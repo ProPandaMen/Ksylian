@@ -1,6 +1,7 @@
 export type ServerState = "online" | "deploying" | "offline";
-export type TabId = "servers" | "monitoring" | "modpacks" | "settings";
+export type TabId = "servers" | "monitoring" | "modpacks" | "users" | "settings";
 export type MinecraftServerType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "paper" | "purpur";
+export type ThemeName = "pink" | "black" | "white" | "green";
 
 export interface NewServerDraft {
   name: string;
@@ -77,6 +78,35 @@ export interface SettingsPayload {
   has_curseforge_api_key: boolean;
   curseforge_api_key_mask: string;
   agent: AgentStatus;
+}
+
+export interface AuthStatusPayload {
+  has_users: boolean;
+  bootstrap_required: boolean;
+}
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  display_name: string;
+  role: "admin" | "member";
+  theme: ThemeName;
+  created_at: string;
+}
+
+export interface AuthSessionPayload {
+  token: string;
+  user: AuthUser;
+}
+
+export interface UserInvite {
+  id: string;
+  token: string;
+  role: "admin" | "member";
+  created_at: string;
+  expires_at: string;
+  used_at: string;
+  invited_by: string;
 }
 
 export interface UpdateStatusPayload {

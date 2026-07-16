@@ -3,14 +3,20 @@ from __future__ import annotations
 import os
 import json
 import re
+import base64
+import hashlib
+import hmac
+import secrets
+import time
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 
@@ -84,6 +90,64 @@ class SettingsPayload(BaseModel):
 
 class UpdateSettingsRequest(BaseModel):
     curseforge_api_key: str = ""
+
+
+ThemeName = Literal["pink", "black", "white", "green"]
+UserRole = Literal["admin", "member"]
+
+
+class AuthStatusPayload(BaseModel):
+    has_users: bool
+    bootstrap_required: bool
+
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class BootstrapAdminRequest(AuthRequest):
+    display_name: str = ""
+    theme: ThemeName = "pink"
+
+
+class InviteRegistrationRequest(AuthRequest):
+    token: str
+    display_name: str = ""
+    theme: ThemeName = "pink"
+
+
+class AuthUser(BaseModel):
+    id: str
+    username: str
+    display_name: str
+    role: UserRole
+    theme: ThemeName = "pink"
+    created_at: str
+
+
+class AuthSessionPayload(BaseModel):
+    token: str
+    user: AuthUser
+
+
+class ThemeUpdateRequest(BaseModel):
+    theme: ThemeName
+
+
+class UserInvite(BaseModel):
+    id: str
+    token: str
+    role: UserRole = "member"
+    created_at: str
+    expires_at: str
+    used_at: str = ""
+    invited_by: str = ""
+
+
+class CreateInviteRequest(BaseModel):
+    role: UserRole = "member"
+    ttl_hours: int = 24
 
 
 class UpdateStatusPayload(BaseModel):
@@ -222,9 +286,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+PUBLIC_API_PATHS = {
+    "/api/auth/status",
+    "/api/auth/bootstrap",
+    "/api/auth/login",
+    "/api/auth/register-invite",
+}
+
 AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
 AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 SETTINGS_PATH = Path(os.getenv("KSYLIAN_SETTINGS_PATH", "/data/settings.json"))
+USERS_PATH = Path(os.getenv("KSYLIAN_USERS_PATH", "/data/users.json"))
+AUTH_SECRET = os.getenv("KSYLIAN_AUTH_SECRET", "")
+SESSION_TTL_SECONDS = int(os.getenv("KSYLIAN_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 14)))
 BUILD_VERSION = os.getenv("KSYLIAN_BUILD_VERSION", "dev")
 BUILD_SHA = os.getenv("KSYLIAN_BUILD_SHA", "local")
 RELEASE_REPOSITORY = os.getenv("KSYLIAN_RELEASE_REPOSITORY", "ProPandaMen/Ksylian")
@@ -306,6 +380,160 @@ files: list[FileItem] = [
     FileItem(name="server.properties", meta="1.2 KB", kind="file"),
     FileItem(name="latest.log", meta="284 KB", kind="file"),
 ]
+
+
+def utc_now() -> int:
+    return int(time.time())
+
+
+def iso_now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def auth_secret() -> str:
+    if AUTH_SECRET:
+        return AUTH_SECRET
+    fallback = load_settings().get("auth_secret", "")
+    if fallback:
+        return fallback
+    fallback = secrets.token_urlsafe(48)
+    settings = load_settings()
+    settings["auth_secret"] = fallback
+    save_settings(settings)
+    return fallback
+
+
+def load_user_store() -> dict:
+    if not USERS_PATH.exists():
+        return {"users": [], "invites": []}
+    try:
+        data = json.loads(USERS_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {"users": [], "invites": []}
+    if not isinstance(data, dict):
+        return {"users": [], "invites": []}
+    users = data.get("users") if isinstance(data.get("users"), list) else []
+    invites = data.get("invites") if isinstance(data.get("invites"), list) else []
+    return {"users": users, "invites": invites}
+
+
+def save_user_store(data: dict) -> None:
+    USERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    USERS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    USERS_PATH.chmod(0o600)
+
+
+def stored_users() -> list[dict]:
+    return [item for item in load_user_store().get("users", []) if isinstance(item, dict)]
+
+
+def user_public(user: dict) -> AuthUser:
+    return AuthUser(
+        id=str(user.get("id") or ""),
+        username=str(user.get("username") or ""),
+        display_name=str(user.get("display_name") or user.get("username") or ""),
+        role=str(user.get("role") or "member"),  # type: ignore[arg-type]
+        theme=str(user.get("theme") or "pink"),  # type: ignore[arg-type]
+        created_at=str(user.get("created_at") or ""),
+    )
+
+
+def normalize_username(username: str) -> str:
+    value = username.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_.-]{3,32}", value):
+        raise HTTPException(status_code=400, detail="Username must be 3-32 latin characters")
+    return value
+
+
+def validate_password(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must contain at least 8 characters")
+
+
+def hash_password(password: str, salt: str | None = None) -> str:
+    salt_bytes = base64.urlsafe_b64decode(salt.encode()) if salt else secrets.token_bytes(18)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt_bytes, 210_000)
+    salt_value = base64.urlsafe_b64encode(salt_bytes).decode()
+    digest_value = base64.urlsafe_b64encode(digest).decode()
+    return f"pbkdf2_sha256${salt_value}${digest_value}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, salt, digest = stored_hash.split("$", 2)
+    except ValueError:
+        return False
+    if algorithm != "pbkdf2_sha256":
+        return False
+    expected = hash_password(password, salt).split("$", 2)[2]
+    return hmac.compare_digest(expected, digest)
+
+
+def create_token(user_id: str) -> str:
+    expires_at = utc_now() + SESSION_TTL_SECONDS
+    nonce = secrets.token_urlsafe(12)
+    payload = f"{user_id}.{expires_at}.{nonce}"
+    signature = hmac.new(auth_secret().encode(), payload.encode(), hashlib.sha256).digest()
+    return f"{payload}.{base64.urlsafe_b64encode(signature).decode().rstrip('=')}"
+
+
+def user_from_token(token: str) -> dict | None:
+    parts = token.split(".")
+    if len(parts) != 4:
+        return None
+    user_id, expires_at_raw, nonce, signature = parts
+    payload = f"{user_id}.{expires_at_raw}.{nonce}"
+    expected = base64.urlsafe_b64encode(
+        hmac.new(auth_secret().encode(), payload.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    if not hmac.compare_digest(expected, signature):
+        return None
+    try:
+        expires_at = int(expires_at_raw)
+    except ValueError:
+        return None
+    if expires_at < utc_now():
+        return None
+    return next((user for user in stored_users() if str(user.get("id")) == user_id), None)
+
+
+def current_user_from_request(request: Request) -> dict | None:
+    auth_header = request.headers.get("authorization", "")
+    scheme, _, token = auth_header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return user_from_token(token)
+
+
+def require_current_user(request: Request) -> dict:
+    user = getattr(request.state, "user", None) or current_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+
+def require_admin_user(request: Request) -> dict:
+    user = require_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin permissions required")
+    return user
+
+
+@app.middleware("http")
+async def require_auth_for_api(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith("/api/") or path in PUBLIC_API_PATHS:
+        return await call_next(request)
+
+    if not stored_users():
+        return JSONResponse(status_code=401, content={"detail": "Bootstrap admin account is required"})
+
+    user = current_user_from_request(request)
+    if user is None:
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+    request.state.user = user
+    return await call_next(request)
 
 
 def agent_headers() -> dict[str, str]:
@@ -715,6 +943,134 @@ def get_server(server_id: str) -> GameServer:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "ksylian-backend"}
+
+
+@app.get("/api/auth/status", response_model=AuthStatusPayload)
+def auth_status() -> AuthStatusPayload:
+    has_users = bool(stored_users())
+    return AuthStatusPayload(has_users=has_users, bootstrap_required=not has_users)
+
+
+@app.post("/api/auth/bootstrap", response_model=AuthSessionPayload)
+def bootstrap_admin(payload: BootstrapAdminRequest) -> AuthSessionPayload:
+    store = load_user_store()
+    if store.get("users"):
+        raise HTTPException(status_code=409, detail="Admin account already exists")
+
+    username = normalize_username(payload.username)
+    validate_password(payload.password)
+    user = {
+        "id": secrets.token_urlsafe(10),
+        "username": username,
+        "display_name": payload.display_name.strip() or username,
+        "role": "admin",
+        "theme": payload.theme,
+        "password_hash": hash_password(payload.password),
+        "created_at": iso_now(),
+    }
+    store["users"] = [user]
+    store["invites"] = []
+    save_user_store(store)
+    append_log(f"auth: admin account created for {username}")
+    return AuthSessionPayload(token=create_token(user["id"]), user=user_public(user))
+
+
+@app.post("/api/auth/login", response_model=AuthSessionPayload)
+def login(payload: AuthRequest) -> AuthSessionPayload:
+    username = normalize_username(payload.username)
+    user = next((item for item in stored_users() if item.get("username") == username), None)
+    if not user or not verify_password(payload.password, str(user.get("password_hash") or "")):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    return AuthSessionPayload(token=create_token(str(user["id"])), user=user_public(user))
+
+
+@app.get("/api/auth/me", response_model=AuthUser)
+def me(user: dict = Depends(require_current_user)) -> AuthUser:
+    return user_public(user)
+
+
+@app.put("/api/auth/me/theme", response_model=AuthUser)
+def update_my_theme(payload: ThemeUpdateRequest, user: dict = Depends(require_current_user)) -> AuthUser:
+    store = load_user_store()
+    for item in store.get("users", []):
+        if isinstance(item, dict) and item.get("id") == user.get("id"):
+            item["theme"] = payload.theme
+            save_user_store(store)
+            return user_public(item)
+    raise HTTPException(status_code=404, detail="User not found")
+
+
+@app.post("/api/auth/register-invite", response_model=AuthSessionPayload)
+def register_invite(payload: InviteRegistrationRequest) -> AuthSessionPayload:
+    store = load_user_store()
+    invite = next(
+        (
+            item
+            for item in store.get("invites", [])
+            if isinstance(item, dict) and item.get("token") == payload.token and not item.get("used_at")
+        ),
+        None,
+    )
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite was not found")
+    try:
+        expires_at = datetime.fromisoformat(str(invite.get("expires_at") or ""))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Invite is invalid") from error
+    if expires_at < datetime.now():
+        raise HTTPException(status_code=410, detail="Invite has expired")
+
+    username = normalize_username(payload.username)
+    validate_password(payload.password)
+    if any(user.get("username") == username for user in store.get("users", []) if isinstance(user, dict)):
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    user = {
+        "id": secrets.token_urlsafe(10),
+        "username": username,
+        "display_name": payload.display_name.strip() or username,
+        "role": invite.get("role") or "member",
+        "theme": payload.theme,
+        "password_hash": hash_password(payload.password),
+        "created_at": iso_now(),
+    }
+    store["users"].append(user)
+    invite["used_at"] = iso_now()
+    save_user_store(store)
+    append_log(f"auth: invite accepted by {username}")
+    return AuthSessionPayload(token=create_token(user["id"]), user=user_public(user))
+
+
+@app.get("/api/users", response_model=list[AuthUser])
+def list_users(_: dict = Depends(require_admin_user)) -> list[AuthUser]:
+    return [user_public(user) for user in stored_users()]
+
+
+@app.get("/api/users/invites", response_model=list[UserInvite])
+def list_invites(_: dict = Depends(require_admin_user)) -> list[UserInvite]:
+    invites = []
+    for item in load_user_store().get("invites", []):
+        if isinstance(item, dict):
+            invites.append(UserInvite(**item))
+    return invites
+
+
+@app.post("/api/users/invites", response_model=UserInvite)
+def create_invite(payload: CreateInviteRequest, user: dict = Depends(require_admin_user)) -> UserInvite:
+    ttl_hours = min(max(payload.ttl_hours, 1), 24 * 14)
+    invite = UserInvite(
+        id=secrets.token_urlsafe(8),
+        token=secrets.token_urlsafe(24),
+        role=payload.role,
+        created_at=iso_now(),
+        expires_at=datetime.fromtimestamp(time.time() + ttl_hours * 3600).isoformat(timespec="seconds"),
+        invited_by=str(user.get("id") or ""),
+    )
+    store = load_user_store()
+    store.setdefault("invites", []).insert(0, invite.model_dump())
+    save_user_store(store)
+    append_log(f"auth: invite created by {user.get('username')}")
+    return invite
 
 
 @app.get("/api/dashboard", response_model=DashboardPayload)
