@@ -265,7 +265,7 @@ def agent_get(path: str) -> httpx.Response:
 def agent_post(path: str, json: dict | None = None) -> httpx.Response:
     if not AGENT_URL:
         raise RuntimeError("Agent is not configured")
-    return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=90)
+    return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=240)
 
 
 def agent_delete(path: str) -> httpx.Response:
@@ -526,7 +526,7 @@ def create_server(payload: CreateServerRequest) -> GameServer:
             })
             response.raise_for_status()
             server = GameServer(**response.json())
-            append_log(f"{server.name}: server scaffold created by agent")
+            append_log(f"{server.name}: server provisioned by agent")
             return server
         except Exception as error:
             append_log(f"agent create failed for {payload.name}: {error}")

@@ -318,9 +318,9 @@ async function createServer() {
     newServer.value = { name: "", type: "vanilla", version: "1.20.1" };
     await loadDashboard();
     await router.push("/servers");
-    showToast("Каркас сервера создан", "success");
+    showToast("Сервер создан и готов к запуску", "success");
   } catch (error) {
-    showToast("Не удалось создать каркас сервера", "error");
+    showToast("Не удалось подготовить сервер", "error");
     console.error(error);
   }
 }

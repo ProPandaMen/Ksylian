@@ -3,10 +3,13 @@ from __future__ import annotations
 import os
 import json
 import re
+import shutil
 import socket
 import subprocess
 import tarfile
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -132,6 +135,9 @@ DISABLED_SERVERS_FILE = DATA_DIR / "disabled-servers.json"
 SERVERS_FILE = DATA_DIR / "servers.json"
 SERVER_ROOT = Path(os.getenv("KSYLIAN_SERVER_ROOT", "/opt/ksylian/servers"))
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
+MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+PAPER_API_URL = "https://api.papermc.io/v2/projects/paper"
+SYSTEMD_DIR = Path("/etc/systemd/system")
 
 app = FastAPI(title="Ksylian Host Agent", version="0.1.0")
 
@@ -260,22 +266,164 @@ def write_server_scaffold(server: StoredServer) -> None:
     (server_path / "mods").mkdir(exist_ok=True)
     (server_path / "logs").mkdir(exist_ok=True)
     (server_path / "world").mkdir(exist_ok=True)
-    (server_path / "eula.txt").write_text("eula=true\n")
-    (server_path / "server.properties").write_text(
-        "\n".join(
-            [
-                f"server-port={server.port}",
-                f"motd={server.name}",
-                "enable-query=false",
-                "online-mode=true",
-                "max-players=20",
-                "view-distance=10",
-                "simulation-distance=10",
-                "",
-            ]
+    eula_path = server_path / "eula.txt"
+    if not eula_path.exists():
+        eula_path.write_text("eula=true\n")
+
+    properties_path = server_path / "server.properties"
+    if not properties_path.exists():
+        properties_path.write_text(
+            "\n".join(
+                [
+                    f"server-port={server.port}",
+                    f"motd={server.name}",
+                    "enable-query=false",
+                    "online-mode=true",
+                    "max-players=20",
+                    "view-distance=10",
+                    "simulation-distance=10",
+                    "",
+                ]
+            )
         )
-    )
     (server_path / "ksylian.json").write_text(json.dumps(server.model_dump(), ensure_ascii=False, indent=2))
+
+
+def request_json(url: str, timeout: int = 30) -> dict:
+    request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        raise HTTPException(status_code=502, detail=f"Download metadata request failed: HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise HTTPException(status_code=502, detail=f"Download metadata request failed: {error}") from error
+
+
+def download_file(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(f"{destination.suffix}.tmp")
+    request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as file:
+            shutil.copyfileobj(response, file)
+        temporary.replace(destination)
+    except urllib.error.HTTPError as error:
+        temporary.unlink(missing_ok=True)
+        raise HTTPException(status_code=502, detail=f"Server jar download failed: HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        temporary.unlink(missing_ok=True)
+        raise HTTPException(status_code=502, detail=f"Server jar download failed: {error}") from error
+
+
+def download_vanilla_server_jar(version: str, destination: Path) -> None:
+    manifest = request_json(MINECRAFT_VERSION_MANIFEST_URL)
+    versions = manifest.get("versions")
+    if not isinstance(versions, list):
+        raise HTTPException(status_code=502, detail="Minecraft version manifest is invalid")
+
+    version_url = ""
+    for item in versions:
+        if isinstance(item, dict) and item.get("id") == version:
+            version_url = str(item.get("url") or "")
+            break
+    if not version_url:
+        raise HTTPException(status_code=404, detail=f"Minecraft version {version} was not found")
+
+    metadata = request_json(version_url)
+    server_download = metadata.get("downloads", {}).get("server", {})
+    server_url = str(server_download.get("url") or "")
+    if not server_url:
+        raise HTTPException(status_code=404, detail=f"Server jar for Minecraft {version} was not found")
+
+    download_file(server_url, destination)
+
+
+def download_paper_server_jar(version: str, destination: Path) -> None:
+    builds_metadata = request_json(f"{PAPER_API_URL}/versions/{version}/builds")
+    builds = builds_metadata.get("builds")
+    if not isinstance(builds, list) or not builds:
+        raise HTTPException(status_code=404, detail=f"Paper build for Minecraft {version} was not found")
+
+    build = max(
+        (item for item in builds if isinstance(item, dict) and isinstance(item.get("build"), int)),
+        key=lambda item: item["build"],
+        default=None,
+    )
+    if not build:
+        raise HTTPException(status_code=404, detail=f"Paper build for Minecraft {version} was not found")
+
+    file_name = build.get("downloads", {}).get("application", {}).get("name")
+    build_number = build.get("build")
+    if not isinstance(file_name, str):
+        raise HTTPException(status_code=502, detail="Paper build metadata is invalid")
+
+    download_file(f"{PAPER_API_URL}/versions/{version}/builds/{build_number}/downloads/{file_name}", destination)
+
+
+def download_server_jar(server: StoredServer) -> None:
+    destination = Path(server.path) / "server.jar"
+    if server.type == "vanilla":
+        download_vanilla_server_jar(server.version, destination)
+        return
+    if server.type in {"paper", "purpur"}:
+        download_paper_server_jar(server.version, destination)
+        return
+    raise HTTPException(status_code=400, detail=f"Server type {server.type} cannot be provisioned")
+
+
+def java_binary() -> str:
+    binary = shutil.which("java")
+    if not binary:
+        raise HTTPException(status_code=500, detail="Java is not installed on this host")
+    return binary
+
+
+def write_systemd_unit(server: StoredServer) -> None:
+    unit_path = SYSTEMD_DIR / server.service
+    content = "\n".join(
+        [
+            "[Unit]",
+            f"Description=Ksylian Minecraft Server {server.name}",
+            "After=network.target",
+            "",
+            "[Service]",
+            "Type=simple",
+            "User=root",
+            f"WorkingDirectory={server.path}",
+            f"ExecStart={java_binary()} -Xms1G -Xmx2G -jar server.jar nogui",
+            "Restart=on-failure",
+            "RestartSec=10",
+            "SuccessExitStatus=0 143",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )
+    unit_path.write_text(content)
+
+    daemon_reload = run(["systemctl", "daemon-reload"], timeout=30)
+    if daemon_reload.returncode != 0:
+        raise HTTPException(status_code=500, detail=daemon_reload.stderr.strip() or "systemctl daemon-reload failed")
+
+    enable = run(["systemctl", "enable", server.service], timeout=30)
+    if enable.returncode != 0:
+        raise HTTPException(status_code=500, detail=enable.stderr.strip() or "systemctl enable failed")
+
+
+def ensure_server_provisioned(server: StoredServer) -> None:
+    if not server.managed:
+        return
+
+    write_server_scaffold(server)
+    jar_path = Path(server.path) / "server.jar"
+    if not jar_path.exists():
+        download_server_jar(server)
+
+    unit_path = SYSTEMD_DIR / server.service
+    if not unit_path.exists():
+        write_systemd_unit(server)
 
 
 def systemctl_issue_can_be_ignored(result: subprocess.CompletedProcess[str]) -> bool:
@@ -542,7 +690,7 @@ def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None
         created_at=datetime.now().isoformat(timespec="seconds"),
         managed=True,
     )
-    write_server_scaffold(server)
+    ensure_server_provisioned(server)
     store[server.id] = server
     save_server_store(store)
     return to_agent_server(server.id)
@@ -624,6 +772,9 @@ def action(
     config = load_server_store().get(server_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
+
+    if action in {"start", "restart"}:
+        ensure_server_provisioned(config)
 
     if action in {"start", "restart", "stop"}:
         result = run(["systemctl", action, config.service], timeout=60)
