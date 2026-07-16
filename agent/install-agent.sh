@@ -3,6 +3,14 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/ksylian-agent}"
 SERVICE_FILE="/etc/systemd/system/ksylian-agent.service"
+
+if [[ -f ".env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
 TOKEN="${KSYLIAN_AGENT_TOKEN:-}"
 
 if [[ -z "$TOKEN" ]]; then
