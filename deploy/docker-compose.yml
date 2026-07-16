@@ -14,6 +14,7 @@ services:
       KSYLIAN_BUILD_VERSION: "${KSYLIAN_BUILD_VERSION:-dev}"
       KSYLIAN_BUILD_SHA: "${KSYLIAN_BUILD_SHA:-local}"
       KSYLIAN_RELEASE_REPOSITORY: "${KSYLIAN_RELEASE_REPOSITORY:-ProPandaMen/Ksylian}"
+      KSYLIAN_GITHUB_TOKEN: "${KSYLIAN_GITHUB_TOKEN:-}"
       CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY:-}"
     volumes:
       - ksylian-backend-data:/data

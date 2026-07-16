@@ -229,6 +229,7 @@ BUILD_VERSION = os.getenv("KSYLIAN_BUILD_VERSION", "dev")
 BUILD_SHA = os.getenv("KSYLIAN_BUILD_SHA", "local")
 RELEASE_REPOSITORY = os.getenv("KSYLIAN_RELEASE_REPOSITORY", "ProPandaMen/Ksylian")
 GITHUB_API_BASE_URL = os.getenv("KSYLIAN_GITHUB_API_URL", "https://api.github.com").rstrip("/")
+GITHUB_TOKEN = os.getenv("KSYLIAN_GITHUB_TOKEN", "")
 CURSEFORGE_BASE_URL = "https://api.curseforge.com"
 MINECRAFT_GAME_ID = 432
 CURSEFORGE_CLASS_IDS = {"mods": 6, "modpacks": 4471}
@@ -513,13 +514,17 @@ def is_newer_version(candidate: str, current: str) -> bool:
 
 
 def github_get(path: str) -> dict | list:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Ksylian-Backend/0.1",
+    }
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
     try:
         response = httpx.get(
             f"{GITHUB_API_BASE_URL}{path}",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "Ksylian-Backend/0.1",
-            },
+            headers=headers,
             timeout=20,
         )
         response.raise_for_status()
@@ -566,13 +571,24 @@ def release_notes(tag: str) -> tuple[str, str]:
 
 def update_status_payload() -> UpdateStatusPayload:
     current_version = normalize_version(BUILD_VERSION)
-    latest_version, latest_sha = latest_github_tag()
-    notes, release_url = release_notes(latest_version)
+    check_error = ""
+    try:
+        latest_version, latest_sha = latest_github_tag()
+        notes, release_url = release_notes(latest_version)
+    except HTTPException as error:
+        latest_version = ""
+        latest_sha = ""
+        release_url = f"https://github.com/{RELEASE_REPOSITORY}/releases"
+        notes = "Не удалось проверить GitHub releases. Если репозиторий приватный, укажи KSYLIAN_GITHUB_TOKEN для backend."
+        check_error = str(error.detail)
+
     agent = current_agent_status()
     update_available = is_newer_version(latest_version, current_version)
 
     if not AGENT_URL:
         updater_status: Literal["ready", "agent_unavailable", "not_configured", "unknown"] = "not_configured"
+    elif check_error:
+        updater_status = "unknown"
     elif not agent.available:
         updater_status = "agent_unavailable"
     else:
