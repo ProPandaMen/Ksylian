@@ -25,15 +25,6 @@ const activeTab = computed<TabId>(() => {
 });
 
 const activeTabCopy = computed(() => tabCopy[activeTab.value]);
-const pageEyebrow = computed(() => {
-  if (route.name === "server-detail") {
-    return "server control";
-  }
-  if (route.name === "server-new") {
-    return "new instance";
-  }
-  return activeTabCopy.value.eyebrow;
-});
 const pageTitle = computed(() => {
   if (route.name === "server-detail" && store.selectedServer.value) {
     return store.selectedServer.value.name;
@@ -71,7 +62,6 @@ onMounted(() => {
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">{{ pageEyebrow }}</p>
           <h1>{{ pageTitle }}</h1>
         </div>
       </header>
