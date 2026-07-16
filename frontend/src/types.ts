@@ -79,6 +79,25 @@ export interface SettingsPayload {
   agent: AgentStatus;
 }
 
+export interface UpdateStatusPayload {
+  current_version: string;
+  current_sha: string;
+  latest_version: string;
+  latest_sha: string;
+  update_available: boolean;
+  checked_at: string;
+  release_url: string;
+  notes: string;
+  can_update: boolean;
+  updater_status: "ready" | "agent_unavailable" | "not_configured" | "unknown";
+}
+
+export interface ApplyUpdateResult {
+  ok: boolean;
+  message: string;
+  target_version: string;
+}
+
 export interface ServerConfigPayload {
   content: string;
 }

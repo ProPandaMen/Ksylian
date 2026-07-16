@@ -27,6 +27,9 @@ User=root
 WorkingDirectory=$APP_DIR
 Environment=KSYLIAN_AGENT_TOKEN=$TOKEN
 Environment=KSYLIAN_BACKUP_DIR=/mnt/hdd/ksylian-backups
+Environment=KSYLIAN_APP_DIR=${KSYLIAN_APP_DIR:-/opt/ksylian}
+Environment=KSYLIAN_ENV_FILE=${KSYLIAN_ENV_FILE:-/opt/ksylian/deploy/.env}
+Environment=KSYLIAN_COMPOSE_FILE=${KSYLIAN_COMPOSE_FILE:-/opt/ksylian/deploy/docker-compose.yml}
 ExecStart=$APP_DIR/.venv/bin/uvicorn ksylian_agent:app --host 0.0.0.0 --port 8765
 Restart=always
 RestartSec=3

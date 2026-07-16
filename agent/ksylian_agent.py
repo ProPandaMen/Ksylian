@@ -4,6 +4,7 @@ import os
 import json
 import re
 import shutil
+import shlex
 import socket
 import subprocess
 import tarfile
@@ -60,6 +61,16 @@ class AgentActionResult(BaseModel):
 
 class ServerConfigPayload(BaseModel):
     content: str
+
+
+class AppUpdateRequest(BaseModel):
+    target_version: str
+
+
+class AppUpdateResult(BaseModel):
+    ok: bool
+    message: str
+    target_version: str
 
 
 class MetricUsage(BaseModel):
@@ -138,6 +149,10 @@ DATA_DIR = Path(os.getenv("KSYLIAN_DATA_DIR", "/var/lib/ksylian-agent"))
 DISABLED_SERVERS_FILE = DATA_DIR / "disabled-servers.json"
 SERVERS_FILE = DATA_DIR / "servers.json"
 SERVER_ROOT = Path(os.getenv("KSYLIAN_SERVER_ROOT", "/opt/ksylian/servers"))
+APP_DIR = Path(os.getenv("KSYLIAN_APP_DIR", "/opt/ksylian"))
+APP_ENV_FILE = Path(os.getenv("KSYLIAN_ENV_FILE", str(APP_DIR / "deploy/.env")))
+APP_COMPOSE_FILE = Path(os.getenv("KSYLIAN_COMPOSE_FILE", str(APP_DIR / "deploy/docker-compose.yml")))
+UPDATE_LOG = DATA_DIR / "update.log"
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 PAPER_API_URL = "https://api.papermc.io/v2/projects/paper"
@@ -153,6 +168,63 @@ def require_token(x_ksylian_token: str | None = Header(default=None)) -> None:
 
 def run(command: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def append_update_log(message: str) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with UPDATE_LOG.open("a") as file:
+        file.write(f"[{timestamp}] {message}\n")
+
+
+def validate_update_target(target_version: str) -> str:
+    target = target_version.strip()
+    if not re.fullmatch(r"v[0-9][0-9A-Za-z._-]*", target):
+        raise HTTPException(status_code=400, detail="Target version must be a release tag like v0.6.0")
+    return target
+
+
+def ensure_updater_configured() -> None:
+    if not APP_DIR.exists() or not (APP_DIR / ".git").exists():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ksylian app directory is not configured or is not a git repository: {APP_DIR}",
+        )
+    if not APP_COMPOSE_FILE.exists():
+        raise HTTPException(status_code=409, detail=f"Docker compose file was not found: {APP_COMPOSE_FILE}")
+
+
+def update_script_path() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    script_path = DATA_DIR / "apply-update.sh"
+    script_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'TARGET_VERSION="$1"',
+                f"APP_DIR={shlex.quote(str(APP_DIR))}",
+                f"ENV_FILE={shlex.quote(str(APP_ENV_FILE))}",
+                f"COMPOSE_FILE={shlex.quote(str(APP_COMPOSE_FILE))}",
+                f"LOG_FILE={shlex.quote(str(UPDATE_LOG))}",
+                'log() { printf "[%s] %s\\n" "$(date +%F\\ %T)" "$*" >> "$LOG_FILE"; }',
+                'log "Starting update to ${TARGET_VERSION}"',
+                'cd "$APP_DIR"',
+                "git fetch --tags origin",
+                'git checkout --force "$TARGET_VERSION"',
+                'SHA="$(git rev-parse --short HEAD)"',
+                'test -f "$ENV_FILE" || cp deploy/.env.example "$ENV_FILE"',
+                'sed -i "s/^KSYLIAN_BUILD_VERSION=.*/KSYLIAN_BUILD_VERSION=${TARGET_VERSION}/" "$ENV_FILE"',
+                'sed -i "s/^KSYLIAN_BUILD_SHA=.*/KSYLIAN_BUILD_SHA=${SHA}/" "$ENV_FILE"',
+                'docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build',
+                "docker image prune -f >/dev/null || true",
+                'log "Update to ${TARGET_VERSION} completed (${SHA})"',
+                "",
+            ]
+        )
+    )
+    script_path.chmod(0o700)
+    return script_path
 
 
 def disabled_server_ids() -> set[str]:
@@ -665,6 +737,34 @@ def restart_agent(x_ksylian_token: str | None = Header(default=None)) -> dict[st
     require_token(x_ksylian_token)
     subprocess.Popen(["systemctl", "restart", "ksylian-agent.service"])
     return {"ok": True}
+
+
+@app.get("/app/update/log", response_model=list[str])
+def app_update_log(x_ksylian_token: str | None = Header(default=None)) -> list[str]:
+    require_token(x_ksylian_token)
+    if not UPDATE_LOG.exists():
+        return []
+    return UPDATE_LOG.read_text().splitlines()[-120:]
+
+
+@app.post("/app/update", response_model=AppUpdateResult)
+def update_app(payload: AppUpdateRequest, x_ksylian_token: str | None = Header(default=None)) -> AppUpdateResult:
+    require_token(x_ksylian_token)
+    target_version = validate_update_target(payload.target_version)
+    ensure_updater_configured()
+    script_path = update_script_path()
+    append_update_log(f"Queued update to {target_version}")
+    subprocess.Popen(
+        ["bash", str(script_path), target_version],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return AppUpdateResult(
+        ok=True,
+        message="Обновление запущено. Панель перезапустится после сборки контейнеров.",
+        target_version=target_version,
+    )
 
 
 @app.get("/servers", response_model=list[AgentServer])

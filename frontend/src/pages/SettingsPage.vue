@@ -1,18 +1,23 @@
 <script setup lang="ts">
-import { RefreshCw, ShieldCheck } from "@lucide/vue";
-import type { SettingsPayload } from "../types";
+import { Download, RefreshCw, ShieldCheck } from "@lucide/vue";
+import type { SettingsPayload, UpdateStatusPayload } from "../types";
 
 defineProps<{
   settings: SettingsPayload;
+  updateStatus: UpdateStatusPayload;
   curseForgeApiKey: string;
   isSaving: boolean;
+  isUpdateLoading: boolean;
+  isApplyingUpdate: boolean;
 }>();
 
 const emit = defineEmits<{
   "update:curseForgeApiKey": [value: string];
   refresh: [];
   "refresh-agent": [];
+  "refresh-update": [];
   "restart-agent": [];
+  "apply-update": [];
   save: [];
   clear: [];
 }>();
@@ -93,7 +98,7 @@ const emit = defineEmits<{
           </div>
           <div>
             <dt>Deploy</dt>
-            <dd>GitHub tag → self-hosted runner</dd>
+            <dd>Self-update через agent</dd>
           </div>
           <div>
             <dt>Frontend port</dt>
@@ -104,6 +109,77 @@ const emit = defineEmits<{
             <dd>8090</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="settings-updates panel-lite" aria-label="Обновления Ksylian">
+        <div class="settings-section-head">
+          <div>
+            <p class="eyebrow">updates</p>
+            <h3>Обновления</h3>
+          </div>
+          <span
+            class="settings-status"
+            :class="{ connected: !updateStatus.update_available, warning: updateStatus.update_available }"
+          >
+            {{ updateStatus.update_available ? 'Доступно обновление' : 'Актуально' }}
+          </span>
+        </div>
+
+        <div class="update-version-grid">
+          <div>
+            <span>Текущая версия</span>
+            <strong>{{ updateStatus.current_version }} · {{ updateStatus.current_sha }}</strong>
+          </div>
+          <div>
+            <span>Последняя версия</span>
+            <strong>
+              {{ updateStatus.latest_version || 'не найдена' }}
+              <small v-if="updateStatus.latest_sha">· {{ updateStatus.latest_sha }}</small>
+            </strong>
+          </div>
+        </div>
+
+        <p class="settings-hint">
+          Сервер сам проверяет GitHub tags и может обновиться до выбранного release без GitHub Actions runner.
+        </p>
+
+        <p v-if="updateStatus.updater_status !== 'ready'" class="settings-hint danger">
+          Updater пока не готов:
+          {{
+            updateStatus.updater_status === 'agent_unavailable'
+              ? 'Host Agent недоступен'
+              : updateStatus.updater_status === 'not_configured'
+                ? 'Host Agent не настроен'
+                : 'статус неизвестен'
+          }}.
+        </p>
+
+        <p v-if="updateStatus.notes" class="update-notes">{{ updateStatus.notes }}</p>
+
+        <div class="form-actions">
+          <a
+            v-if="updateStatus.release_url"
+            class="ghost-button"
+            :href="updateStatus.release_url"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Release
+          </a>
+          <button class="ghost-button" type="button" :disabled="isUpdateLoading" @click="emit('refresh-update')">
+            <RefreshCw :size="17" />
+            <span>{{ isUpdateLoading ? 'Проверяю' : 'Проверить' }}</span>
+          </button>
+          <button
+            class="primary-button"
+            type="button"
+            :disabled="!updateStatus.can_update || isApplyingUpdate"
+            @click="emit('apply-update')"
+          >
+            <Download :size="17" />
+            <span>{{ isApplyingUpdate ? 'Запускаю' : 'Обновить' }}</span>
+          </button>
+        </div>
       </section>
 
       <section class="settings-agent panel-lite" aria-label="Host Agent">

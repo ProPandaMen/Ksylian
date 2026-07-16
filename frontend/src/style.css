@@ -2075,7 +2075,8 @@ h3 {
   align-items: start;
 }
 
-.settings-agent {
+.settings-agent,
+.settings-updates {
   grid-column: 1 / -1;
 }
 
@@ -2118,6 +2119,11 @@ h3 {
 .settings-status.connected {
   color: #176a50;
   background: rgba(222, 250, 236, 0.82);
+}
+
+.settings-status.warning {
+  color: #9a5b04;
+  background: rgba(255, 242, 214, 0.9);
 }
 
 .settings-current {
@@ -2194,6 +2200,56 @@ h3 {
 
 .settings-summary dd {
   text-align: right;
+}
+
+.update-version-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.update-version-grid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.54);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.update-version-grid span,
+.update-version-grid strong {
+  display: block;
+}
+
+.update-version-grid span {
+  color: #8f7d8c;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.update-version-grid strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #3f2d3d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-version-grid small {
+  color: #8f7d8c;
+}
+
+.update-notes {
+  max-height: 120px;
+  padding: 12px;
+  overflow: auto;
+  color: #6f566a;
+  border: 1px solid rgba(255, 255, 255, 0.54);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.38);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .form-actions {
@@ -2335,6 +2391,10 @@ h3 {
   }
 
   .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .update-version-grid {
     grid-template-columns: 1fr;
   }
 

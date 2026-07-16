@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -83,6 +84,29 @@ class SettingsPayload(BaseModel):
 
 class UpdateSettingsRequest(BaseModel):
     curseforge_api_key: str = ""
+
+
+class UpdateStatusPayload(BaseModel):
+    current_version: str
+    current_sha: str
+    latest_version: str = ""
+    latest_sha: str = ""
+    update_available: bool = False
+    checked_at: str
+    release_url: str = ""
+    notes: str = ""
+    can_update: bool = False
+    updater_status: Literal["ready", "agent_unavailable", "not_configured", "unknown"] = "unknown"
+
+
+class ApplyUpdateRequest(BaseModel):
+    target_version: str = ""
+
+
+class ApplyUpdateResult(BaseModel):
+    ok: bool
+    message: str
+    target_version: str = ""
 
 
 class ModItem(BaseModel):
@@ -201,6 +225,10 @@ app.add_middleware(
 AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
 AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 SETTINGS_PATH = Path(os.getenv("KSYLIAN_SETTINGS_PATH", "/data/settings.json"))
+BUILD_VERSION = os.getenv("KSYLIAN_BUILD_VERSION", "dev")
+BUILD_SHA = os.getenv("KSYLIAN_BUILD_SHA", "local")
+RELEASE_REPOSITORY = os.getenv("KSYLIAN_RELEASE_REPOSITORY", "ProPandaMen/Ksylian")
+GITHUB_API_BASE_URL = os.getenv("KSYLIAN_GITHUB_API_URL", "https://api.github.com").rstrip("/")
 CURSEFORGE_BASE_URL = "https://api.curseforge.com"
 MINECRAFT_GAME_ID = 432
 CURSEFORGE_CLASS_IDS = {"mods": 6, "modpacks": 4471}
@@ -466,6 +494,102 @@ def mask_secret(value: str) -> str:
     if len(value) <= 8:
         return "••••"
     return f"{value[:4]}••••{value[-4:]}"
+
+
+def normalize_version(value: str) -> str:
+    version = value.strip()
+    return version if version.startswith("v") or version == "dev" else f"v{version}"
+
+
+def version_key(value: str) -> tuple[int, ...]:
+    numbers = re.findall(r"\d+", value)
+    return tuple(int(number) for number in numbers[:4]) or (0,)
+
+
+def is_newer_version(candidate: str, current: str) -> bool:
+    if not candidate or current == "dev":
+        return bool(candidate)
+    return version_key(candidate) > version_key(current)
+
+
+def github_get(path: str) -> dict | list:
+    try:
+        response = httpx.get(
+            f"{GITHUB_API_BASE_URL}{path}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "Ksylian-Backend/0.1",
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as error:
+        raise HTTPException(status_code=502, detail=f"GitHub API returned {error.response.status_code}") from error
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=502, detail="GitHub API is unavailable") from error
+
+
+def latest_github_tag() -> tuple[str, str]:
+    data = github_get(f"/repos/{RELEASE_REPOSITORY}/tags?per_page=50")
+    if not isinstance(data, list):
+        raise HTTPException(status_code=502, detail="GitHub tags response is invalid")
+
+    tags: list[tuple[str, str]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "")
+        commit = item.get("commit") or {}
+        sha = str(commit.get("sha") or "") if isinstance(commit, dict) else ""
+        if name.startswith("v"):
+            tags.append((name, sha[:7]))
+
+    if not tags:
+        return "", ""
+
+    return sorted(tags, key=lambda item: version_key(item[0]), reverse=True)[0]
+
+
+def release_notes(tag: str) -> tuple[str, str]:
+    if not tag:
+        return "", ""
+    try:
+        data = github_get(f"/repos/{RELEASE_REPOSITORY}/releases/tags/{tag}")
+    except HTTPException:
+        return "", f"https://github.com/{RELEASE_REPOSITORY}/releases/tag/{tag}"
+
+    if not isinstance(data, dict):
+        return "", f"https://github.com/{RELEASE_REPOSITORY}/releases/tag/{tag}"
+    return str(data.get("body") or ""), str(data.get("html_url") or f"https://github.com/{RELEASE_REPOSITORY}/releases/tag/{tag}")
+
+
+def update_status_payload() -> UpdateStatusPayload:
+    current_version = normalize_version(BUILD_VERSION)
+    latest_version, latest_sha = latest_github_tag()
+    notes, release_url = release_notes(latest_version)
+    agent = current_agent_status()
+    update_available = is_newer_version(latest_version, current_version)
+
+    if not AGENT_URL:
+        updater_status: Literal["ready", "agent_unavailable", "not_configured", "unknown"] = "not_configured"
+    elif not agent.available:
+        updater_status = "agent_unavailable"
+    else:
+        updater_status = "ready"
+
+    return UpdateStatusPayload(
+        current_version=current_version,
+        current_sha=BUILD_SHA,
+        latest_version=latest_version,
+        latest_sha=latest_sha,
+        update_available=update_available,
+        checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        release_url=release_url,
+        notes=notes[:1600],
+        can_update=update_available and updater_status == "ready",
+        updater_status=updater_status,
+    )
 
 
 def curseforge_headers() -> dict[str, str]:
@@ -906,6 +1030,38 @@ def update_settings(payload: UpdateSettingsRequest) -> SettingsPayload:
         has_curseforge_api_key=bool(key),
         curseforge_api_key_mask=mask_secret(key),
         agent=current_agent_status(),
+    )
+
+
+@app.get("/api/update/status", response_model=UpdateStatusPayload)
+def get_update_status() -> UpdateStatusPayload:
+    return update_status_payload()
+
+
+@app.post("/api/update/apply", response_model=ApplyUpdateResult)
+def apply_update(payload: ApplyUpdateRequest) -> ApplyUpdateResult:
+    status = update_status_payload()
+    target_version = payload.target_version.strip() or status.latest_version
+    if not target_version:
+        raise HTTPException(status_code=409, detail="No release tag is available")
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is not configured")
+    if status.updater_status != "ready":
+        raise HTTPException(status_code=503, detail="Updater is not ready")
+
+    try:
+        response = agent_post("/app/update", json={"target_version": target_version})
+        response.raise_for_status()
+        data = response.json()
+    except Exception as error:
+        append_log(f"app update failed: {error}")
+        raise HTTPException(status_code=502, detail="Host agent update failed") from error
+
+    append_log(f"app update queued: {target_version}")
+    return ApplyUpdateResult(
+        ok=bool(data.get("ok", True)) if isinstance(data, dict) else True,
+        message=str(data.get("message") or "Обновление запущено") if isinstance(data, dict) else "Обновление запущено",
+        target_version=target_version,
     )
 
 

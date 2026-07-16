@@ -12,6 +12,7 @@ import type {
   ServerConfigPayload,
   ServerState,
   SettingsPayload,
+  UpdateStatusPayload,
 } from "../types";
 import { useToasts } from "./useToasts";
 
@@ -53,6 +54,8 @@ const isLoading = ref(true);
 const isDashboardLoaded = ref(false);
 const isMonitoringLoading = ref(false);
 const isSavingSettings = ref(false);
+const isUpdateLoading = ref(false);
+const isApplyingUpdate = ref(false);
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
 const selectedServerConfig = ref("");
@@ -65,6 +68,18 @@ const settings = ref<SettingsPayload>({
   has_curseforge_api_key: false,
   curseforge_api_key_mask: "",
   agent: defaultAgentStatus,
+});
+const updateStatus = ref<UpdateStatusPayload>({
+  current_version: "dev",
+  current_sha: "local",
+  latest_version: "",
+  latest_sha: "",
+  update_available: false,
+  checked_at: "",
+  release_url: "",
+  notes: "",
+  can_update: false,
+  updater_status: "unknown",
 });
 const monitoring = ref<HostMonitoring>({
   hostname: "server",
@@ -144,6 +159,20 @@ async function loadSettings() {
   } catch (error) {
     showToast("Не удалось загрузить настройки", "error");
     console.error(error);
+  }
+}
+
+async function loadUpdateStatus() {
+  const { showToast } = useToasts();
+  isUpdateLoading.value = true;
+
+  try {
+    updateStatus.value = await requestJson<UpdateStatusPayload>("/api/update/status");
+  } catch (error) {
+    showToast("Не удалось проверить обновления", "error");
+    console.error(error);
+  } finally {
+    isUpdateLoading.value = false;
   }
 }
 
@@ -352,6 +381,29 @@ async function restartAgent() {
   }
 }
 
+async function applyUpdate() {
+  const { showToast } = useToasts();
+  if (!updateStatus.value.latest_version) {
+    showToast("Нет доступного release tag для обновления", "error");
+    return;
+  }
+
+  isApplyingUpdate.value = true;
+  try {
+    const result = await requestJson<{ message: string; target_version: string }>("/api/update/apply", {
+      method: "POST",
+      body: JSON.stringify({ target_version: updateStatus.value.latest_version }),
+    });
+    showToast(result.message || `Обновление до ${result.target_version} запущено`, "success");
+    await loadUpdateStatus();
+  } catch (error) {
+    showToast("Не удалось запустить обновление", "error");
+    console.error(error);
+  } finally {
+    isApplyingUpdate.value = false;
+  }
+}
+
 export function useDashboardStore() {
   return {
     servers,
@@ -364,6 +416,8 @@ export function useDashboardStore() {
     isDashboardInitialLoading,
     isMonitoringLoading,
     isSavingSettings,
+    isUpdateLoading,
+    isApplyingUpdate,
     selectedServerId,
     selectedServer,
     selectedServerLogs,
@@ -374,6 +428,7 @@ export function useDashboardStore() {
     curseForgeApiKey,
     agentStatus,
     settings,
+    updateStatus,
     monitoring,
     onlineServersCount,
     offlineServersCount,
@@ -383,6 +438,7 @@ export function useDashboardStore() {
     monitoringStatus,
     loadDashboard,
     loadSettings,
+    loadUpdateStatus,
     loadAgentStatus,
     loadMonitoring,
     loadServerLogs,
@@ -395,5 +451,6 @@ export function useDashboardStore() {
     saveSettings,
     clearCurseForgeKey,
     restartAgent,
+    applyUpdate,
   };
 }
