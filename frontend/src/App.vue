@@ -4,10 +4,10 @@ import { RouterView, useRoute, useRouter } from "vue-router";
 import { RefreshCw } from "@lucide/vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import ToastStack from "./components/ToastStack.vue";
-import { themes, useAuthStore } from "./composables/useAuthStore";
+import { useAuthStore } from "./composables/useAuthStore";
 import { useDashboardStore } from "./composables/useDashboardStore";
 import { navItems, routePaths, tabCopy } from "./navigation";
-import type { TabId, ThemeName } from "./types";
+import type { TabId } from "./types";
 
 const route = useRoute();
 const router = useRouter();
@@ -57,10 +57,6 @@ function selectTab(tabId: TabId) {
 function logout() {
   auth.clearSession();
   router.push("/login");
-}
-
-function updateThemeFromEvent(event: Event) {
-  auth.updateTheme((event.target as HTMLSelectElement).value as ThemeName);
 }
 
 function loadAppData() {
@@ -114,9 +110,6 @@ watch(
         </div>
         <div v-if="auth.user.value" class="user-menu">
           <span>{{ auth.user.value.display_name }}</span>
-          <select :value="auth.user.value.theme" @change="updateThemeFromEvent">
-            <option v-for="theme in themes" :key="theme.id" :value="theme.id">{{ theme.label }}</option>
-          </select>
           <button class="ghost-button compact" type="button" @click="logout">Выйти</button>
         </div>
       </header>

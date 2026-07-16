@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Download, RefreshCw, ShieldCheck } from "@lucide/vue";
-import type { SettingsPayload, UpdateStatusPayload } from "../types";
+import { Download, Palette, RefreshCw, ShieldCheck } from "@lucide/vue";
+import type { AuthUser, SettingsPayload, ThemeName, UpdateStatusPayload } from "../types";
 
 defineProps<{
   settings: SettingsPayload;
@@ -9,6 +9,8 @@ defineProps<{
   isSaving: boolean;
   isUpdateLoading: boolean;
   isApplyingUpdate: boolean;
+  user: AuthUser | null;
+  themes: Array<{ id: ThemeName; label: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -18,6 +20,7 @@ const emit = defineEmits<{
   "refresh-update": [];
   "restart-agent": [];
   "apply-update": [];
+  "update-theme": [theme: ThemeName];
   save: [];
   clear: [];
 }>();
@@ -109,6 +112,45 @@ const emit = defineEmits<{
             <dd>8090</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="settings-profile panel-lite" aria-label="Профиль пользователя">
+        <div class="settings-section-head">
+          <div>
+            <p class="eyebrow">profile</p>
+            <h3>Профиль</h3>
+          </div>
+          <span v-if="user" class="settings-status connected">{{ user.role === 'admin' ? 'Администратор' : 'Пользователь' }}</span>
+        </div>
+
+        <div v-if="user" class="settings-current">
+          <span>Текущий пользователь</span>
+          <strong>{{ user.display_name }}</strong>
+        </div>
+
+        <div v-if="user" class="settings-theme-block">
+          <div class="settings-section-head compact-head">
+            <div>
+              <h3>Цветовая схема</h3>
+              <p class="settings-hint">Тема сохраняется для твоей учетной записи.</p>
+            </div>
+            <Palette :size="20" />
+          </div>
+
+          <div class="theme-picker settings-theme-picker">
+            <button
+              v-for="item in themes"
+              :key="item.id"
+              class="theme-option"
+              :class="[item.id, { selected: user.theme === item.id }]"
+              type="button"
+              @click="emit('update-theme', item.id)"
+            >
+              <span></span>
+              {{ item.label }}
+            </button>
+          </div>
+        </div>
       </section>
 
       <section class="settings-updates panel-lite" aria-label="Обновления Ksylian">
