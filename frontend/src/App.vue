@@ -67,18 +67,28 @@ function loadAppData() {
   if (isPublicLayout.value) {
     return;
   }
+  if (!auth.user.value) {
+    return;
+  }
   const routeServerId = typeof route.params.serverId === "string" ? route.params.serverId : "";
   store.loadDashboard(routeServerId);
   store.loadSettings();
 }
 
-onMounted(() => {
-  auth.initializeAuth();
+onMounted(async () => {
+  await auth.initializeAuth();
   loadAppData();
 });
 
 watch(
   () => route.name,
+  () => {
+    loadAppData();
+  },
+);
+
+watch(
+  () => auth.user.value?.id,
   () => {
     loadAppData();
   },
