@@ -8,6 +8,21 @@ export interface NewServerDraft {
   version: string;
 }
 
+export type MinecraftVersionType = "release" | "snapshot" | "old_beta" | "old_alpha";
+
+export interface MinecraftVersion {
+  id: string;
+  type: MinecraftVersionType;
+  label: string;
+  released_at: string;
+}
+
+export interface MinecraftVersionsPayload {
+  latest_release: string;
+  latest_snapshot: string;
+  versions: MinecraftVersion[];
+}
+
 export interface GameServer {
   id: string;
   name: string;

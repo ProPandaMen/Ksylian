@@ -108,7 +108,7 @@ const monitoring = ref<HostMonitoring>({
 const newServer = ref<NewServerDraft>({
   name: "",
   type: "vanilla",
-  version: "1.20.1",
+  version: "",
 });
 
 function dismissToast(id: number) {
@@ -297,7 +297,7 @@ async function createServer() {
         address: "",
       }),
     });
-    newServer.value = { name: "", type: "vanilla", version: "1.20.1" };
+    newServer.value = { name: "", type: "vanilla", version: "" };
     await loadDashboard();
     await router.push("/servers");
     showToast("Сервер создан и готов к запуску", "success");

@@ -55,6 +55,19 @@ class CreateServerRequest(BaseModel):
     address: str = ""
 
 
+class MinecraftVersion(BaseModel):
+    id: str
+    type: Literal["release", "snapshot", "old_beta", "old_alpha"]
+    label: str
+    released_at: str = ""
+
+
+class MinecraftVersionsPayload(BaseModel):
+    latest_release: str = ""
+    latest_snapshot: str = ""
+    versions: list[MinecraftVersion]
+
+
 class SettingsPayload(BaseModel):
     has_curseforge_api_key: bool
     curseforge_api_key_mask: str = ""
@@ -181,6 +194,9 @@ CURSEFORGE_CLASS_IDS = {"mods": 6, "modpacks": 4471}
 CURSEFORGE_SORT_FIELDS = {"popularity": 2, "updated": 3, "name": 4, "downloads": 6}
 CURSEFORGE_LOADER_TYPES = {"any": None, "forge": 1, "fabric": 4, "quilt": 5, "neoforge": 6}
 CURSEFORGE_LOADER_LABELS = {1: "Forge", 4: "Fabric", 5: "Quilt", 6: "NeoForge"}
+MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+MINECRAFT_VERSION_CACHE: dict[str, object] = {"loaded_at": None, "payload": None}
+MINECRAFT_VERSION_CACHE_SECONDS = 60 * 60
 
 servers: dict[str, GameServer] = {
     "ksy-vanilla": GameServer(
@@ -312,6 +328,54 @@ def load_agent_monitoring() -> HostMonitoring | None:
     except Exception as error:
         append_log(f"agent monitoring unavailable: {error}")
         return None
+
+
+def load_minecraft_versions() -> MinecraftVersionsPayload:
+    loaded_at = MINECRAFT_VERSION_CACHE.get("loaded_at")
+    cached_payload = MINECRAFT_VERSION_CACHE.get("payload")
+    if isinstance(loaded_at, datetime) and isinstance(cached_payload, MinecraftVersionsPayload):
+        if (datetime.now() - loaded_at).total_seconds() < MINECRAFT_VERSION_CACHE_SECONDS:
+            return cached_payload
+
+    try:
+        response = httpx.get(MINECRAFT_VERSION_MANIFEST_URL, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as error:
+        append_log(f"minecraft versions unavailable: {error}")
+        raise HTTPException(status_code=502, detail="Minecraft versions are unavailable") from error
+
+    latest = data.get("latest") if isinstance(data, dict) else {}
+    raw_versions = data.get("versions") if isinstance(data, dict) else []
+    if not isinstance(latest, dict) or not isinstance(raw_versions, list):
+        raise HTTPException(status_code=502, detail="Minecraft version manifest is invalid")
+
+    versions: list[MinecraftVersion] = []
+    for item in raw_versions:
+        if not isinstance(item, dict):
+            continue
+        version_id = str(item.get("id") or "")
+        version_type = str(item.get("type") or "")
+        if version_type not in {"release", "snapshot", "old_beta", "old_alpha"} or not version_id:
+            continue
+
+        versions.append(
+            MinecraftVersion(
+                id=version_id,
+                type=version_type,  # type: ignore[arg-type]
+                label=version_id,
+                released_at=str(item.get("releaseTime") or item.get("time") or ""),
+            )
+        )
+
+    payload = MinecraftVersionsPayload(
+        latest_release=str(latest.get("release") or ""),
+        latest_snapshot=str(latest.get("snapshot") or ""),
+        versions=versions,
+    )
+    MINECRAFT_VERSION_CACHE["loaded_at"] = datetime.now()
+    MINECRAFT_VERSION_CACHE["payload"] = payload
+    return payload
 
 
 def append_log(message: str) -> None:
@@ -513,6 +577,11 @@ def host_monitoring() -> HostMonitoring:
         temperature="n/a",
         collected_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
+
+
+@app.get("/api/minecraft/versions", response_model=MinecraftVersionsPayload)
+def minecraft_versions() -> MinecraftVersionsPayload:
+    return load_minecraft_versions()
 
 
 @app.post("/api/servers", response_model=GameServer)

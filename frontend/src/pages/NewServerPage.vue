@@ -1,9 +1,23 @@
 <script setup lang="ts">
-import { ArrowLeft, Box, CheckCircle2, Layers3, Pickaxe, Plus, Server, Sparkles } from "@lucide/vue";
+import { ArrowLeft, Box, CheckCircle2, Layers3, Pickaxe, Plus, RefreshCw, Server, Sparkles } from "@lucide/vue";
+import { computed, onMounted, ref } from "vue";
 import type { Component } from "vue";
-import type { MinecraftServerType, NewServerDraft } from "../types";
+import type { MinecraftServerType, MinecraftVersionType, MinecraftVersionsPayload, NewServerDraft } from "../types";
 
 const modelValue = defineModel<NewServerDraft>({ required: true });
+const versions = ref<MinecraftVersionsPayload>({
+  latest_release: "",
+  latest_snapshot: "",
+  versions: [],
+});
+const versionFilters = ref<Record<MinecraftVersionType, boolean>>({
+  release: true,
+  snapshot: false,
+  old_beta: false,
+  old_alpha: false,
+});
+const isVersionLoading = ref(false);
+const versionError = ref("");
 
 const emit = defineEmits<{
   cancel: [];
@@ -61,6 +75,17 @@ const serverTypes: Array<{
   },
 ];
 
+const versionTypeLabels: Record<MinecraftVersionType, string> = {
+  release: "релиз",
+  snapshot: "снапшот",
+  old_beta: "beta",
+  old_alpha: "alpha",
+};
+
+const filteredVersions = computed(() =>
+  versions.value.versions.filter((version) => versionFilters.value[version.type]),
+);
+
 function updateField(field: keyof NewServerDraft, value: string) {
   modelValue.value = {
     ...modelValue.value,
@@ -75,6 +100,48 @@ function selectType(type: MinecraftServerType, isAvailable: boolean) {
 
   updateField("type", type);
 }
+
+function selectInitialVersion() {
+  const visibleVersions = filteredVersions.value;
+  if (modelValue.value.version && visibleVersions.some((version) => version.id === modelValue.value.version)) {
+    return;
+  }
+
+  const latestRelease = visibleVersions.find((version) => version.id === versions.value.latest_release);
+  const preferredVersion = latestRelease?.id || visibleVersions[0]?.id || "";
+  if (preferredVersion) {
+    updateField("version", preferredVersion);
+  }
+}
+
+async function loadMinecraftVersions() {
+  isVersionLoading.value = true;
+  versionError.value = "";
+
+  try {
+    const response = await fetch("/api/minecraft/versions");
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    versions.value = await response.json() as MinecraftVersionsPayload;
+    selectInitialVersion();
+  } catch (error) {
+    versionError.value = "Не удалось загрузить список версий Minecraft";
+    console.error(error);
+  } finally {
+    isVersionLoading.value = false;
+  }
+}
+
+function toggleVersionFilter(type: MinecraftVersionType, value: boolean) {
+  versionFilters.value = {
+    ...versionFilters.value,
+    [type]: value,
+  };
+  selectInitialVersion();
+}
+
+onMounted(loadMinecraftVersions);
 </script>
 
 <template>
@@ -148,20 +215,66 @@ function selectType(type: MinecraftServerType, isAvailable: boolean) {
 
           <label>
             <span>Версия Minecraft</span>
-            <input
+            <select
               :value="modelValue.version"
               required
-              type="text"
-              placeholder="1.20.1"
-              @input="updateField('version', ($event.target as HTMLInputElement).value)"
-            />
+              :disabled="isVersionLoading || !filteredVersions.length"
+              @change="updateField('version', ($event.target as HTMLSelectElement).value)"
+            >
+              <option v-if="isVersionLoading" value="">Загружаю версии...</option>
+              <option v-else-if="!filteredVersions.length" value="">Нет версий под фильтры</option>
+              <option v-for="version in filteredVersions" :key="version.id" :value="version.id">
+                {{ version.label }} · {{ versionTypeLabels[version.type] }}
+              </option>
+            </select>
           </label>
         </div>
+
+        <div class="version-filter-row" aria-label="Фильтр версий Minecraft">
+          <label>
+            <input
+              type="checkbox"
+              :checked="versionFilters.release"
+              @change="toggleVersionFilter('release', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Релизы</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              :checked="versionFilters.snapshot"
+              @change="toggleVersionFilter('snapshot', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Снапшоты</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              :checked="versionFilters.old_beta"
+              @change="toggleVersionFilter('old_beta', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Beta</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              :checked="versionFilters.old_alpha"
+              @change="toggleVersionFilter('old_alpha', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Alpha</span>
+          </label>
+          <button class="ghost-button compact" type="button" :disabled="isVersionLoading" @click="loadMinecraftVersions">
+            <RefreshCw :size="15" />
+            <span>{{ isVersionLoading ? 'Обновляю' : 'Обновить' }}</span>
+          </button>
+        </div>
+
+        <p v-if="versionError" class="version-error">{{ versionError }}</p>
       </section>
 
       <div class="new-server-summary">
         <div>
-          <span>Будет создан черновик</span>
+          <span>Будет создан сервер</span>
           <strong>{{ modelValue.name || 'Без названия' }} · {{ modelValue.version }}</strong>
         </div>
         <button class="primary-button" type="submit">
