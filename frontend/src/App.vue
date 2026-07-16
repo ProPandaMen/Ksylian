@@ -101,16 +101,18 @@ watch(
     <div class="scene-ribbon ribbon-one"></div>
     <div class="scene-ribbon ribbon-two"></div>
 
-    <AppSidebar :active-tab="activeTab" :nav-items="visibleNavItems" @select="selectTab" />
+    <AppSidebar
+      :active-tab="activeTab"
+      :nav-items="visibleNavItems"
+      :user="auth.user.value"
+      @select="selectTab"
+      @logout="logout"
+    />
 
     <section class="workspace">
       <header class="topbar">
         <div>
           <h1>{{ pageTitle }}</h1>
-        </div>
-        <div v-if="auth.user.value" class="user-menu">
-          <span>{{ auth.user.value.display_name }}</span>
-          <button class="ghost-button compact" type="button" @click="logout">Выйти</button>
         </div>
       </header>
 

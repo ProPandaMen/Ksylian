@@ -9,7 +9,8 @@
 
   .brand div:last-child,
   .nav-item span,
-  .mascot-card div {
+  .mascot-card div,
+  .sidebar-user-card > div {
     display: none;
   }
 
@@ -25,6 +26,11 @@
   .mascot-card img {
     width: 54px;
     height: 54px;
+  }
+
+  .sidebar-user-card {
+    justify-content: center;
+    padding: 8px;
   }
 
   .content-grid {
@@ -109,6 +115,11 @@
     gap: 6px;
   }
 
+  .sidebar-footer {
+    display: flex;
+    margin-left: auto;
+  }
+
   .nav-item {
     width: 44px;
     padding: 0;
@@ -116,6 +127,11 @@
 
   .mascot-card {
     display: none;
+  }
+
+  .sidebar-user-card {
+    min-height: 44px;
+    padding: 3px;
   }
 
   .workspace {
@@ -348,4 +364,3 @@
     gap: 4px;
   }
 }
-

@@ -21,6 +21,7 @@
 .brand,
 .nav-item,
 .mascot-card,
+.sidebar-user-card,
 .topbar,
 .topbar-actions,
 .hero-actions,
@@ -113,9 +114,14 @@
   box-shadow: none;
 }
 
+.sidebar-footer {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+}
+
 .mascot-card {
   gap: 12px;
-  margin-top: auto;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.56);
   border-radius: 18px;
@@ -130,6 +136,43 @@
   height: 64px;
   border-radius: 18px;
   object-fit: cover;
+}
+
+.sidebar-user-card {
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 16px 32px rgba(148, 62, 114, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.sidebar-user-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sidebar-user-card strong {
+  overflow: hidden;
+  color: #3b2b3c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-user-card span {
+  color: #8f7d8c;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.sidebar-user-card .icon-button {
+  width: 38px;
+  height: 38px;
 }
 
 .workspace {
@@ -152,4 +195,3 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     0 34px 90px rgba(98, 57, 85, 0.18);
 }
-

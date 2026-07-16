@@ -1,16 +1,19 @@
 <script setup lang="ts">
+import { LogOut } from "@lucide/vue";
 import type { Component } from "vue";
 import catLogo from "../assets/cat-logo.svg";
 import catMascot from "../assets/ksylian-cat.png";
-import type { TabId } from "../types";
+import type { AuthUser, TabId } from "../types";
 
 defineProps<{
   activeTab: TabId;
   navItems: Array<{ id: TabId; label: string; icon: Component; disabled?: boolean }>;
+  user: AuthUser | null;
 }>();
 
 const emit = defineEmits<{
   select: [tabId: TabId];
+  logout: [];
 }>();
 </script>
 
@@ -42,12 +45,24 @@ const emit = defineEmits<{
       </button>
     </nav>
 
-    <section class="mascot-card">
-      <img :src="catMascot" alt="Розовый кот-талисман Ksylian" />
-      <div>
-        <strong>Ксю-контроль</strong>
-        <span>3 мира под присмотром</span>
-      </div>
-    </section>
+    <div class="sidebar-footer">
+      <section class="mascot-card">
+        <img :src="catMascot" alt="Розовый кот-талисман Ksylian" />
+        <div>
+          <strong>Ксю-контроль</strong>
+          <span>3 мира под присмотром</span>
+        </div>
+      </section>
+
+      <section v-if="user" class="sidebar-user-card" aria-label="Профиль пользователя">
+        <div>
+          <strong>{{ user.display_name }}</strong>
+          <span>{{ user.role === 'admin' ? 'Администратор' : 'Пользователь' }}</span>
+        </div>
+        <button class="icon-button" type="button" title="Выйти" @click="emit('logout')">
+          <LogOut :size="17" />
+        </button>
+      </section>
+    </div>
   </aside>
 </template>
