@@ -539,10 +539,16 @@ onMounted(() => {
                 <p class="eyebrow">instances</p>
                 <h2>Полный список серверов</h2>
               </div>
-              <button class="ghost-button compact" type="button" @click="loadDashboard">
-                <RefreshCw :size="16" />
-                <span>Обновить</span>
-              </button>
+              <div class="panel-actions">
+                <button class="ghost-button compact" type="button" @click="loadDashboard">
+                  <RefreshCw :size="16" />
+                  <span>Обновить</span>
+                </button>
+                <button class="primary-button compact" type="button" @click="openNewServerPage">
+                  <Plus :size="16" />
+                  <span>Новый сервер</span>
+                </button>
+              </div>
             </div>
 
             <div v-if="isDashboardInitialLoading" class="server-list" aria-label="Загрузка серверов">

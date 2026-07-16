@@ -1186,6 +1186,13 @@ h3 {
   margin-bottom: 16px;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .server-list,
 .stack-list,
 .file-list {
