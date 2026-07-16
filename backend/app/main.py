@@ -49,6 +49,7 @@ class BackupItem(BaseModel):
 
 class CreateServerRequest(BaseModel):
     name: str
+    type: Literal["vanilla", "paper", "purpur"] = "vanilla"
     pack: str
     version: str = "1.20.1"
     address: str = ""
@@ -261,10 +262,10 @@ def agent_get(path: str) -> httpx.Response:
     return httpx.get(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=10)
 
 
-def agent_post(path: str) -> httpx.Response:
+def agent_post(path: str, json: dict | None = None) -> httpx.Response:
     if not AGENT_URL:
         raise RuntimeError("Agent is not configured")
-    return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=90)
+    return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=90)
 
 
 def agent_delete(path: str) -> httpx.Response:
@@ -517,10 +518,19 @@ def host_monitoring() -> HostMonitoring:
 @app.post("/api/servers", response_model=GameServer)
 def create_server(payload: CreateServerRequest) -> GameServer:
     if AGENT_URL:
-        raise HTTPException(
-            status_code=501,
-            detail="Creating real servers is not implemented yet. Ksylian needs a provisioner first.",
-        )
+        try:
+            response = agent_post("/servers", json={
+                "name": payload.name,
+                "type": payload.type,
+                "version": payload.version,
+            })
+            response.raise_for_status()
+            server = GameServer(**response.json())
+            append_log(f"{server.name}: server scaffold created by agent")
+            return server
+        except Exception as error:
+            append_log(f"agent create failed for {payload.name}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent create failed") from error
 
     server_id = payload.name.lower().strip().replace(" ", "-")
     if not server_id:

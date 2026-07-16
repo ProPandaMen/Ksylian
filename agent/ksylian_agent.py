@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 import socket
 import subprocess
 import tarfile
@@ -25,6 +26,27 @@ class AgentServer(BaseModel):
     cpu: int
     disk: str
     address: str
+
+
+class StoredServer(BaseModel):
+    id: str
+    name: str
+    type: Literal["legacy", "vanilla", "paper", "purpur"]
+    pack: str
+    version: str
+    port: int
+    service: str
+    path: str
+    backup_path: str
+    address: str
+    created_at: str
+    managed: bool = False
+
+
+class CreateAgentServerRequest(BaseModel):
+    name: str
+    type: Literal["vanilla", "paper", "purpur"]
+    version: str = "1.20.1"
 
 
 class AgentActionResult(BaseModel):
@@ -107,6 +129,8 @@ SERVERS = {
 BACKUP_DIR = Path(os.getenv("KSYLIAN_BACKUP_DIR", "/mnt/hdd/ksylian-backups"))
 DATA_DIR = Path(os.getenv("KSYLIAN_DATA_DIR", "/var/lib/ksylian-agent"))
 DISABLED_SERVERS_FILE = DATA_DIR / "disabled-servers.json"
+SERVERS_FILE = DATA_DIR / "servers.json"
+SERVER_ROOT = Path(os.getenv("KSYLIAN_SERVER_ROOT", "/opt/ksylian/servers"))
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 
 app = FastAPI(title="Ksylian Host Agent", version="0.1.0")
@@ -138,9 +162,130 @@ def save_disabled_server_ids(server_ids: set[str]) -> None:
     DISABLED_SERVERS_FILE.write_text(json.dumps(sorted(server_ids), indent=2))
 
 
+def legacy_server_store() -> dict[str, StoredServer]:
+    result: dict[str, StoredServer] = {}
+    for server_id, config in SERVERS.items():
+        port = int(str(config["address"]).rsplit(":", 1)[-1])
+        result[server_id] = StoredServer(
+            id=server_id,
+            name=str(config["name"]),
+            type="legacy",
+            pack=str(config["pack"]),
+            version=str(config["version"]),
+            port=port,
+            service=str(config["service"]),
+            path=str(config["path"]),
+            backup_path=str(config["backup_path"]),
+            address=str(config["address"]),
+            created_at="legacy",
+            managed=False,
+        )
+    return result
+
+
+def load_server_store() -> dict[str, StoredServer]:
+    if not SERVERS_FILE.exists():
+        return legacy_server_store()
+
+    try:
+        data = json.loads(SERVERS_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return legacy_server_store()
+
+    if not isinstance(data, list):
+        return legacy_server_store()
+
+    result: dict[str, StoredServer] = {}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        try:
+            server = StoredServer(**item)
+        except Exception:
+            continue
+        result[server.id] = server
+    return result
+
+
+def save_server_store(servers: dict[str, StoredServer]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = [server.model_dump() for server in sorted(servers.values(), key=lambda item: item.created_at)]
+    SERVERS_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9-]+", "-", value.lower().strip())
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug or "server"
+
+
+def host_primary_ip() -> str:
+    for ip in host_ips():
+        if not ip.startswith("127.") and not ip.startswith("172."):
+            return ip
+    return "127.0.0.1"
+
+
+def is_port_available(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+        except OSError:
+            return False
+    return True
+
+
+def allocate_port(servers: dict[str, StoredServer], start: int = 25565) -> int:
+    used_ports = {server.port for server in servers.values()}
+    for port in range(start, start + 200):
+        if port not in used_ports and is_port_available(port):
+            return port
+    raise HTTPException(status_code=507, detail="No free Minecraft ports available")
+
+
+def server_type_label(server_type: str) -> str:
+    if server_type == "vanilla":
+        return "Vanilla"
+    if server_type == "paper":
+        return "Paper"
+    if server_type == "purpur":
+        return "Purpur"
+    return server_type
+
+
+def write_server_scaffold(server: StoredServer) -> None:
+    server_path = Path(server.path)
+    server_path.mkdir(parents=True, exist_ok=True)
+    (server_path / "mods").mkdir(exist_ok=True)
+    (server_path / "logs").mkdir(exist_ok=True)
+    (server_path / "world").mkdir(exist_ok=True)
+    (server_path / "eula.txt").write_text("eula=true\n")
+    (server_path / "server.properties").write_text(
+        "\n".join(
+            [
+                f"server-port={server.port}",
+                f"motd={server.name}",
+                "enable-query=false",
+                "online-mode=true",
+                "max-players=20",
+                "view-distance=10",
+                "simulation-distance=10",
+                "",
+            ]
+        )
+    )
+    (server_path / "ksylian.json").write_text(json.dumps(server.model_dump(), ensure_ascii=False, indent=2))
+
+
+def systemctl_issue_can_be_ignored(result: subprocess.CompletedProcess[str]) -> bool:
+    message = f"{result.stdout}\n{result.stderr}".lower()
+    return "not loaded" in message or "not found" in message or "does not exist" in message
+
+
 def active_server_ids() -> list[str]:
     disabled = disabled_server_ids()
-    return [server_id for server_id in SERVERS if server_id not in disabled]
+    return [server_id for server_id in load_server_store() if server_id not in disabled]
 
 
 def service_state(service: str) -> Literal["online", "deploying", "offline"]:
@@ -341,20 +486,20 @@ def folder_size(path: Path) -> str:
 
 
 def to_agent_server(server_id: str) -> AgentServer:
-    config = SERVERS[server_id]
-    cpu, ram = service_usage(config["service"])
+    config = load_server_store()[server_id]
+    cpu, ram = service_usage(config.service)
 
     return AgentServer(
         id=server_id,
-        name=config["name"],
-        pack=config["pack"],
-        version=config["version"],
-        state=service_state(config["service"]),
+        name=config.name,
+        pack=config.pack,
+        version=config.version,
+        state=service_state(config.service),
         players="-",
         ram=ram,
         cpu=cpu,
-        disk=folder_size(config["path"]),
-        address=config["address"],
+        disk=folder_size(Path(config.path)),
+        address=config.address,
     )
 
 
@@ -367,6 +512,40 @@ def health() -> dict[str, str]:
 def servers(x_ksylian_token: str | None = Header(default=None)) -> list[AgentServer]:
     require_token(x_ksylian_token)
     return [to_agent_server(server_id) for server_id in active_server_ids()]
+
+
+@app.post("/servers", response_model=AgentServer)
+def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None = Header(default=None)) -> AgentServer:
+    require_token(x_ksylian_token)
+    store = load_server_store()
+    server_id_base = slugify(payload.name)
+    server_id = server_id_base
+    counter = 2
+    while server_id in store:
+        server_id = f"{server_id_base}-{counter}"
+        counter += 1
+
+    port = allocate_port(store)
+    service = f"ksylian-{server_id}.service"
+    server_path = SERVER_ROOT / server_id
+    server = StoredServer(
+        id=server_id,
+        name=payload.name.strip(),
+        type=payload.type,
+        pack=server_type_label(payload.type),
+        version=payload.version,
+        port=port,
+        service=service,
+        path=str(server_path),
+        backup_path=str(server_path / "world"),
+        address=f"{host_primary_ip()}:{port}",
+        created_at=datetime.now().isoformat(timespec="seconds"),
+        managed=True,
+    )
+    write_server_scaffold(server)
+    store[server.id] = server
+    save_server_store(store)
+    return to_agent_server(server.id)
 
 
 @app.get("/monitoring", response_model=HostMonitoring)
@@ -382,13 +561,13 @@ def monitoring(x_ksylian_token: str | None = Header(default=None)) -> HostMonito
 
     services = []
     for server_id in active_server_ids():
-        config = SERVERS[server_id]
-        cpu, ram = service_usage(config["service"])
+        config = load_server_store()[server_id]
+        cpu, ram = service_usage(config.service)
         services.append(
             ServiceUsage(
                 id=server_id,
-                name=config["name"],
-                state=service_state(config["service"]),
+                name=config.name,
+                state=service_state(config.service),
                 cpu=cpu,
                 ram=ram,
             )
@@ -425,11 +604,11 @@ def monitoring(x_ksylian_token: str | None = Header(default=None)) -> HostMonito
 @app.get("/servers/{server_id}/logs", response_model=list[str])
 def logs(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> list[str]:
     require_token(x_ksylian_token)
-    config = SERVERS.get(server_id)
+    config = load_server_store().get(server_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
 
-    result = run(["journalctl", "-u", config["service"], "-n", "80", "--no-pager", "-o", "short-iso"], timeout=30)
+    result = run(["journalctl", "-u", config.service, "-n", "80", "--no-pager", "-o", "short-iso"], timeout=30)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=result.stderr.strip() or "Failed to read logs")
     return [line for line in result.stdout.splitlines() if line]
@@ -442,17 +621,17 @@ def action(
     x_ksylian_token: str | None = Header(default=None),
 ) -> AgentActionResult:
     require_token(x_ksylian_token)
-    config = SERVERS.get(server_id)
+    config = load_server_store().get(server_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
 
     if action in {"start", "restart", "stop"}:
-        result = run(["systemctl", action, config["service"]], timeout=60)
+        result = run(["systemctl", action, config.service], timeout=60)
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=result.stderr.strip() or f"systemctl {action} failed")
-        message = f"{config['name']}: {action} completed"
+        message = f"{config.name}: {action} completed"
     else:
-        source = config["backup_path"]
+        source = Path(config.backup_path)
         if not source.exists():
             raise HTTPException(status_code=404, detail=f"Backup source not found: {source}")
 
@@ -463,7 +642,7 @@ def action(
         with tarfile.open(archive, "w:gz") as tar:
             tar.add(source, arcname=source.name)
 
-        message = f"{config['name']}: backup created at {archive}"
+        message = f"{config.name}: backup created at {archive}"
 
     return AgentActionResult(ok=True, message=message, server=to_agent_server(server_id))
 
@@ -471,16 +650,16 @@ def action(
 @app.delete("/servers/{server_id}")
 def delete_server(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> dict[str, bool]:
     require_token(x_ksylian_token)
-    config = SERVERS.get(server_id)
+    config = load_server_store().get(server_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
 
-    stop_result = run(["systemctl", "stop", config["service"]], timeout=60)
-    if stop_result.returncode != 0:
+    stop_result = run(["systemctl", "stop", config.service], timeout=60)
+    if stop_result.returncode != 0 and not (config.managed and systemctl_issue_can_be_ignored(stop_result)):
         raise HTTPException(status_code=500, detail=stop_result.stderr.strip() or "Failed to stop service")
 
-    disable_result = run(["systemctl", "disable", config["service"]], timeout=60)
-    if disable_result.returncode != 0:
+    disable_result = run(["systemctl", "disable", config.service], timeout=60)
+    if disable_result.returncode != 0 and not (config.managed and systemctl_issue_can_be_ignored(disable_result)):
         raise HTTPException(status_code=500, detail=disable_result.stderr.strip() or "Failed to disable service")
 
     disabled = disabled_server_ids()

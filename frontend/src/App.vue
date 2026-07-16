@@ -309,6 +309,7 @@ async function createServer() {
       method: "POST",
       body: JSON.stringify({
         name: newServer.value.name,
+        type: newServer.value.type === "purpur" ? "paper" : newServer.value.type,
         pack: serverTypeLabels[newServer.value.type],
         version: newServer.value.version,
         address: "",
@@ -317,9 +318,9 @@ async function createServer() {
     newServer.value = { name: "", type: "vanilla", version: "1.20.1" };
     await loadDashboard();
     await router.push("/servers");
-    showToast("Сервер создан", "success");
+    showToast("Каркас сервера создан", "success");
   } catch (error) {
-    showToast("Создание настоящих серверов ещё требует provisioner на backend", "error");
+    showToast("Не удалось создать каркас сервера", "error");
     console.error(error);
   }
 }
