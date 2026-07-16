@@ -32,6 +32,7 @@ import type {
   ModItem,
   NewServerDraft,
   SettingsPayload,
+  AgentStatus,
   ServerState,
   TabId,
 } from "./types";
@@ -84,9 +85,17 @@ const isSavingSettings = ref(false);
 const toasts = ref<ToastMessage[]>([]);
 let toastId = 0;
 const curseForgeApiKey = ref("");
+const defaultAgentStatus: AgentStatus = {
+  configured: false,
+  available: false,
+  status: "not_configured",
+  message: "",
+};
+const agentStatus = ref<AgentStatus>(defaultAgentStatus);
 const settings = ref<SettingsPayload>({
   has_curseforge_api_key: false,
   curseforge_api_key_mask: "",
+  agent: defaultAgentStatus,
 });
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
@@ -137,7 +146,11 @@ const selectedServer = computed(
   () => servers.value.find((server) => server.id === selectedServerId.value) ?? servers.value[0],
 );
 const isDashboardInitialLoading = computed(() => isLoading.value && !isDashboardLoaded.value);
+const isAgentUnavailable = computed(() => agentStatus.value.configured && !agentStatus.value.available);
 const monitoringStatus = computed(() => {
+  if (isAgentUnavailable.value) {
+    return { label: "Agent недоступен", tone: "danger" };
+  }
   const maxDisk = Math.max(0, ...monitoring.value.disks.map((disk) => disk.percent));
   const maxUsage = Math.max(monitoring.value.cpu_percent, monitoring.value.memory.percent, maxDisk);
   if (maxUsage >= 90) {
@@ -196,6 +209,7 @@ async function loadDashboard() {
     backups.value = data.backups;
     mods.value = data.mods;
     files.value = data.files;
+    agentStatus.value = data.agent;
     const routeServerId = typeof route.params.serverId === "string" ? route.params.serverId : "";
     const nextServerId = routeServerId || selectedServerId.value || data.servers[0]?.id || "";
     if (nextServerId) {
@@ -216,8 +230,22 @@ async function loadDashboard() {
 async function loadSettings() {
   try {
     settings.value = await requestJson<SettingsPayload>("/api/settings");
+    agentStatus.value = settings.value.agent;
   } catch (error) {
     showToast("Не удалось загрузить настройки", "error");
+    console.error(error);
+  }
+}
+
+async function loadAgentStatus() {
+  try {
+    agentStatus.value = await requestJson<AgentStatus>("/api/agent/status");
+    settings.value = {
+      ...settings.value,
+      agent: agentStatus.value,
+    };
+  } catch (error) {
+    showToast("Не удалось проверить Host Agent", "error");
     console.error(error);
   }
 }
@@ -247,8 +275,10 @@ async function loadMonitoring() {
 
   try {
     monitoring.value = await requestJson<HostMonitoring>("/api/monitoring");
+    await loadAgentStatus();
   } catch (error) {
-    showToast("Не удалось загрузить мониторинг хоста", "error");
+    await loadAgentStatus();
+    showToast("Не удалось загрузить мониторинг: Host Agent недоступен", "error");
     console.error(error);
   } finally {
     isMonitoringLoading.value = false;
@@ -374,6 +404,27 @@ async function clearCurseForgeKey() {
   await saveSettings();
 }
 
+async function restartAgent() {
+  try {
+    agentStatus.value = await requestJson<AgentStatus>("/api/agent/restart", { method: "POST" });
+    settings.value = {
+      ...settings.value,
+      agent: agentStatus.value,
+    };
+    showToast("Host Agent перезапускается", "success");
+    window.setTimeout(() => {
+      loadAgentStatus();
+      loadDashboard();
+      if (activeTab.value === "monitoring") {
+        loadMonitoring();
+      }
+    }, 1600);
+  } catch (error) {
+    showToast("Не удалось перезапустить Host Agent из панели", "error");
+    console.error(error);
+  }
+}
+
 watch(
   () => route.params.serverId,
   async (serverId) => {
@@ -421,6 +472,27 @@ onMounted(() => {
         </div>
 
       </header>
+
+      <section v-if="isAgentUnavailable" class="agent-alert panel">
+        <div>
+          <p class="eyebrow">host agent</p>
+          <h2>Agent недоступен</h2>
+          <p>
+            Backend не может получить реальные серверы и метрики. Демо-данные скрыты,
+            чтобы не путать их с настоящим состоянием хоста.
+          </p>
+        </div>
+        <div class="agent-alert-actions">
+          <button class="ghost-button compact" type="button" @click="loadAgentStatus">
+            <RefreshCw :size="16" />
+            <span>Проверить</span>
+          </button>
+          <button class="primary-button" type="button" @click="restartAgent">
+            <RefreshCw :size="16" />
+            <span>Перезапустить agent</span>
+          </button>
+        </div>
+      </section>
 
       <section class="content-grid single-column">
         <div class="main-column">
@@ -676,6 +748,8 @@ onMounted(() => {
             :settings="settings"
             :is-saving="isSavingSettings"
             @refresh="loadDashboard"
+            @refresh-agent="loadAgentStatus"
+            @restart-agent="restartAgent"
             @save="saveSettings"
             @clear="clearCurseForgeKey"
           />

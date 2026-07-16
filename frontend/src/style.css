@@ -596,6 +596,31 @@ h3 {
   gap: 18px;
 }
 
+.agent-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  border-color: rgba(224, 49, 112, 0.24);
+  background:
+    radial-gradient(circle at 90% 10%, rgba(255, 47, 163, 0.12), transparent 32%),
+    rgba(255, 241, 247, 0.74);
+}
+
+.agent-alert p:not(.eyebrow) {
+  max-width: 760px;
+  color: #80687c;
+  line-height: 1.5;
+}
+
+.agent-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .new-server-hero {
   display: flex;
   align-items: flex-start;
@@ -1757,8 +1782,13 @@ h3 {
   align-items: start;
 }
 
+.settings-agent {
+  grid-column: 1 / -1;
+}
+
 .settings-form,
-.settings-summary {
+.settings-summary,
+.panel-lite {
   display: grid;
   gap: 14px;
   padding: 16px;
@@ -1809,6 +1839,11 @@ h3 {
 .settings-hint,
 .settings-summary dd {
   color: #8f7d8c;
+}
+
+.settings-hint.danger {
+  color: #b02e66;
+  font-weight: 800;
 }
 
 .settings-current strong {

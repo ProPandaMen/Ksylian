@@ -57,17 +57,26 @@ export interface FileItem {
   kind: "folder" | "file";
 }
 
+export interface AgentStatus {
+  configured: boolean;
+  available: boolean;
+  status: "online" | "offline" | "not_configured";
+  message: string;
+}
+
 export interface DashboardPayload {
   servers: GameServer[];
   logs: string[];
   backups: BackupItem[];
   mods: ModItem[];
   files: FileItem[];
+  agent: AgentStatus;
 }
 
 export interface SettingsPayload {
   has_curseforge_api_key: boolean;
   curseforge_api_key_mask: string;
+  agent: AgentStatus;
 }
 
 export interface MetricUsage {

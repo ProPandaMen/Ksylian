@@ -656,6 +656,13 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "ksylian-agent"}
 
 
+@app.post("/agent/actions/restart")
+def restart_agent(x_ksylian_token: str | None = Header(default=None)) -> dict[str, bool]:
+    require_token(x_ksylian_token)
+    subprocess.Popen(["systemctl", "restart", "ksylian-agent.service"])
+    return {"ok": True}
+
+
 @app.get("/servers", response_model=list[AgentServer])
 def servers(x_ksylian_token: str | None = Header(default=None)) -> list[AgentServer]:
     require_token(x_ksylian_token)

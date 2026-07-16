@@ -11,6 +11,8 @@ defineProps<{
 const emit = defineEmits<{
   "update:curseForgeApiKey": [value: string];
   refresh: [];
+  "refresh-agent": [];
+  "restart-agent": [];
   save: [];
   clear: [];
 }>();
@@ -82,6 +84,10 @@ const emit = defineEmits<{
         </div>
         <dl>
           <div>
+            <dt>Host Agent</dt>
+            <dd>{{ settings.agent.available ? 'Запущен' : settings.agent.configured ? 'Недоступен' : 'Не настроен' }}</dd>
+          </div>
+          <div>
             <dt>Backend</dt>
             <dd>Подключён через /api</dd>
           </div>
@@ -98,6 +104,36 @@ const emit = defineEmits<{
             <dd>8090</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="settings-agent panel-lite" aria-label="Host Agent">
+        <div class="settings-section-head">
+          <div>
+            <p class="eyebrow">host agent</p>
+            <h3>Сбор метрик и управление серверами</h3>
+          </div>
+          <span class="settings-status" :class="{ connected: settings.agent.available }">
+            {{ settings.agent.available ? 'Онлайн' : settings.agent.configured ? 'Недоступен' : 'Не настроен' }}
+          </span>
+        </div>
+        <p class="settings-hint">
+          Agent работает на хосте и отдаёт реальные серверы, логи, systemd-статусы и нагрузку.
+          Если он недоступен, панель больше не показывает демо-серверы.
+        </p>
+        <div class="form-actions">
+          <button class="ghost-button" type="button" @click="emit('refresh-agent')">
+            <RefreshCw :size="17" />
+            <span>Проверить</span>
+          </button>
+          <button class="primary-button" type="button" :disabled="!settings.agent.available" @click="emit('restart-agent')">
+            <RefreshCw :size="17" />
+            <span>Перезапустить agent</span>
+          </button>
+        </div>
+        <p v-if="settings.agent.configured && !settings.agent.available" class="settings-hint danger">
+          Agent не отвечает. Если кнопка перезапуска недоступна, запусти на сервере:
+          sudo systemctl start ksylian-agent.service
+        </p>
       </section>
     </div>
   </section>

@@ -68,9 +68,17 @@ class MinecraftVersionsPayload(BaseModel):
     versions: list[MinecraftVersion]
 
 
+class AgentStatus(BaseModel):
+    configured: bool
+    available: bool
+    status: Literal["online", "offline", "not_configured"]
+    message: str = ""
+
+
 class SettingsPayload(BaseModel):
     has_curseforge_api_key: bool
     curseforge_api_key_mask: str = ""
+    agent: AgentStatus
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -173,6 +181,7 @@ class DashboardPayload(BaseModel):
     backups: list[BackupItem]
     mods: list[ModItem]
     files: list[FileItem]
+    agent: AgentStatus
 
 
 app = FastAPI(title="Ksylian API", version="0.1.0")
@@ -288,6 +297,39 @@ def agent_delete(path: str) -> httpx.Response:
     if not AGENT_URL:
         raise RuntimeError("Agent is not configured")
     return httpx.delete(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=90)
+
+
+def current_agent_status() -> AgentStatus:
+    if not AGENT_URL:
+        return AgentStatus(
+            configured=False,
+            available=False,
+            status="not_configured",
+            message="Host agent is not configured",
+        )
+
+    try:
+        response = agent_get("/health")
+        response.raise_for_status()
+        return AgentStatus(
+            configured=True,
+            available=True,
+            status="online",
+            message="Host agent is online",
+        )
+    except Exception as error:
+        return AgentStatus(
+            configured=True,
+            available=False,
+            status="offline",
+            message=str(error),
+        )
+
+
+def require_agent_available() -> None:
+    status = current_agent_status()
+    if status.configured and not status.available:
+        raise HTTPException(status_code=503, detail="Host agent is unavailable")
 
 
 def load_agent_servers() -> list[GameServer] | None:
@@ -527,10 +569,11 @@ def health() -> dict[str, str]:
 
 @app.get("/api/dashboard", response_model=DashboardPayload)
 def dashboard() -> DashboardPayload:
+    agent = current_agent_status()
     agent_servers = load_agent_servers()
-    current_servers = agent_servers if agent_servers is not None else list(servers.values())
+    current_servers = agent_servers if agent_servers is not None else ([] if agent.configured else list(servers.values()))
     agent_backups = load_agent_backups()
-    current_backups = agent_backups if agent_backups is not None else backups
+    current_backups = agent_backups if agent_backups is not None else ([] if agent.configured else backups)
     current_logs = logs[-20:]
 
     if agent_servers:
@@ -545,6 +588,7 @@ def dashboard() -> DashboardPayload:
         backups=current_backups,
         mods=mods,
         files=files,
+        agent=agent,
     )
 
 
@@ -553,6 +597,7 @@ def list_servers() -> list[GameServer]:
     agent_servers = load_agent_servers()
     if agent_servers is not None:
         return agent_servers
+    require_agent_available()
     return list(servers.values())
 
 
@@ -561,6 +606,7 @@ def host_monitoring() -> HostMonitoring:
     agent_monitoring = load_agent_monitoring()
     if agent_monitoring is not None:
         return agent_monitoring
+    require_agent_available()
 
     return HostMonitoring(
         hostname="demo-host",
@@ -582,6 +628,32 @@ def host_monitoring() -> HostMonitoring:
 @app.get("/api/minecraft/versions", response_model=MinecraftVersionsPayload)
 def minecraft_versions() -> MinecraftVersionsPayload:
     return load_minecraft_versions()
+
+
+@app.get("/api/agent/status", response_model=AgentStatus)
+def agent_status() -> AgentStatus:
+    return current_agent_status()
+
+
+@app.post("/api/agent/restart", response_model=AgentStatus)
+def restart_agent() -> AgentStatus:
+    status = current_agent_status()
+    if not status.configured:
+        raise HTTPException(status_code=409, detail="Host agent is not configured")
+    if not status.available:
+        raise HTTPException(
+            status_code=503,
+            detail="Host agent is unavailable. Start ksylian-agent.service on the host.",
+        )
+
+    try:
+        response = agent_post("/agent/actions/restart")
+        response.raise_for_status()
+    except Exception as error:
+        append_log(f"agent restart failed: {error}")
+        raise HTTPException(status_code=502, detail="Host agent restart failed") from error
+
+    return current_agent_status()
 
 
 @app.post("/api/servers", response_model=GameServer)
@@ -697,6 +769,7 @@ def list_logs() -> list[str]:
         for server in agent_servers:
             real_logs.extend(load_agent_logs(server.id)[-40:])
         return real_logs[-80:] if real_logs else logs[-80:]
+    require_agent_available()
     return logs[-80:]
 
 
@@ -709,6 +782,7 @@ def list_server_logs(server_id: str) -> list[str]:
         agent_servers = load_agent_servers()
         if agent_servers is not None and all(server.id != server_id for server in agent_servers):
             raise HTTPException(status_code=404, detail="Server not found")
+        require_agent_available()
         return []
 
     get_server(server_id)
@@ -720,6 +794,7 @@ def list_backups() -> list[BackupItem]:
     agent_backups = load_agent_backups()
     if agent_backups is not None:
         return agent_backups
+    require_agent_available()
     return backups
 
 
@@ -756,6 +831,7 @@ def get_settings() -> SettingsPayload:
     return SettingsPayload(
         has_curseforge_api_key=bool(key),
         curseforge_api_key_mask=mask_secret(key),
+        agent=current_agent_status(),
     )
 
 
@@ -776,6 +852,7 @@ def update_settings(payload: UpdateSettingsRequest) -> SettingsPayload:
     return SettingsPayload(
         has_curseforge_api_key=bool(key),
         curseforge_api_key_mask=mask_secret(key),
+        agent=current_agent_status(),
     )
 
 
