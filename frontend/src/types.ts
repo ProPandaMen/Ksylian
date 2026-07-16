@@ -79,6 +79,10 @@ export interface SettingsPayload {
   agent: AgentStatus;
 }
 
+export interface ServerConfigPayload {
+  content: string;
+}
+
 export interface MetricUsage {
   used: number;
   total: number;

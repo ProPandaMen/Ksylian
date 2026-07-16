@@ -125,6 +125,10 @@ class ActionResult(BaseModel):
     server: GameServer
 
 
+class ServerConfigPayload(BaseModel):
+    content: str
+
+
 class MetricUsage(BaseModel):
     used: int
     total: int
@@ -291,6 +295,12 @@ def agent_post(path: str, json: dict | None = None) -> httpx.Response:
     if not AGENT_URL:
         raise RuntimeError("Agent is not configured")
     return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=240)
+
+
+def agent_put(path: str, json: dict | None = None) -> httpx.Response:
+    if not AGENT_URL:
+        raise RuntimeError("Agent is not configured")
+    return httpx.put(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=30)
 
 
 def agent_delete(path: str) -> httpx.Response:
@@ -787,6 +797,49 @@ def list_server_logs(server_id: str) -> list[str]:
 
     get_server(server_id)
     return [line for line in logs[-80:] if server_id in line or "Server thread" in line]
+
+
+@app.get("/api/servers/{server_id}/config", response_model=ServerConfigPayload)
+def get_server_config(server_id: str) -> ServerConfigPayload:
+    if AGENT_URL:
+        try:
+            response = agent_get(f"/servers/{server_id}/config")
+            response.raise_for_status()
+            return ServerConfigPayload(**response.json())
+        except Exception as error:
+            append_log(f"agent config read failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent config read failed") from error
+
+    server = get_server(server_id)
+    return ServerConfigPayload(
+        content="\n".join(
+            [
+                f"server-port={server.address.rsplit(':', 1)[-1]}",
+                f"motd={server.name}",
+                "online-mode=true",
+                "max-players=20",
+                "view-distance=10",
+                "",
+            ]
+        )
+    )
+
+
+@app.put("/api/servers/{server_id}/config", response_model=ServerConfigPayload)
+def update_server_config(server_id: str, payload: ServerConfigPayload) -> ServerConfigPayload:
+    if AGENT_URL:
+        try:
+            response = agent_put(f"/servers/{server_id}/config", json=payload.model_dump())
+            response.raise_for_status()
+            append_log(f"{server_id}: server.properties updated")
+            return ServerConfigPayload(**response.json())
+        except Exception as error:
+            append_log(f"agent config save failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent config save failed") from error
+
+    get_server(server_id)
+    append_log(f"{server_id}: server.properties draft updated")
+    return payload
 
 
 @app.get("/api/backups", response_model=list[BackupItem])

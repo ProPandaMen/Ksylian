@@ -58,6 +58,10 @@ class AgentActionResult(BaseModel):
     server: AgentServer
 
 
+class ServerConfigPayload(BaseModel):
+    content: str
+
+
 class MetricUsage(BaseModel):
     used: int
     total: int
@@ -767,6 +771,55 @@ def logs(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> 
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=result.stderr.strip() or "Failed to read logs")
     return [line for line in result.stdout.splitlines() if line]
+
+
+@app.get("/servers/{server_id}/config", response_model=ServerConfigPayload)
+def server_config(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> ServerConfigPayload:
+    require_token(x_ksylian_token)
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    properties_path = Path(config.path) / "server.properties"
+    if not properties_path.exists():
+        ensure_server_provisioned(config)
+    if not properties_path.exists():
+        raise HTTPException(status_code=404, detail="server.properties was not found")
+
+    try:
+        content = properties_path.read_text()
+    except OSError as error:
+        raise HTTPException(status_code=500, detail="Failed to read server.properties") from error
+
+    return ServerConfigPayload(content=content)
+
+
+@app.put("/servers/{server_id}/config", response_model=ServerConfigPayload)
+def update_server_config(
+    server_id: str,
+    payload: ServerConfigPayload,
+    x_ksylian_token: str | None = Header(default=None),
+) -> ServerConfigPayload:
+    require_token(x_ksylian_token)
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if len(payload.content.encode("utf-8")) > 256 * 1024:
+        raise HTTPException(status_code=413, detail="server.properties is too large")
+
+    server_path = Path(config.path)
+    server_path.mkdir(parents=True, exist_ok=True)
+    properties_path = server_path / "server.properties"
+    content = payload.content.replace("\r\n", "\n").replace("\r", "\n")
+    if not content.endswith("\n"):
+        content += "\n"
+
+    try:
+        properties_path.write_text(content)
+    except OSError as error:
+        raise HTTPException(status_code=500, detail="Failed to write server.properties") from error
+
+    return ServerConfigPayload(content=content)
 
 
 @app.post("/servers/{server_id}/actions/{action}", response_model=AgentActionResult)

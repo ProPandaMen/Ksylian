@@ -30,6 +30,7 @@ import type {
   HostMonitoring,
   ModItem,
   NewServerDraft,
+  ServerConfigPayload,
   SettingsPayload,
   AgentStatus,
   ServerState,
@@ -98,9 +99,14 @@ const settings = ref<SettingsPayload>({
 });
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
+type ServerDetailTab = "overview" | "logs" | "settings";
+const activeServerDetailTab = ref<ServerDetailTab>("overview");
 const logConsole = ref<HTMLPreElement | null>(null);
 const shouldStickToLogBottom = ref(true);
 let logRefreshTimer: number | undefined;
+const selectedServerConfig = ref("");
+const isConfigLoading = ref(false);
+const isConfigSaving = ref(false);
 const monitoring = ref<HostMonitoring>({
   hostname: "server",
   ip_addresses: [],
@@ -187,6 +193,11 @@ const pageTitle = computed(() =>
       ? "Новый сервер"
     : activeTabCopy.value.title,
 );
+const serverDetailTabs: Array<{ id: ServerDetailTab; label: string }> = [
+  { id: "overview", label: "Информация" },
+  { id: "logs", label: "Логи" },
+  { id: "settings", label: "Настройки" },
+];
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -218,7 +229,7 @@ async function loadDashboard() {
       selectedServerId.value = nextServerId;
     }
     if (route.name === "server-detail" && selectedServerId.value) {
-      await loadServerLogs(selectedServerId.value);
+      await loadServerDetailData(selectedServerId.value);
     }
   } catch (error) {
     showToast("Backend пока недоступен, данные не обновлены", "error");
@@ -252,6 +263,18 @@ async function loadAgentStatus() {
   }
 }
 
+async function loadServerDetailData(serverId = selectedServerId.value) {
+  if (!serverId) {
+    return;
+  }
+  if (activeServerDetailTab.value === "logs") {
+    await loadServerLogs(serverId);
+  }
+  if (activeServerDetailTab.value === "settings") {
+    await loadServerConfig(serverId);
+  }
+}
+
 async function loadServerLogs(serverId = selectedServerId.value) {
   if (!serverId) {
     selectedServerLogs.value = [];
@@ -274,7 +297,12 @@ async function loadServerLogs(serverId = selectedServerId.value) {
 }
 
 async function refreshServerLogs() {
-  if (serverView.value !== "detail" || !selectedServerId.value || isLogLoading.value) {
+  if (
+    serverView.value !== "detail" ||
+    activeServerDetailTab.value !== "logs" ||
+    !selectedServerId.value ||
+    isLogLoading.value
+  ) {
     return;
   }
 
@@ -310,7 +338,7 @@ async function scrollLogsIfNeeded() {
 }
 
 function startLogAutoRefresh() {
-  if (logRefreshTimer || serverView.value !== "detail") {
+  if (logRefreshTimer || serverView.value !== "detail" || activeServerDetailTab.value !== "logs") {
     return;
   }
 
@@ -324,6 +352,50 @@ function stopLogAutoRefresh() {
     window.clearInterval(logRefreshTimer);
     logRefreshTimer = undefined;
   }
+}
+
+async function loadServerConfig(serverId = selectedServerId.value) {
+  if (!serverId) {
+    selectedServerConfig.value = "";
+    return;
+  }
+
+  isConfigLoading.value = true;
+  try {
+    const payload = await requestJson<ServerConfigPayload>(`/api/servers/${serverId}/config`);
+    selectedServerConfig.value = payload.content;
+  } catch (error) {
+    showToast("Не удалось загрузить server.properties", "error");
+    selectedServerConfig.value = "";
+    console.error(error);
+  } finally {
+    isConfigLoading.value = false;
+  }
+}
+
+async function saveServerConfig() {
+  if (!selectedServerId.value) {
+    return;
+  }
+
+  isConfigSaving.value = true;
+  try {
+    const payload = await requestJson<ServerConfigPayload>(`/api/servers/${selectedServerId.value}/config`, {
+      method: "PUT",
+      body: JSON.stringify({ content: selectedServerConfig.value }),
+    });
+    selectedServerConfig.value = payload.content;
+    showToast("server.properties сохранён", "success");
+  } catch (error) {
+    showToast("Не удалось сохранить server.properties", "error");
+    console.error(error);
+  } finally {
+    isConfigSaving.value = false;
+  }
+}
+
+function selectServerDetailTab(tabId: ServerDetailTab) {
+  activeServerDetailTab.value = tabId;
 }
 
 async function loadMonitoring() {
@@ -486,15 +558,15 @@ watch(
   async (serverId) => {
     if (typeof serverId === "string" && serverId) {
       shouldStickToLogBottom.value = true;
-      await loadServerLogs(serverId);
+      await loadServerDetailData(serverId);
     }
   },
 );
 
 watch(
-  () => serverView.value,
-  (view) => {
-    if (view === "detail") {
+  () => [serverView.value, activeServerDetailTab.value] as const,
+  ([view, tabId]) => {
+    if (view === "detail" && tabId === "logs") {
       shouldStickToLogBottom.value = true;
       startLogAutoRefresh();
       refreshServerLogs();
@@ -502,6 +574,22 @@ watch(
     }
 
     stopLogAutoRefresh();
+  },
+);
+
+watch(
+  () => activeServerDetailTab.value,
+  (tabId) => {
+    if (serverView.value !== "detail") {
+      return;
+    }
+    if (tabId === "settings") {
+      loadServerConfig();
+    }
+    if (tabId === "logs") {
+      shouldStickToLogBottom.value = true;
+      loadServerLogs();
+    }
   },
 );
 
@@ -523,7 +611,7 @@ watch(
 
 onMounted(() => {
   loadDashboard();
-  if (serverView.value === "detail") {
+  if (serverView.value === "detail" && activeServerDetailTab.value === "logs") {
     startLogAutoRefresh();
   }
   if (activeTab.value === "monitoring") {
@@ -780,31 +868,67 @@ onUnmounted(() => {
               </div>
             </section>
 
-            <section class="server-detail-grid">
-              <article class="metric-tile">
-                <Cpu :size="20" />
-                <span>Процессор</span>
-                <strong>{{ selectedServer.cpu }}%</strong>
-              </article>
-              <article class="metric-tile mint">
-                <MemoryStick :size="20" />
-                <span>Оперативка</span>
-                <strong>{{ selectedServer.ram }}</strong>
-              </article>
-              <article class="metric-tile amber">
-                <HardDrive :size="20" />
-                <span>Память</span>
-                <strong>{{ selectedServer.disk }}</strong>
-              </article>
-              <article class="metric-tile graphite">
-                <Users :size="20" />
-                <span>Онлайн</span>
-                <strong>{{ selectedServer.players }}</strong>
-              </article>
+            <nav class="server-tabs" aria-label="Разделы сервера">
+              <button
+                v-for="tab in serverDetailTabs"
+                :key="tab.id"
+                type="button"
+                :class="{ active: activeServerDetailTab === tab.id }"
+                @click="selectServerDetailTab(tab.id)"
+              >
+                {{ tab.label }}
+              </button>
+            </nav>
+
+            <section v-if="activeServerDetailTab === 'overview'" class="server-tab-panel">
+              <section class="server-detail-grid">
+                <article class="metric-tile">
+                  <Cpu :size="20" />
+                  <span>Процессор</span>
+                  <strong>{{ selectedServer.cpu }}%</strong>
+                </article>
+                <article class="metric-tile mint">
+                  <MemoryStick :size="20" />
+                  <span>Оперативка</span>
+                  <strong>{{ selectedServer.ram }}</strong>
+                </article>
+                <article class="metric-tile amber">
+                  <HardDrive :size="20" />
+                  <span>Память</span>
+                  <strong>{{ selectedServer.disk }}</strong>
+                </article>
+                <article class="metric-tile graphite">
+                  <Users :size="20" />
+                  <span>Онлайн</span>
+                  <strong>{{ selectedServer.players }}</strong>
+                </article>
+              </section>
+              <section class="panel server-info-panel">
+                <p class="eyebrow">connection</p>
+                <h2>Основная информация</h2>
+                <div class="server-info-grid">
+                  <div>
+                    <span>Адрес</span>
+                    <strong>{{ selectedServer.address }}</strong>
+                  </div>
+                  <div>
+                    <span>Тип</span>
+                    <strong>{{ selectedServer.pack }}</strong>
+                  </div>
+                  <div>
+                    <span>Версия Minecraft</span>
+                    <strong>{{ selectedServer.version }}</strong>
+                  </div>
+                  <div>
+                    <span>Статус</span>
+                    <strong>{{ stateLabels[selectedServer.state] }}</strong>
+                  </div>
+                </div>
+              </section>
             </section>
 
-            <section class="server-management-grid">
-              <section class="panel terminal-panel">
+            <section v-if="activeServerDetailTab === 'logs'" class="server-tab-panel">
+              <section class="panel terminal-panel server-logs-panel">
                 <div class="panel-heading">
                   <div>
                     <p class="eyebrow">server output</p>
@@ -819,7 +943,36 @@ onUnmounted(() => {
 </code><code v-if="!selectedServerLogs.length">Логов для выбранного сервера пока нет.
 </code></pre>
               </section>
+            </section>
 
+            <section v-if="activeServerDetailTab === 'settings'" class="server-tab-panel">
+              <section class="panel server-config-panel">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">minecraft config</p>
+                    <h2>server.properties</h2>
+                  </div>
+                  <div class="panel-actions">
+                    <button class="ghost-button compact" type="button" @click="loadServerConfig()">
+                      <RefreshCw :size="16" />
+                      <span>{{ isConfigLoading ? 'Загрузка' : 'Обновить' }}</span>
+                    </button>
+                    <button class="primary-button compact" type="button" :disabled="isConfigSaving" @click="saveServerConfig">
+                      <span>{{ isConfigSaving ? 'Сохраняю' : 'Сохранить' }}</span>
+                    </button>
+                  </div>
+                </div>
+                <p class="settings-hint">
+                  Изменения в server.properties обычно применяются после перезапуска Minecraft-сервера.
+                </p>
+                <textarea
+                  v-model="selectedServerConfig"
+                  class="config-editor"
+                  spellcheck="false"
+                  :disabled="isConfigLoading || isConfigSaving"
+                  placeholder="server.properties пока не загружен"
+                ></textarea>
+              </section>
             </section>
           </section>
 
