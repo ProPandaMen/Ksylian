@@ -56,6 +56,7 @@ const isMonitoringLoading = ref(false);
 const isSavingSettings = ref(false);
 const isUpdateLoading = ref(false);
 const isApplyingUpdate = ref(false);
+const isCreatingServer = ref(false);
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
 const selectedServerConfig = ref("");
@@ -294,6 +295,7 @@ async function runServerAction(serverId: string, action: "start" | "restart" | "
 
 async function createServer(newServer: NewServerDraft) {
   const { showToast } = useToasts();
+  isCreatingServer.value = true;
   try {
     await requestJson("/api/servers", {
       method: "POST",
@@ -312,6 +314,8 @@ async function createServer(newServer: NewServerDraft) {
     showToast("Не удалось подготовить сервер", "error");
     console.error(error);
     return false;
+  } finally {
+    isCreatingServer.value = false;
   }
 }
 
@@ -418,6 +422,7 @@ export function useDashboardStore() {
     isSavingSettings,
     isUpdateLoading,
     isApplyingUpdate,
+    isCreatingServer,
     selectedServerId,
     selectedServer,
     selectedServerLogs,

@@ -963,28 +963,107 @@ h3 {
   padding: 22px;
 }
 
+.new-server-steps {
+  display: flex;
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.new-server-steps > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  flex: 1;
+  padding: 0 14px;
+  color: #8b7587;
+  border-radius: 16px;
+  font-weight: 900;
+}
+
+.new-server-steps > span > span,
+.new-server-steps svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #9f6a92;
+}
+
+.new-server-steps > span.active,
+.new-server-steps > span.done {
+  color: #9d176c;
+  background:
+    radial-gradient(circle at 85% 12%, rgba(255, 47, 163, 0.15), transparent 34%),
+    rgba(255, 246, 251, 0.78);
+  box-shadow:
+    0 14px 30px rgba(193, 67, 135, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.server-wizard-step {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-section-head p:not(.eyebrow) {
+  margin-top: 4px;
+  color: #8f7d8c;
+  line-height: 1.45;
+}
+
 .server-type-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
+.server-type-grid.compact {
+  gap: 16px;
+}
+
 .server-type-card {
   display: grid;
-  gap: 8px;
-  min-height: 142px;
-  padding: 16px;
+  align-content: start;
+  gap: 12px;
+  min-height: 190px;
+  padding: 20px;
   color: #4b394b;
   text-align: left;
   border: 1px solid rgba(255, 255, 255, 0.68);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.52);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 246, 251, 0.52)),
+    rgba(255, 255, 255, 0.52);
   box-shadow:
-    0 14px 28px rgba(128, 77, 105, 0.08),
+    0 18px 36px rgba(128, 77, 105, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
-.server-type-card svg {
+.server-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: #c0258c;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 47, 163, 0.18), rgba(145, 71, 255, 0.14)),
+    rgba(255, 255, 255, 0.58);
+  box-shadow: 0 14px 30px rgba(201, 61, 144, 0.12);
+}
+
+.server-type-icon svg,
+.server-type-card > svg {
   color: #c0258c;
 }
 
@@ -1123,6 +1202,7 @@ h3 {
 .new-server-summary div {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .new-server-summary span {
@@ -1132,6 +1212,51 @@ h3 {
 .new-server-summary strong {
   color: #332634;
   font-size: 1.05rem;
+}
+
+.new-server-summary small {
+  color: #9a8294;
+  font-weight: 800;
+}
+
+.provisioning-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  color: #8a1c62;
+  border: 1px solid rgba(255, 47, 163, 0.2);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 10%, rgba(255, 47, 163, 0.14), transparent 36%),
+    rgba(255, 244, 250, 0.76);
+  box-shadow: 0 16px 34px rgba(205, 72, 142, 0.12);
+}
+
+.provisioning-card svg,
+.primary-button svg {
+  flex: 0 0 auto;
+}
+
+.provisioning-card svg,
+.primary-button .spinning {
+  animation: spin 1s linear infinite;
+}
+
+.provisioning-card div {
+  display: grid;
+  gap: 4px;
+}
+
+.provisioning-card span {
+  color: #8f7188;
+  line-height: 1.45;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .metric-tile {

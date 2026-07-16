@@ -1,10 +1,31 @@
 <script setup lang="ts">
-import { ArrowLeft, Box, CheckCircle2, Layers3, Pickaxe, Plus, RefreshCw, Server, Sparkles } from "@lucide/vue";
-import { computed, onMounted, ref } from "vue";
+import {
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Hammer,
+  Loader2,
+  Pickaxe,
+  Plus,
+  Sparkles,
+} from "@lucide/vue";
+import { computed, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
 import type { MinecraftServerType, MinecraftVersionType, MinecraftVersionsPayload, NewServerDraft } from "../types";
 
 const modelValue = defineModel<NewServerDraft>({ required: true });
+
+defineProps<{
+  isSubmitting?: boolean;
+}>();
+
+const emit = defineEmits<{
+  cancel: [];
+  submit: [];
+}>();
+
+const step = ref<1 | 2>(1);
 const versions = ref<MinecraftVersionsPayload>({
   latest_release: "",
   latest_snapshot: "",
@@ -19,14 +40,10 @@ const versionFilters = ref<Record<MinecraftVersionType, boolean>>({
 const isVersionLoading = ref(false);
 const versionError = ref("");
 
-const emit = defineEmits<{
-  cancel: [];
-  submit: [];
-}>();
-
 const serverTypes: Array<{
   id: MinecraftServerType;
   label: string;
+  note: string;
   description: string;
   icon: Component;
   available: boolean;
@@ -34,56 +51,42 @@ const serverTypes: Array<{
   {
     id: "vanilla",
     label: "Vanilla",
-    description: "Чистый Minecraft без модов и плагинов.",
+    note: "готово",
+    description: "Чистый Minecraft сервер без модов и плагинов. Лучший вариант для первого запуска.",
     icon: Pickaxe,
     available: true,
   },
   {
     id: "fabric",
     label: "Fabric",
-    description: "Лёгкий mod loader для современных сборок.",
-    icon: Box,
+    note: "скоро",
+    description: "Легкая база для модовых сборок и современных клиентских/серверных модов.",
+    icon: Sparkles,
     available: false,
   },
   {
     id: "forge",
     label: "Forge",
-    description: "Классическая база для больших модовых сборок.",
-    icon: Layers3,
+    note: "скоро",
+    description: "Классическая экосистема для крупных модпаков и тяжелых сборок.",
+    icon: Hammer,
     available: false,
-  },
-  {
-    id: "neoforge",
-    label: "NeoForge",
-    description: "Новая ветка Forge-экосистемы.",
-    icon: Sparkles,
-    available: false,
-  },
-  {
-    id: "quilt",
-    label: "Quilt",
-    description: "Совместимый loader для Quilt/Fabric-модов.",
-    icon: CheckCircle2,
-    available: false,
-  },
-  {
-    id: "paper",
-    label: "Paper / Purpur",
-    description: "Производительная база для плагин-серверов.",
-    icon: Server,
-    available: true,
   },
 ];
 
-const versionTypeLabels: Record<MinecraftVersionType, string> = {
-  release: "релиз",
-  snapshot: "снапшот",
-  old_beta: "beta",
-  old_alpha: "alpha",
-};
+const selectedType = computed(() => serverTypes.find((item) => item.id === modelValue.value.type) ?? serverTypes[0]);
 
 const filteredVersions = computed(() =>
   versions.value.versions.filter((version) => versionFilters.value[version.type]),
+);
+
+const selectedVersion = computed(() =>
+  versions.value.versions.find((version) => version.id === modelValue.value.version),
+);
+
+const canContinue = computed(() => Boolean(selectedType.value.available));
+const canSubmit = computed(() =>
+  Boolean(modelValue.value.name.trim() && modelValue.value.version && selectedType.value.available),
 );
 
 function updateField(field: keyof NewServerDraft, value: string) {
@@ -99,6 +102,19 @@ function selectType(type: MinecraftServerType, isAvailable: boolean) {
   }
 
   updateField("type", type);
+}
+
+function formatVersionOption(type: MinecraftVersionType) {
+  if (type === "release") {
+    return "Стабильный релиз";
+  }
+  if (type === "snapshot") {
+    return "Snapshot";
+  }
+  if (type === "old_beta") {
+    return "Beta";
+  }
+  return "Alpha";
 }
 
 function selectInitialVersion() {
@@ -141,36 +157,62 @@ function toggleVersionFilter(type: MinecraftVersionType, value: boolean) {
   selectInitialVersion();
 }
 
+function goNext() {
+  if (!canContinue.value) {
+    return;
+  }
+  step.value = 2;
+}
+
+function submit() {
+  if (!canSubmit.value) {
+    return;
+  }
+  emit("submit");
+}
+
+watch(filteredVersions, selectInitialVersion);
 onMounted(loadMinecraftVersions);
 </script>
 
 <template>
   <section class="new-server-page">
     <section class="panel new-server-hero">
-      <button class="ghost-button compact" type="button" @click="emit('cancel')">
+      <button class="ghost-button compact" type="button" :disabled="isSubmitting" @click="emit('cancel')">
         <ArrowLeft :size="16" />
         <span>К списку</span>
       </button>
       <div>
-        <p class="eyebrow">new instance</p>
         <h2>Настройка нового сервера</h2>
         <p>
-          Для первого запуска достаточно выбрать тип, название и версию Minecraft.
-          Остальные параметры добавим следующим шагом, когда подключим provisioner.
+          Мастер проведет по базовой настройке: сначала выбираем основу сервера,
+          затем задаем название и версию Minecraft.
         </p>
       </div>
     </section>
 
-    <form class="panel new-server-form" @submit.prevent="emit('submit')">
-      <section class="form-block">
+    <div class="new-server-steps" aria-label="Шаги создания сервера">
+      <span :class="{ active: step === 1, done: step > 1 }">
+        <Check v-if="step > 1" :size="15" />
+        <span v-else>1</span>
+        Тип сервера
+      </span>
+      <span :class="{ active: step === 2 }">
+        <span>2</span>
+        Основные данные
+      </span>
+    </div>
+
+    <form class="panel new-server-form" @submit.prevent="submit">
+      <section v-if="step === 1" class="server-wizard-step">
         <div class="settings-section-head">
           <div>
-            <p class="eyebrow">server type</p>
-            <h3>Тип сервера</h3>
+            <h3>Выбери основу сервера</h3>
+            <p>Пока полностью готов Vanilla. Fabric и Forge уже заложены в интерфейс, но появятся позже.</p>
           </div>
         </div>
 
-        <div class="server-type-grid" role="radiogroup" aria-label="Тип сервера">
+        <div class="server-type-grid compact" role="radiogroup" aria-label="Тип сервера">
           <button
             v-for="serverType in serverTypes"
             :key="serverType.id"
@@ -178,26 +220,37 @@ onMounted(loadMinecraftVersions);
             :class="{ selected: modelValue.type === serverType.id, disabled: !serverType.available }"
             type="button"
             role="radio"
-            :disabled="!serverType.available"
+            :disabled="!serverType.available || isSubmitting"
             :aria-checked="modelValue.type === serverType.id"
             :aria-disabled="!serverType.available"
             @click="selectType(serverType.id, serverType.available)"
           >
-            <component :is="serverType.icon" :size="22" />
+            <span class="server-type-icon"><component :is="serverType.icon" :size="24" /></span>
             <div class="server-type-title">
               <strong>{{ serverType.label }}</strong>
-              <small v-if="!serverType.available">скоро</small>
+              <small>{{ serverType.note }}</small>
             </div>
             <span>{{ serverType.description }}</span>
           </button>
         </div>
+
+        <div class="new-server-summary">
+          <div>
+            <span>Выбрано</span>
+            <strong>{{ selectedType.label }}</strong>
+          </div>
+          <button class="primary-button" type="button" :disabled="!canContinue || isSubmitting" @click="goNext">
+            <span>Далее</span>
+            <ChevronRight :size="18" />
+          </button>
+        </div>
       </section>
 
-      <section class="form-block">
+      <section v-else class="server-wizard-step">
         <div class="settings-section-head">
           <div>
-            <p class="eyebrow">basic info</p>
             <h3>Основные данные</h3>
+            <p>Этого достаточно, чтобы подготовить папку сервера, скачать ядро и зарегистрировать сервис.</p>
           </div>
         </div>
 
@@ -209,6 +262,7 @@ onMounted(loadMinecraftVersions);
               required
               type="text"
               placeholder="Например, Ksy Survival"
+              :disabled="isSubmitting"
               @input="updateField('name', ($event.target as HTMLInputElement).value)"
             />
           </label>
@@ -218,13 +272,13 @@ onMounted(loadMinecraftVersions);
             <select
               :value="modelValue.version"
               required
-              :disabled="isVersionLoading || !filteredVersions.length"
+              :disabled="isVersionLoading || !filteredVersions.length || isSubmitting"
               @change="updateField('version', ($event.target as HTMLSelectElement).value)"
             >
               <option v-if="isVersionLoading" value="">Загружаю версии...</option>
-              <option v-else-if="!filteredVersions.length" value="">Нет версий под фильтры</option>
+              <option v-else-if="!filteredVersions.length" value="">Нет версий под выбранные фильтры</option>
               <option v-for="version in filteredVersions" :key="version.id" :value="version.id">
-                {{ version.label }} · {{ versionTypeLabels[version.type] }}
+                Minecraft {{ version.id }} — {{ formatVersionOption(version.type) }}
               </option>
             </select>
           </label>
@@ -235,6 +289,7 @@ onMounted(loadMinecraftVersions);
             <input
               type="checkbox"
               :checked="versionFilters.release"
+              :disabled="isSubmitting"
               @change="toggleVersionFilter('release', ($event.target as HTMLInputElement).checked)"
             />
             <span>Релизы</span>
@@ -243,6 +298,7 @@ onMounted(loadMinecraftVersions);
             <input
               type="checkbox"
               :checked="versionFilters.snapshot"
+              :disabled="isSubmitting"
               @change="toggleVersionFilter('snapshot', ($event.target as HTMLInputElement).checked)"
             />
             <span>Снапшоты</span>
@@ -251,6 +307,7 @@ onMounted(loadMinecraftVersions);
             <input
               type="checkbox"
               :checked="versionFilters.old_beta"
+              :disabled="isSubmitting"
               @change="toggleVersionFilter('old_beta', ($event.target as HTMLInputElement).checked)"
             />
             <span>Beta</span>
@@ -259,29 +316,45 @@ onMounted(loadMinecraftVersions);
             <input
               type="checkbox"
               :checked="versionFilters.old_alpha"
+              :disabled="isSubmitting"
               @change="toggleVersionFilter('old_alpha', ($event.target as HTMLInputElement).checked)"
             />
             <span>Alpha</span>
           </label>
-          <button class="ghost-button compact" type="button" :disabled="isVersionLoading" @click="loadMinecraftVersions">
-            <RefreshCw :size="15" />
-            <span>{{ isVersionLoading ? 'Обновляю' : 'Обновить' }}</span>
-          </button>
         </div>
 
         <p v-if="versionError" class="version-error">{{ versionError }}</p>
-      </section>
 
-      <div class="new-server-summary">
-        <div>
-          <span>Будет создан сервер</span>
-          <strong>{{ modelValue.name || 'Без названия' }} · {{ modelValue.version }}</strong>
+        <div v-if="isSubmitting" class="provisioning-card">
+          <Loader2 :size="22" />
+          <div>
+            <strong>Подготавливаю сервер</strong>
+            <span>Создаю файлы, скачиваю server.jar и настраиваю systemd-сервис. Это может занять немного времени.</span>
+          </div>
         </div>
-        <button class="primary-button" type="submit">
-          <Plus :size="18" />
-          <span>Создать сервер</span>
-        </button>
-      </div>
+
+        <div class="new-server-summary">
+          <button class="ghost-button" type="button" :disabled="isSubmitting" @click="step = 1">
+            <ChevronLeft :size="18" />
+            <span>Назад</span>
+          </button>
+
+          <div>
+            <span>Будет создан сервер</span>
+            <strong>
+              {{ modelValue.name || 'Без названия' }}
+              <template v-if="modelValue.version"> · Minecraft {{ modelValue.version }}</template>
+            </strong>
+            <small>{{ selectedType.label }}{{ selectedVersion ? ` · ${formatVersionOption(selectedVersion.type)}` : '' }}</small>
+          </div>
+
+          <button class="primary-button" type="submit" :disabled="!canSubmit || isSubmitting">
+            <Loader2 v-if="isSubmitting" class="spinning" :size="18" />
+            <Plus v-else :size="18" />
+            <span>{{ isSubmitting ? 'Создаю...' : 'Создать сервер' }}</span>
+          </button>
+        </div>
+      </section>
     </form>
   </section>
 </template>

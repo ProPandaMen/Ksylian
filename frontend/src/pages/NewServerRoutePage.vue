@@ -29,5 +29,10 @@ async function createServer() {
 </script>
 
 <template>
-  <NewServerPage v-model="newServer" @cancel="backToServerList" @submit="createServer" />
+  <NewServerPage
+    v-model="newServer"
+    :is-submitting="store.isCreatingServer.value"
+    @cancel="backToServerList"
+    @submit="createServer"
+  />
 </template>
