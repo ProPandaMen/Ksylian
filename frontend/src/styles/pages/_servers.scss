@@ -1,0 +1,44 @@
+.server-management-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.server-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-tile {
+  display: grid;
+  gap: 8px;
+  min-height: 96px;
+  padding: 16px;
+  color: #176a50;
+}
+
+.summary-tile.amber {
+  color: #9a5c10;
+  background: rgba(255, 247, 232, 0.66);
+}
+
+.summary-tile.graphite {
+  color: #5f6672;
+  background: rgba(247, 248, 251, 0.66);
+}
+
+.summary-tile.violet {
+  color: #7b3fd7;
+  background: rgba(247, 240, 255, 0.64);
+}
+
+.summary-tile span {
+  color: #80687c;
+}
+
+.summary-tile strong {
+  font-size: 1.8rem;
+  line-height: 1;
+}

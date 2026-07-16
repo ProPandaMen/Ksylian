@@ -1,0 +1,18 @@
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.content-grid.single-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.main-column,
+.side-column {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+

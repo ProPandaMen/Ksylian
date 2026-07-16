@@ -1,0 +1,29 @@
+.panel {
+  min-width: 0;
+  padding: 18px;
+}
+
+.panel-heading {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.server-list,
+.stack-list,
+.file-list {
+  display: grid;
+  gap: 10px;
+}
+
+.expanded-list {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+

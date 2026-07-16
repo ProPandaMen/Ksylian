@@ -1,0 +1,18 @@
+.love-note {
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 14px;
+  color: #8b2f68;
+  background:
+    radial-gradient(circle at 14% 20%, rgba(255, 255, 255, 0.62), transparent 18%),
+    linear-gradient(135deg, rgba(255, 218, 236, 0.76), rgba(255, 190, 225, 0.52));
+}
+
+.love-note img {
+  width: 20px;
+  height: 20px;
+  filter: brightness(0) saturate(100%) invert(26%) sepia(57%) saturate(1338%)
+    hue-rotate(291deg) brightness(90%) contrast(88%);
+}
+

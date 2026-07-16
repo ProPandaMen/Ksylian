@@ -1,0 +1,107 @@
+.app-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  height: 100vh;
+  min-height: 100vh;
+  padding: 34px;
+  background:
+    radial-gradient(circle at 13% 50%, rgba(233, 0, 153, 0.32), transparent 22%),
+    radial-gradient(circle at 72% 17%, rgba(232, 93, 210, 0.34), transparent 18%),
+    radial-gradient(circle at 82% 78%, rgba(255, 255, 255, 0.9), transparent 12%),
+    linear-gradient(135deg, #d7d0d1 0%, #f1e5e8 42%, #cfc8c7 100%);
+}
+
+.app-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(105deg, transparent 0 42%, rgba(255, 255, 255, 0.24) 42.2% 42.7%, transparent 43%),
+    linear-gradient(78deg, transparent 0 62%, rgba(217, 0, 146, 0.18) 62.1% 62.4%, transparent 62.8%),
+    linear-gradient(158deg, transparent 0 70%, rgba(255, 255, 255, 0.22) 70.2% 70.6%, transparent 71%);
+  opacity: 0.8;
+}
+
+.app-shell::after {
+  content: "";
+  position: absolute;
+  inset: 34px;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 26px;
+  box-shadow:
+    0 46px 110px rgba(77, 48, 68, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.scene-orb,
+.scene-ribbon {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.scene-orb {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.96), transparent 16%),
+    radial-gradient(circle at 62% 68%, rgba(120, 40, 255, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 108, 193, 0.8), rgba(255, 233, 245, 0.3));
+  box-shadow:
+    inset -18px -24px 40px rgba(143, 45, 110, 0.2),
+    0 32px 70px rgba(184, 48, 128, 0.24);
+}
+
+.orb-one {
+  width: 210px;
+  height: 210px;
+  left: 155px;
+  top: 300px;
+}
+
+.orb-two {
+  width: 170px;
+  height: 170px;
+  right: 140px;
+  top: 116px;
+  opacity: 0.78;
+}
+
+.orb-three {
+  width: 120px;
+  height: 120px;
+  right: 86px;
+  bottom: 70px;
+  opacity: 0.72;
+}
+
+.scene-ribbon {
+  width: 260px;
+  height: 160px;
+  border-radius: 46% 54% 52% 48%;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.38), rgba(255, 34, 163, 0.58)),
+    repeating-linear-gradient(80deg, transparent 0 12px, rgba(255, 255, 255, 0.28) 13px 16px);
+  filter: blur(0.2px);
+  transform: rotate(-18deg);
+  box-shadow: 0 28px 70px rgba(208, 31, 142, 0.28);
+}
+
+.ribbon-one {
+  right: 70px;
+  top: 272px;
+}
+
+.ribbon-two {
+  left: 190px;
+  bottom: 92px;
+  width: 210px;
+  height: 134px;
+  transform: rotate(26deg);
+  opacity: 0.7;
+}
+

@@ -1,0 +1,43 @@
+.stack-item {
+  gap: 12px;
+  min-height: 58px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 14px;
+  background: rgba(255, 247, 251, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.stack-item div {
+  min-width: 0;
+  flex: 1;
+}
+
+.stack-item strong,
+.stack-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack-item i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #65d6ad;
+}
+
+.stack-item i.update {
+  background: #ffb44f;
+}
+
+.stack-item i.review {
+  background: #8d72ff;
+}
+
+.stack-item.muted {
+  color: #786474;
+  background: rgba(255, 255, 255, 0.4);
+}
+

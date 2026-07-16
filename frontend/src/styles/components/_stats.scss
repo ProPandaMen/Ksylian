@@ -1,0 +1,31 @@
+.stat-tile {
+  display: grid;
+  gap: 10px;
+  min-height: 118px;
+  padding: 18px;
+  color: #a20f6d;
+}
+
+.stat-tile.mint {
+  color: #18604a;
+  background: rgba(235, 255, 247, 0.58);
+}
+
+.stat-tile.amber {
+  color: #735019;
+  background: rgba(255, 248, 233, 0.68);
+}
+
+.stat-tile.graphite {
+  color: #374151;
+  background: rgba(247, 248, 251, 0.62);
+}
+
+.stat-tile span {
+  color: #80687c;
+}
+
+.stat-tile strong {
+  font-size: 1.7rem;
+}
+

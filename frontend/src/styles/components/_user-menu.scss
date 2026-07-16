@@ -1,0 +1,12 @@
+.user-menu {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.user-menu > span {
+  color: #574052;
+  font-weight: 900;
+}
+

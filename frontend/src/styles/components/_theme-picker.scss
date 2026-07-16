@@ -1,0 +1,51 @@
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.theme-picker legend {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  color: #4b394b;
+  font-weight: 800;
+}
+
+.theme-option {
+  display: grid;
+  gap: 6px;
+  min-height: 74px;
+  padding: 10px;
+  color: #574052;
+  border: 1px solid rgba(255, 255, 255, 0.64);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+  font-weight: 800;
+}
+
+.theme-option span {
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff2fa3, #8e4fff);
+}
+
+.theme-option.black span {
+  background: linear-gradient(135deg, #111318, #3b4250);
+}
+
+.theme-option.white span {
+  background: linear-gradient(135deg, #ffffff, #dfe6ef);
+}
+
+.theme-option.green span {
+  background: linear-gradient(135deg, #2fa84f, #8fcf5d);
+}
+
+.theme-option.selected {
+  color: #a20f6d;
+  border-color: rgba(255, 47, 163, 0.48);
+  box-shadow: 0 12px 24px rgba(204, 60, 132, 0.16);
+}
+
