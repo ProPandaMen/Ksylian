@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ArrowLeft,
@@ -98,6 +98,9 @@ const settings = ref<SettingsPayload>({
 });
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
+const logConsole = ref<HTMLPreElement | null>(null);
+const shouldStickToLogBottom = ref(true);
+let logRefreshTimer: number | undefined;
 const monitoring = ref<HostMonitoring>({
   hostname: "server",
   ip_addresses: [],
@@ -260,12 +263,66 @@ async function loadServerLogs(serverId = selectedServerId.value) {
 
   try {
     selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${serverId}/logs`);
+    await scrollLogsIfNeeded();
   } catch (error) {
     showToast("Не удалось загрузить логи выбранного сервера", "error");
     selectedServerLogs.value = [];
     console.error(error);
   } finally {
     isLogLoading.value = false;
+  }
+}
+
+async function refreshServerLogs() {
+  if (serverView.value !== "detail" || !selectedServerId.value || isLogLoading.value) {
+    return;
+  }
+
+  try {
+    selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${selectedServerId.value}/logs`);
+    await scrollLogsIfNeeded();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function updateLogStickiness() {
+  const consoleElement = logConsole.value;
+  if (!consoleElement) {
+    shouldStickToLogBottom.value = true;
+    return;
+  }
+
+  const distanceFromBottom = consoleElement.scrollHeight - consoleElement.scrollTop - consoleElement.clientHeight;
+  shouldStickToLogBottom.value = distanceFromBottom < 48;
+}
+
+async function scrollLogsIfNeeded() {
+  if (!shouldStickToLogBottom.value) {
+    return;
+  }
+
+  await nextTick();
+  const consoleElement = logConsole.value;
+  if (consoleElement) {
+    consoleElement.scrollTop = consoleElement.scrollHeight;
+  }
+}
+
+function startLogAutoRefresh() {
+  if (logRefreshTimer || serverView.value !== "detail") {
+    return;
+  }
+
+  logRefreshTimer = window.setInterval(() => {
+    refreshServerLogs();
+  }, 2500);
+}
+
+function stopLogAutoRefresh() {
+  if (logRefreshTimer) {
+    window.clearInterval(logRefreshTimer);
+    logRefreshTimer = undefined;
   }
 }
 
@@ -428,8 +485,30 @@ watch(
   () => route.params.serverId,
   async (serverId) => {
     if (typeof serverId === "string" && serverId) {
+      shouldStickToLogBottom.value = true;
       await loadServerLogs(serverId);
     }
+  },
+);
+
+watch(
+  () => serverView.value,
+  (view) => {
+    if (view === "detail") {
+      shouldStickToLogBottom.value = true;
+      startLogAutoRefresh();
+      refreshServerLogs();
+      return;
+    }
+
+    stopLogAutoRefresh();
+  },
+);
+
+watch(
+  () => selectedServerLogs.value.length,
+  () => {
+    scrollLogsIfNeeded();
   },
 );
 
@@ -444,12 +523,19 @@ watch(
 
 onMounted(() => {
   loadDashboard();
+  if (serverView.value === "detail") {
+    startLogAutoRefresh();
+  }
   if (activeTab.value === "monitoring") {
     loadMonitoring();
   }
   loadSettings().then(() => {
     return undefined;
   });
+});
+
+onUnmounted(() => {
+  stopLogAutoRefresh();
 });
 </script>
 
@@ -729,7 +815,7 @@ onMounted(() => {
                     <span>{{ isLogLoading ? 'Загрузка' : 'Обновить' }}</span>
                   </button>
                 </div>
-                <pre><code v-for="line in selectedServerLogs" :key="line">{{ line }}
+                <pre ref="logConsole" @scroll="updateLogStickiness"><code v-for="(line, index) in selectedServerLogs" :key="`${index}-${line}`">{{ line }}
 </code><code v-if="!selectedServerLogs.length">Логов для выбранного сервера пока нет.
 </code></pre>
               </section>
