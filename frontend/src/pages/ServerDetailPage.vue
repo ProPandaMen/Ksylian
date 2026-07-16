@@ -161,28 +161,6 @@ onUnmounted(stopLogAutoRefresh);
       </div>
     </div>
 
-    <section class="server-hero panel">
-      <div class="server-hero-main">
-        <span class="server-state" :class="store.selectedServer.value.state"></span>
-        <div>
-          <p class="eyebrow">{{ store.selectedServer.value.pack }}</p>
-          <h2>{{ store.selectedServer.value.name }}</h2>
-          <p>{{ store.selectedServer.value.version }} · {{ store.selectedServer.value.address }}</p>
-        </div>
-      </div>
-      <div class="server-actions">
-        <button class="icon-button" type="button" title="Запустить" @click="store.runServerAction(store.selectedServer.value.id, 'start')">
-          <Play :size="17" />
-        </button>
-        <button class="icon-button" type="button" title="Перезагрузить" @click="store.runServerAction(store.selectedServer.value.id, 'restart')">
-          <ListRestart :size="17" />
-        </button>
-        <button class="icon-button danger" type="button" title="Остановить" @click="store.runServerAction(store.selectedServer.value.id, 'stop')">
-          <CircleStop :size="17" />
-        </button>
-      </div>
-    </section>
-
     <nav class="server-tabs" aria-label="Разделы сервера">
       <button
         v-for="tab in serverDetailTabs"
@@ -196,6 +174,28 @@ onUnmounted(stopLogAutoRefresh);
     </nav>
 
     <section v-if="activeServerDetailTab === 'overview'" class="server-tab-panel">
+      <section class="server-hero panel">
+        <div class="server-hero-main">
+          <span class="server-state" :class="store.selectedServer.value.state"></span>
+          <div>
+            <p class="eyebrow">{{ store.selectedServer.value.pack }}</p>
+            <h2>{{ store.selectedServer.value.name }}</h2>
+            <p>{{ store.selectedServer.value.version }} · {{ store.selectedServer.value.address }}</p>
+          </div>
+        </div>
+        <div class="server-actions">
+          <button class="icon-button" type="button" title="Запустить" @click="store.runServerAction(store.selectedServer.value.id, 'start')">
+            <Play :size="17" />
+          </button>
+          <button class="icon-button" type="button" title="Перезагрузить" @click="store.runServerAction(store.selectedServer.value.id, 'restart')">
+            <ListRestart :size="17" />
+          </button>
+          <button class="icon-button danger" type="button" title="Остановить" @click="store.runServerAction(store.selectedServer.value.id, 'stop')">
+            <CircleStop :size="17" />
+          </button>
+        </div>
+      </section>
+
       <section class="server-detail-grid">
         <article class="metric-tile">
           <Cpu :size="20" />
