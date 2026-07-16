@@ -1,82 +1,141 @@
 # Ksylian
 
-Ksylian is a self-hosted Minecraft server panel. It is being built as a friendly admin UI for creating, running, monitoring and maintaining Minecraft servers from one place.
+Self-hosted панель для создания и управления Minecraft-серверами.
 
-The project started as a personal home-server tool, so the first priority is a simple setup for one Linux host: a web panel, a backend API and a local host agent that manages Minecraft server processes.
+Ksylian помогает поднять Minecraft-сервер на своем хосте без ручной возни с папками, `server.jar`, сервисами и логами. Идея проекта простая: открыть веб-панель, выбрать тип сервера, версию Minecraft, нажать кнопку создания и дальше управлять сервером из одного места.
 
-## Features
+> Проект находится на ранней стадии разработки. Часть функций уже работает, часть еще активно проектируется.
 
-- First-run admin account setup
-- User login and temporary invite links
-- Per-user themes: pink, black, white and Minecraft-style green
-- Server list with status, type, Minecraft version and quick actions
-- Managed server creation for supported server types
-- Server logs with auto-refresh
-- Host monitoring: CPU, RAM, disks, services and top processes
-- Minecraft server config editing
-- Backup and self-update foundations
-- CurseForge integration placeholder, ready for API-key based catalog work
+## Зачем это нужно
 
-## Current Status
+Если у тебя есть домашний сервер, VPS или отдельный Linux-компьютер под Minecraft, Ksylian должен стать удобной панелью поверх этой машины:
 
-Ksylian is early-stage software. It is already useful for local experiments, but some parts are still evolving:
+- быстро создавать новые Minecraft-серверы;
+- запускать, останавливать и перезапускать их из браузера;
+- смотреть логи без SSH;
+- видеть нагрузку на хост;
+- редактировать базовые настройки сервера;
+- управлять доступом к панели через пользователей.
 
-- Real server management depends on the host agent.
-- CurseForge installation is not fully enabled yet.
-- Multi-host support is not implemented yet.
-- Public releases and automatic updates are still being shaped.
+Проект ориентирован на self-hosted сценарий: ты сам контролируешь сервер, данные и окружение.
 
-## Tech Stack
+## Что уже умеет
 
-- Frontend: Vue 3, Vue Router, Vite, SCSS
-- Backend: FastAPI
-- Host agent: FastAPI + systemd
-- Runtime: Docker Compose for the panel, systemd for the agent
+Главный фокус сейчас — развертывание и обслуживание Minecraft-серверов на одном хосте.
 
-## Project Structure
+- Создание Minecraft-сервера через веб-интерфейс.
+- Выбор типа сервера в мастере создания.
+- Выбор версии Minecraft из списка.
+- Автоматическая подготовка файлов сервера.
+- Скачивание серверного ядра для поддерживаемого типа.
+- Регистрация сервера как `systemd`-сервиса на хосте.
+- Запуск, остановка и перезапуск сервера.
+- Просмотр логов сервера с автообновлением.
+- Отображение статуса серверов в панели.
+- Редактирование базового конфига Minecraft.
+- Мониторинг нагрузки хоста: CPU, RAM, диски, сервисы и процессы.
+- Первичная настройка администратора.
+- Авторизация пользователей.
+- Временные ссылки-приглашения для регистрации.
+- Персональные цветовые темы интерфейса.
+
+## В разработке
+
+- Fabric и Forge как полноценные типы серверов.
+- Интеграция с CurseForge для просмотра модов и модпаков.
+- Установка и обновление модов из панели.
+- Бэкапы с удобным управлением из интерфейса.
+- Файловый менеджер сервера.
+- Более гибкие роли пользователей.
+- Поддержка нескольких хостов.
+- Более аккуратный механизм обновления самой панели.
+
+## Как это устроено
 
 ```text
-frontend/   Vue admin panel
-backend/    Backend API, auth, settings and integrations
-agent/      Host agent that manages Minecraft servers on the machine
-deploy/     Docker Compose and environment examples
+frontend/   веб-интерфейс на Vue
+backend/    API, авторизация, настройки и интеграции
+agent/      агент на хосте, который управляет Minecraft-серверами
+deploy/     Docker Compose и примеры окружения
 ```
 
-## Configuration
+Панель состоит из трех основных частей:
 
-Do not commit real `.env` files. The repository intentionally tracks only example files.
+- **Frontend** — интерфейс администратора.
+- **Backend** — API панели, авторизация, настройки и связь с агентом.
+- **Host Agent** — локальный сервис на сервере, который создает папки, запускает Minecraft, читает логи и собирает метрики.
 
-Create production config from the example:
+## Стек
+
+- Vue 3
+- Vue Router
+- Vite
+- SCSS
+- FastAPI
+- Docker Compose
+- systemd
+
+## Быстрый старт
+
+Скопируй пример окружения:
 
 ```bash
 cp deploy/.env.example deploy/.env
 ```
 
-At minimum, set these values:
+Заполни обязательные секреты:
 
 ```bash
 KSYLIAN_AGENT_TOKEN=replace-with-a-long-random-token
 KSYLIAN_AUTH_SECRET=replace-with-a-long-random-secret
 ```
 
-Optional values:
+> Не коммить реальные `.env` файлы. Используй `.env.example` как шаблон, а секреты храни только на своем сервере.
+
+Запусти панель:
 
 ```bash
-CURSEFORGE_API_KEY=optional-curseforge-api-key
-KSYLIAN_GITHUB_TOKEN=optional-github-token-for-private-repos-or-release-checks
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
-For the host agent, use:
+По умолчанию:
+
+- Frontend: `http://SERVER_IP:8088`
+- Backend: `http://SERVER_IP:8090`
+- Agent: `http://SERVER_IP:8765`
+
+При первом открытии панель предложит создать администратора.
+
+## Установка Host Agent
+
+Без агента панель не сможет реально создавать и запускать Minecraft-серверы. Агент должен быть установлен на той машине, где будут находиться серверы.
 
 ```bash
-cp agent/.env.example agent/.env
+cd agent
+cp .env.example .env
 ```
 
-The agent token must match `KSYLIAN_AGENT_TOKEN` from `deploy/.env`.
+В `agent/.env` укажи тот же `KSYLIAN_AGENT_TOKEN`, что и в `deploy/.env`.
 
-## Local Development
+Затем установи сервис:
 
-Start the backend:
+```bash
+./install-agent.sh
+```
+
+Агент запускается через `systemd` и отвечает за:
+
+- создание папок серверов;
+- скачивание и подготовку серверных файлов;
+- запуск и остановку Minecraft-сервисов;
+- чтение логов;
+- сохранение `server.properties`;
+- сбор метрик хоста;
+- подготовку бэкапов.
+
+## Локальная разработка
+
+Backend:
 
 ```bash
 cd backend
@@ -86,7 +145,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Start the frontend:
+Frontend:
 
 ```bash
 cd frontend
@@ -94,64 +153,19 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL and create the first admin account when prompted.
+После запуска открой Vite URL и создай первого администратора.
 
-## Docker Deployment
+## Статус проекта
 
-Prepare environment:
+Ksylian пока не стоит считать стабильной production-панелью. API, структура данных и механика установки могут меняться между версиями.
 
-```bash
-cp deploy/.env.example deploy/.env
-```
+Сейчас проект лучше подходит для:
 
-Start the panel:
+- домашнего сервера;
+- тестового Minecraft-хоста;
+- небольшой приватной команды;
+- экспериментов с self-hosted инфраструктурой.
 
-```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
-```
+## Лицензия
 
-By default:
-
-- Frontend: `http://SERVER_IP:8088`
-- Backend: `http://SERVER_IP:8090`
-- Agent: `http://SERVER_IP:8765`
-
-## Host Agent
-
-The backend can show demo data when the agent is unavailable, but real server control requires the agent.
-
-Install the agent on the host:
-
-```bash
-cd agent
-KSYLIAN_AGENT_TOKEN=replace-with-the-same-token ./install-agent.sh
-```
-
-The agent runs as a systemd service and is responsible for:
-
-- creating managed server folders
-- starting, stopping and restarting Minecraft servers
-- reading logs
-- reading and saving `server.properties`
-- collecting host metrics
-- creating backups
-- running the app update command
-
-## Open Source Safety
-
-Before making the repository public, keep these out of Git:
-
-- `deploy/.env`
-- `agent/.env`
-- CurseForge API keys
-- GitHub tokens
-- agent tokens
-- auth/session secrets
-- real user data files
-- Minecraft worlds and backups
-
-The current `.gitignore` excludes `.env` and `.env.*` while allowing `.env.example`.
-
-## License
-
-No license has been selected yet. Add a `LICENSE` file before advertising the project as open source.
+Лицензия пока не выбрана. Перед полноценной публикацией проекта стоит добавить файл `LICENSE`.
