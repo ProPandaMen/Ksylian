@@ -619,7 +619,7 @@ def service_usage(service: str) -> tuple[int, str]:
         return 0, format_bytes(memory) if memory else "0 MB"
 
     result = run(["ps", "-p", ",".join(pids), "-o", "%cpu="])
-    cpu = round(sum(float(value) for value in result.stdout.split() if value))
+    cpu = min(round(sum(float(value) for value in result.stdout.split() if value)), 100)
     return cpu, format_bytes(memory) if memory else "0 MB"
 
 
