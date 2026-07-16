@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Cpu, Gauge, HardDrive, MemoryStick, RefreshCw } from "@lucide/vue";
-import type { HostMonitoring, ServerState } from "../types";
+import type { DiskUsage, HostMonitoring, ServerState } from "../types";
 
 defineProps<{
   monitoring: HostMonitoring;
@@ -12,6 +12,31 @@ defineProps<{
 const emit = defineEmits<{
   refresh: [];
 }>();
+
+function clampPercent(percent: number) {
+  return Math.min(100, Math.max(0, Math.round(percent)));
+}
+
+function freeLabel(disk: DiskUsage) {
+  const freeBytes = Math.max(0, disk.total - disk.used);
+  if (freeBytes >= 1024 ** 3) {
+    return `${(freeBytes / 1024 ** 3).toFixed(1)} GB`;
+  }
+  if (freeBytes >= 1024 ** 2) {
+    return `${(freeBytes / 1024 ** 2).toFixed(1)} MB`;
+  }
+  return `${Math.round(freeBytes / 1024)} KB`;
+}
+
+function diskCircleStyle(percent: number) {
+  const safePercent = clampPercent(percent);
+  const circumference = 2 * Math.PI * 46;
+  const usedLength = (safePercent / 100) * circumference;
+  const freeLength = circumference - usedLength;
+  return {
+    "--disk-dash": `${usedLength} ${freeLength}`,
+  };
+}
 </script>
 
 <template>
@@ -67,14 +92,36 @@ const emit = defineEmits<{
           </div>
         </div>
         <div class="disk-list">
-          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-row">
-            <div>
-              <strong>{{ disk.mount }}</strong>
-              <span>{{ disk.filesystem }} · {{ disk.used_label }} / {{ disk.total_label }}</span>
+          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card">
+            <div class="disk-chart" :style="diskCircleStyle(disk.percent)" aria-hidden="true">
+              <svg viewBox="0 0 120 120" role="img">
+                <circle class="disk-ring free" cx="60" cy="60" r="46" />
+                <circle class="disk-ring used" cx="60" cy="60" r="46" />
+              </svg>
+              <div class="disk-chart-label">
+                <strong>{{ clampPercent(disk.percent) }}%</strong>
+                <span>занято</span>
+              </div>
             </div>
-            <b>{{ disk.percent }}%</b>
-            <div class="progress-line static">
-              <span :style="{ width: `${disk.percent}%` }"></span>
+            <div class="disk-info">
+              <div>
+                <strong>{{ disk.mount }}</strong>
+                <span>{{ disk.filesystem }}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>Занято</dt>
+                  <dd>{{ disk.used_label }}</dd>
+                </div>
+                <div>
+                  <dt>Свободно</dt>
+                  <dd>{{ freeLabel(disk) }}</dd>
+                </div>
+                <div>
+                  <dt>Всего</dt>
+                  <dd>{{ disk.total_label }}</dd>
+                </div>
+              </dl>
             </div>
           </article>
           <article v-if="!monitoring.disks.length" class="stack-item muted">
