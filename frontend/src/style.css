@@ -17,7 +17,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 button,
@@ -41,6 +41,7 @@ button:disabled {
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
+  height: 100vh;
   min-height: 100vh;
   padding: 34px;
   background:
@@ -147,8 +148,10 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 28px;
+  height: calc(100vh - 68px);
   min-height: calc(100vh - 68px);
   padding: 24px 20px;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.48);
   border-right: 0;
   border-radius: 24px 0 0 24px;
@@ -277,8 +280,11 @@ button:disabled {
   position: relative;
   z-index: 1;
   min-width: 0;
+  height: calc(100vh - 68px);
   min-height: calc(100vh - 68px);
   padding: 26px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid rgba(255, 255, 255, 0.48);
   border-left: 1px solid rgba(220, 174, 198, 0.28);
   border-radius: 0 24px 24px 0;
@@ -932,7 +938,7 @@ h3 {
 
 .server-management-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -1975,7 +1981,9 @@ h3 {
 
 @media (max-width: 860px) {
   .app-shell {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
     padding: 14px;
   }
 
@@ -1994,8 +2002,10 @@ h3 {
     top: 0;
     z-index: 3;
     flex-direction: row;
+    flex: 0 0 auto;
     align-items: center;
     gap: 12px;
+    height: auto;
     min-height: auto;
     margin-bottom: 12px;
     padding: 10px;
@@ -2023,7 +2033,9 @@ h3 {
   }
 
   .workspace {
-    min-height: auto;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
     padding: 18px;
     border: 1px solid rgba(255, 255, 255, 0.55);
     border-radius: 18px;

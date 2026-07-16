@@ -2,36 +2,21 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  Archive,
   ArrowLeft,
-  Box,
-  CheckCircle2,
   ChevronRight,
   CircleStop,
-  Clock3,
   Cpu,
-  Download,
-  FileArchive,
-  FileText,
-  Folder,
-  Gauge,
   HardDrive,
-  Home,
   ListRestart,
   MemoryStick,
-  PackagePlus,
   Play,
   Plus,
   RefreshCw,
   Server,
-  ShieldCheck,
   Trash2,
-  UploadCloud,
   Users,
   X,
 } from "@lucide/vue";
-import catPaw from "./assets/cat-paw.svg";
-import catMascot from "./assets/ksylian-cat.png";
 import AppSidebar from "./components/AppSidebar.vue";
 import { navItems, routePaths, tabCopy } from "./navigation";
 import CurseForgePage from "./pages/CurseForgePage.vue";
@@ -151,9 +136,6 @@ const stableServersCount = computed(
 const selectedServer = computed(
   () => servers.value.find((server) => server.id === selectedServerId.value) ?? servers.value[0],
 );
-const selectedServerBackups = computed(() =>
-  backups.value.filter((backup) => backup.server_id === selectedServer.value?.id),
-);
 const isDashboardInitialLoading = computed(() => isLoading.value && !isDashboardLoaded.value);
 const monitoringStatus = computed(() => {
   const maxDisk = Math.max(0, ...monitoring.value.disks.map((disk) => disk.percent));
@@ -170,7 +152,7 @@ const activeTab = computed<TabId>(() => {
   if (route.name === "server-detail" || route.name === "server-new") {
     return "servers";
   }
-  return (route.name as TabId | undefined) ?? "overview";
+  return (route.name as TabId | undefined) ?? "servers";
 });
 const serverView = computed<"list" | "detail" | "new">(() =>
   route.name === "server-detail" ? "detail" : route.name === "server-new" ? "new" : "list",
@@ -438,65 +420,9 @@ onMounted(() => {
           <h1>{{ pageTitle }}</h1>
         </div>
 
-        <div class="topbar-actions">
-          <button class="primary-button" type="button" @click="openNewServerPage">
-            <Plus :size="18" />
-            <span>Новый сервер</span>
-          </button>
-        </div>
       </header>
 
-      <section v-if="activeTab === 'overview'" class="hero-panel">
-        <div class="hero-copy">
-          <div class="status-pill">
-            <CheckCircle2 :size="16" />
-            <span>{{ isLoading ? "Синхронизация с backend" : "Агент сервера активен" }}</span>
-          </div>
-          <h2>Выбираешь сборку, Ksylian разворачивает мир</h2>
-          <p>
-            Черновой интерфейс для установки CurseForge-сборок, управления процессами,
-            бэкапов, логов, файлов и обновлений модов.
-          </p>
-          <div class="hero-actions">
-            <button class="primary-button" type="button">
-              <PackagePlus :size="18" />
-              <span>Импорт CurseForge</span>
-            </button>
-            <button class="ghost-button" type="button">
-              <UploadCloud :size="18" />
-              <span>Загрузить manifest.json</span>
-            </button>
-          </div>
-        </div>
-        <div class="hero-mascot">
-          <img :src="catMascot" alt="" />
-        </div>
-      </section>
-
-      <section v-if="activeTab === 'overview'" class="stats-grid" aria-label="Сводка">
-        <article class="stat-tile">
-          <Server :size="20" />
-          <span>Серверы</span>
-          <strong>{{ onlineServersCount }}</strong>
-        </article>
-        <article class="stat-tile mint">
-          <Gauge :size="20" />
-          <span>Средняя нагрузка</span>
-          <strong>17%</strong>
-        </article>
-        <article class="stat-tile amber">
-          <HardDrive :size="20" />
-          <span>Хранилище</span>
-          <strong>72 GB</strong>
-        </article>
-        <article class="stat-tile graphite">
-          <ShieldCheck :size="20" />
-          <span>Последний бэкап</span>
-          <strong>22:40</strong>
-        </article>
-      </section>
-
-      <section class="content-grid" :class="{ 'single-column': activeTab !== 'overview' }">
+      <section class="content-grid single-column">
         <div class="main-column">
           <NewServerPage
             v-if="activeTab === 'servers' && serverView === 'new'"
@@ -535,11 +461,11 @@ onMounted(() => {
             </article>
           </section>
 
-          <section v-if="activeTab === 'overview' || (activeTab === 'servers' && serverView === 'list')" class="panel">
+          <section v-if="activeTab === 'servers' && serverView === 'list'" class="panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">instances</p>
-                <h2>{{ activeTab === 'servers' ? 'Полный список серверов' : 'Серверы' }}</h2>
+                <h2>Полный список серверов</h2>
               </div>
               <button class="ghost-button compact" type="button" @click="loadDashboard">
                 <RefreshCw :size="16" />
@@ -654,21 +580,6 @@ onMounted(() => {
             </div>
           </section>
 
-          <section v-if="activeTab === 'overview'" class="panel terminal-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">live output</p>
-                <h2>Логи</h2>
-              </div>
-              <button class="ghost-button compact" type="button">
-                <Download :size="16" />
-                <span>Скачать</span>
-              </button>
-            </div>
-            <pre><code v-for="line in logs" :key="line">{{ line }}
-</code></pre>
-          </section>
-
           <section v-if="activeTab === 'servers' && serverView === 'detail' && selectedServer" class="server-control">
             <div class="server-control-header">
               <button class="ghost-button compact" type="button" @click="backToServerList">
@@ -679,10 +590,6 @@ onMounted(() => {
                 <button class="ghost-button compact" type="button" @click="loadDashboard">
                   <RefreshCw :size="16" />
                   <span>Обновить</span>
-                </button>
-                <button class="primary-button" type="button" @click="createBackup(selectedServer.id)">
-                  <FileArchive :size="18" />
-                  <span>Бэкап</span>
                 </button>
               </div>
             </div>
@@ -749,57 +656,6 @@ onMounted(() => {
 </code></pre>
               </section>
 
-              <div class="server-side-stack">
-                <section class="panel">
-                  <div class="panel-heading">
-                    <div>
-                      <p class="eyebrow">mods</p>
-                      <h2>Моды</h2>
-                    </div>
-                    <button class="icon-button" type="button" title="Проверить обновления" @click="checkMods">
-                      <PackagePlus :size="18" />
-                    </button>
-                  </div>
-                  <div class="stack-list">
-                    <article v-for="mod in mods" :key="mod.id" class="stack-item">
-                      <Box :size="18" />
-                      <div>
-                        <strong>{{ mod.name }}</strong>
-                        <span>{{ mod.status }}</span>
-                      </div>
-                      <i :class="mod.tag"></i>
-                    </article>
-                  </div>
-                </section>
-
-                <section class="panel">
-                  <div class="panel-heading">
-                    <div>
-                      <p class="eyebrow">snapshots</p>
-                      <h2>Бэкапы</h2>
-                    </div>
-                    <button class="icon-button" type="button" title="Создать бэкап" @click="createBackup(selectedServer.id)">
-                      <FileArchive :size="18" />
-                    </button>
-                  </div>
-                  <div class="stack-list">
-                    <article v-for="backup in selectedServerBackups" :key="backup.id" class="stack-item">
-                      <Archive :size="18" />
-                      <div>
-                        <strong>{{ backup.name }}</strong>
-                        <span>{{ backup.size }} · {{ backup.created }}</span>
-                      </div>
-                    </article>
-                    <article v-if="!selectedServerBackups.length" class="stack-item muted">
-                      <Archive :size="18" />
-                      <div>
-                        <strong>Бэкапов пока нет</strong>
-                        <span>Можно создать первый вручную</span>
-                      </div>
-                    </article>
-                  </div>
-                </section>
-              </div>
             </section>
           </section>
 
@@ -814,46 +670,6 @@ onMounted(() => {
 
           <CurseForgePage v-if="activeTab === 'modpacks'" />
 
-          <section v-if="activeTab === 'backups'" class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">snapshots</p>
-                <h2>Резервные копии</h2>
-              </div>
-              <button class="icon-button" type="button" title="Создать бэкап" @click="() => createBackup()">
-                <FileArchive :size="18" />
-              </button>
-            </div>
-            <div class="stack-list expanded-list">
-              <article v-for="backup in backups" :key="backup.id" class="stack-item">
-                <Archive :size="18" />
-                <div>
-                  <strong>{{ backup.name }}</strong>
-                  <span>{{ backup.size }} · {{ backup.created }}</span>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section v-if="activeTab === 'files'" class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">server files</p>
-                <h2>Файлы</h2>
-              </div>
-              <button class="icon-button" type="button" title="Домой">
-                <Home :size="18" />
-              </button>
-            </div>
-            <div class="file-list expanded-list">
-              <button v-for="file in files" :key="file.name" type="button" class="file-row">
-                <component :is="file.kind === 'folder' ? Folder : FileText" :size="18" />
-                <span>{{ file.name }}</span>
-                <small>{{ file.meta }}</small>
-              </button>
-            </div>
-          </section>
-
           <SettingsPage
             v-if="activeTab === 'settings'"
             v-model:curse-forge-api-key="curseForgeApiKey"
@@ -865,75 +681,6 @@ onMounted(() => {
           />
         </div>
 
-        <aside v-if="activeTab === 'overview'" class="side-column">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">backups</p>
-                <h2>Резервные копии</h2>
-              </div>
-              <button class="icon-button" type="button" title="Создать бэкап" @click="() => createBackup()">
-                <FileArchive :size="18" />
-              </button>
-            </div>
-            <div class="stack-list">
-              <article v-for="backup in backups" :key="backup.id" class="stack-item">
-                <Archive :size="18" />
-                <div>
-                  <strong>{{ backup.name }}</strong>
-                  <span>{{ backup.size }} · {{ backup.created }}</span>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">curseforge</p>
-                <h2>Моды</h2>
-              </div>
-              <button class="icon-button" type="button" title="Проверить обновления" @click="checkMods">
-                <RefreshCw :size="18" />
-              </button>
-            </div>
-            <div class="stack-list">
-              <article v-for="mod in mods" :key="mod.id" class="stack-item">
-                <Box :size="18" />
-                <div>
-                  <strong>{{ mod.name }}</strong>
-                  <span>{{ mod.status }}</span>
-                </div>
-                <i :class="mod.tag"></i>
-              </article>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">files</p>
-                <h2>Файлы</h2>
-              </div>
-              <button class="icon-button" type="button" title="Домой">
-                <Home :size="18" />
-              </button>
-            </div>
-            <div class="file-list">
-              <button v-for="file in files" :key="file.name" type="button" class="file-row">
-                <component :is="file.kind === 'folder' ? Folder : FileText" :size="18" />
-                <span>{{ file.name }}</span>
-                <small>{{ file.meta }}</small>
-              </button>
-            </div>
-          </section>
-
-          <section class="love-note">
-            <img :src="catPaw" alt="" />
-            <span>Pink mode включён для Ксюши</span>
-            <Clock3 :size="16" />
-          </section>
-        </aside>
       </section>
     </section>
 
