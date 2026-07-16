@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ArrowLeft,
-  ChevronRight,
   CircleStop,
   Cpu,
   HardDrive,
@@ -580,14 +579,25 @@ onMounted(() => {
                 :key="server.id"
                 class="server-row"
                 :class="{ selected: selectedServerId === server.id }"
+                role="button"
+                tabindex="0"
+                @click="openServerPanel(server.id)"
+                @keydown.enter.prevent="openServerPanel(server.id)"
+                @keydown.space.prevent="openServerPanel(server.id)"
               >
-                <button class="server-main server-select" type="button" @click="openServerPanel(server.id)">
+                <div class="server-main">
                   <span class="server-state" :class="server.state"></span>
-                  <div>
-                    <h3>{{ server.name }}</h3>
-                    <p>{{ server.pack }} · {{ server.version }} · {{ server.address }}</p>
+                  <div class="server-copy">
+                    <div class="server-title-line">
+                      <h3>{{ server.name }}</h3>
+                    </div>
+                    <p>{{ server.address }}</p>
+                    <div class="server-tags" aria-label="Основная информация">
+                      <span>{{ server.pack }}</span>
+                      <span>Minecraft {{ server.version }}</span>
+                    </div>
                   </div>
-                </button>
+                </div>
 
                 <div class="server-metrics">
                   <span>{{ server.players }}</span>
@@ -599,36 +609,26 @@ onMounted(() => {
                   <button
                     class="icon-button"
                     type="button"
-                    title="Запустить"
-                    @click="runServerAction(server.id, 'start')"
+                    :title="server.state === 'offline' ? 'Запустить' : 'Остановить'"
+                    @click.stop="runServerAction(server.id, server.state === 'offline' ? 'start' : 'stop')"
                   >
-                    <Play :size="17" />
+                    <Play v-if="server.state === 'offline'" :size="17" />
+                    <CircleStop v-else :size="17" />
                   </button>
                   <button
                     class="icon-button"
                     type="button"
                     title="Перезагрузить"
-                    @click="runServerAction(server.id, 'restart')"
+                    @click.stop="runServerAction(server.id, 'restart')"
                   >
                     <ListRestart :size="17" />
-                  </button>
-                  <button
-                    class="icon-button danger"
-                    type="button"
-                    title="Остановить"
-                    @click="runServerAction(server.id, 'stop')"
-                  >
-                    <CircleStop :size="17" />
-                  </button>
-                  <button class="icon-button" type="button" title="Открыть" @click="openServerPanel(server.id)">
-                    <ChevronRight :size="17" />
                   </button>
                   <button
                     v-if="activeTab === 'servers'"
                     class="icon-button danger"
                     type="button"
                     title="Удалить"
-                    @click="deleteServer(server.id)"
+                    @click.stop="deleteServer(server.id)"
                   >
                     <Trash2 :size="17" />
                   </button>

@@ -1207,18 +1207,45 @@ h3 {
 .server-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, auto) auto;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, auto) auto;
+  gap: 18px;
   align-items: center;
   overflow: hidden;
-  min-height: 92px;
-  padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.5);
+  min-height: 116px;
+  padding: 18px 18px 20px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 247, 252, 0.82) 52%, rgba(255, 229, 244, 0.74)),
+    rgba(255, 255, 255, 0.72);
   box-shadow:
-    0 12px 28px rgba(156, 78, 120, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    0 18px 38px rgba(156, 78, 120, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.92) inset;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.server-row::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    radial-gradient(circle at 8% 14%, rgba(255, 255, 255, 0.86), transparent 18%),
+    radial-gradient(circle at 85% 10%, rgba(255, 47, 163, 0.12), transparent 28%);
+}
+
+.server-row:hover,
+.server-row:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(255, 47, 163, 0.34);
+  box-shadow:
+    0 22px 46px rgba(156, 78, 120, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.94) inset;
+  outline: none;
 }
 
 .server-row.selected {
@@ -1232,37 +1259,55 @@ h3 {
   min-width: 0;
   overflow: hidden;
   gap: 12px;
-}
-
-.server-select {
-  width: 100%;
-  padding: 0;
-  color: inherit;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.server-select:hover {
-  transform: none;
-  box-shadow: none;
+  position: relative;
+  z-index: 1;
 }
 
 .server-main > div {
   min-width: 0;
 }
 
+.server-title-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .server-main p {
   overflow: hidden;
   margin-top: 4px;
+  color: #8c7385;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.server-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.server-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.server-tags span {
+  min-height: 28px;
+  padding: 5px 10px;
+  color: #6d405e;
+  font-size: 0.82rem;
+  font-weight: 800;
+  border: 1px solid rgba(255, 159, 213, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 240, 248, 0.88);
+}
+
 .server-state {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   box-shadow: 0 0 0 5px rgba(56, 189, 142, 0.16);
 }
@@ -1282,6 +1327,8 @@ h3 {
 }
 
 .server-metrics {
+  position: relative;
+  z-index: 1;
   justify-content: end;
   gap: 8px;
   flex-wrap: wrap;
@@ -1297,14 +1344,16 @@ h3 {
 }
 
 .server-actions {
+  position: relative;
+  z-index: 1;
   gap: 6px;
 }
 
 .progress-line {
   position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 9px;
+  left: 18px;
+  right: 18px;
+  bottom: 10px;
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
@@ -1321,8 +1370,9 @@ h3 {
 
 .state-label {
   position: absolute;
-  top: 10px;
-  right: 14px;
+  z-index: 1;
+  top: 12px;
+  right: 18px;
   font-size: 0.72rem;
   font-weight: 800;
 }
