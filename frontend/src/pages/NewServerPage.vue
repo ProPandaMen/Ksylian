@@ -11,6 +11,7 @@ import {
 } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
+import { requestJson } from "../services/api";
 import type { MinecraftServerType, MinecraftVersionType, MinecraftVersionsPayload, NewServerDraft } from "../types";
 
 const modelValue = defineModel<NewServerDraft>({ required: true });
@@ -57,18 +58,18 @@ const serverTypes: Array<{
   {
     id: "fabric",
     label: "Fabric",
-    note: "скоро",
+    note: "готово",
     description: "Легкая база для модовых сборок и современных клиентских/серверных модов.",
     icon: Sparkles,
-    available: false,
+    available: true,
   },
   {
     id: "forge",
     label: "Forge",
-    note: "скоро",
+    note: "готово",
     description: "Классическая экосистема для крупных модпаков и тяжелых сборок.",
     icon: Hammer,
-    available: false,
+    available: true,
   },
 ];
 
@@ -133,11 +134,7 @@ async function loadMinecraftVersions() {
   versionError.value = "";
 
   try {
-    const response = await fetch("/api/minecraft/versions");
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
-    }
-    versions.value = await response.json() as MinecraftVersionsPayload;
+    versions.value = await requestJson<MinecraftVersionsPayload>("/api/minecraft/versions");
     selectInitialVersion();
   } catch (error) {
     versionError.value = "Не удалось загрузить список версий Minecraft";

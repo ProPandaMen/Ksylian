@@ -3,6 +3,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/ksylian-agent}"
 SERVICE_FILE="/etc/systemd/system/ksylian-agent.service"
+PROXY_SERVICE_FILE="/etc/systemd/system/ksylian-proxy.service"
 
 if [[ -f ".env" ]]; then
   set -a
@@ -19,7 +20,7 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 sudo mkdir -p "$APP_DIR"
-sudo cp ksylian_agent.py requirements.txt "$APP_DIR/"
+sudo cp ksylian_agent.py ksylian_proxy.py requirements.txt "$APP_DIR/"
 sudo python3 -m venv "$APP_DIR/.venv"
 sudo "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
@@ -35,6 +36,7 @@ User=root
 WorkingDirectory=$APP_DIR
 Environment=KSYLIAN_AGENT_TOKEN=$TOKEN
 Environment=KSYLIAN_BACKUP_DIR=/mnt/hdd/ksylian-backups
+Environment=KSYLIAN_PUBLIC_DOMAIN=${KSYLIAN_PUBLIC_DOMAIN:-}
 Environment=KSYLIAN_APP_DIR=${KSYLIAN_APP_DIR:-/opt/ksylian}
 Environment=KSYLIAN_ENV_FILE=${KSYLIAN_ENV_FILE:-/opt/ksylian/deploy/.env}
 Environment=KSYLIAN_COMPOSE_FILE=${KSYLIAN_COMPOSE_FILE:-/opt/ksylian/deploy/docker-compose.yml}
@@ -46,7 +48,32 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+sudo tee "$PROXY_SERVICE_FILE" >/dev/null <<EOF
+[Unit]
+Description=Ksylian Minecraft Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$APP_DIR
+Environment=KSYLIAN_DATA_DIR=${KSYLIAN_DATA_DIR:-/var/lib/ksylian-agent}
+Environment=KSYLIAN_PROXY_HOST=${KSYLIAN_PROXY_HOST:-0.0.0.0}
+Environment=KSYLIAN_PROXY_PORT=${KSYLIAN_PROXY_PORT:-25565}
+Environment=KSYLIAN_PROXY_DOMAIN=${KSYLIAN_PROXY_DOMAIN:-${KSYLIAN_PUBLIC_DOMAIN:-}}
+ExecStart=$APP_DIR/.venv/bin/python ksylian_proxy.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 sudo systemctl daemon-reload
 sudo systemctl enable ksylian-agent.service
 sudo systemctl restart ksylian-agent.service
+if [[ "${KSYLIAN_PROXY_ENABLED:-false}" == "true" ]]; then
+  sudo systemctl enable ksylian-proxy.service
+  sudo systemctl restart ksylian-proxy.service
+fi
 sudo systemctl status ksylian-agent.service --no-pager -l

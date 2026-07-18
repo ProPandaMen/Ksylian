@@ -11,12 +11,13 @@ import tarfile
 import time
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AgentServer(BaseModel):
@@ -35,7 +36,7 @@ class AgentServer(BaseModel):
 class StoredServer(BaseModel):
     id: str
     name: str
-    type: Literal["legacy", "vanilla", "paper", "purpur"]
+    type: Literal["legacy", "vanilla", "fabric", "forge"]
     pack: str
     version: str
     port: int
@@ -45,11 +46,12 @@ class StoredServer(BaseModel):
     address: str
     created_at: str
     managed: bool = False
+    start_command: list[str] = Field(default_factory=list)
 
 
 class CreateAgentServerRequest(BaseModel):
     name: str
-    type: Literal["vanilla", "paper", "purpur"]
+    type: Literal["vanilla", "fabric", "forge"]
     version: str = "1.20.1"
 
 
@@ -154,8 +156,12 @@ APP_ENV_FILE = Path(os.getenv("KSYLIAN_ENV_FILE", str(APP_DIR / "deploy/.env")))
 APP_COMPOSE_FILE = Path(os.getenv("KSYLIAN_COMPOSE_FILE", str(APP_DIR / "deploy/docker-compose.yml")))
 UPDATE_LOG = DATA_DIR / "update.log"
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
+PUBLIC_DOMAIN = os.getenv("KSYLIAN_PUBLIC_DOMAIN", os.getenv("KSYLIAN_PROXY_DOMAIN", "")).strip().lower().strip(".")
+PROXY_DOMAIN = os.getenv("KSYLIAN_PROXY_DOMAIN", PUBLIC_DOMAIN).strip().lower().strip(".")
+PROXY_PORT = os.getenv("KSYLIAN_PROXY_PORT", "25565")
 MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
-PAPER_API_URL = "https://api.papermc.io/v2/projects/paper"
+FABRIC_META_API_URL = "https://meta.fabricmc.net/v2"
+FORGE_MAVEN_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge"
 SYSTEMD_DIR = Path("/etc/systemd/system")
 
 app = FastAPI(title="Ksylian Host Agent", version="0.1.0")
@@ -168,6 +174,42 @@ def require_token(x_ksylian_token: str | None = Header(default=None)) -> None:
 
 def run(command: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def run_in(command: list[str], cwd: Path, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def encode_varint(value: int) -> bytes:
+    result = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        result.append(byte | 0x80 if value else byte)
+        if not value:
+            return bytes(result)
+
+
+def read_socket_varint(sock: socket.socket) -> int:
+    value = 0
+    for position in range(5):
+        byte = sock.recv(1)
+        if not byte:
+            raise OSError("Socket closed while reading varint")
+        value |= (byte[0] & 0x7F) << (7 * position)
+        if not byte[0] & 0x80:
+            return value
+    raise OSError("Varint is too large")
+
+
+def minecraft_packet(packet_id: int, payload: bytes = b"") -> bytes:
+    body = encode_varint(packet_id) + payload
+    return encode_varint(len(body)) + body
+
+
+def minecraft_utf(value: str) -> bytes:
+    encoded = value.encode("utf-8")
+    return encode_varint(len(encoded)) + encoded
 
 
 def append_update_log(message: str) -> None:
@@ -329,10 +371,10 @@ def allocate_port(servers: dict[str, StoredServer], start: int = 25565) -> int:
 def server_type_label(server_type: str) -> str:
     if server_type == "vanilla":
         return "Vanilla"
-    if server_type == "paper":
-        return "Paper"
-    if server_type == "purpur":
-        return "Purpur"
+    if server_type == "fabric":
+        return "Fabric"
+    if server_type == "forge":
+        return "Forge"
     return server_type
 
 
@@ -365,7 +407,7 @@ def write_server_scaffold(server: StoredServer) -> None:
     (server_path / "ksylian.json").write_text(json.dumps(server.model_dump(), ensure_ascii=False, indent=2))
 
 
-def request_json(url: str, timeout: int = 30) -> dict:
+def request_json(url: str, timeout: int = 30) -> Any:
     request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -373,6 +415,17 @@ def request_json(url: str, timeout: int = 30) -> dict:
     except urllib.error.HTTPError as error:
         raise HTTPException(status_code=502, detail=f"Download metadata request failed: HTTP {error.code}") from error
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise HTTPException(status_code=502, detail=f"Download metadata request failed: {error}") from error
+
+
+def request_text(url: str, timeout: int = 30) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        raise HTTPException(status_code=502, detail=f"Download metadata request failed: HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, UnicodeDecodeError) as error:
         raise HTTPException(status_code=502, detail=f"Download metadata request failed: {error}") from error
 
 
@@ -415,36 +468,108 @@ def download_vanilla_server_jar(version: str, destination: Path) -> None:
     download_file(server_url, destination)
 
 
-def download_paper_server_jar(version: str, destination: Path) -> None:
-    builds_metadata = request_json(f"{PAPER_API_URL}/versions/{version}/builds")
-    builds = builds_metadata.get("builds")
-    if not isinstance(builds, list) or not builds:
-        raise HTTPException(status_code=404, detail=f"Paper build for Minecraft {version} was not found")
+def latest_fabric_component(path: str, label: str) -> str:
+    items = request_json(f"{FABRIC_META_API_URL}{path}")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=502, detail=f"Fabric {label} metadata is invalid")
+    for item in items:
+        if isinstance(item, dict) and item.get("stable") is True and item.get("version"):
+            return str(item["version"])
+    for item in items:
+        if isinstance(item, dict) and item.get("version"):
+            return str(item["version"])
+    raise HTTPException(status_code=404, detail=f"Fabric {label} version was not found")
 
-    build = max(
-        (item for item in builds if isinstance(item, dict) and isinstance(item.get("build"), int)),
-        key=lambda item: item["build"],
-        default=None,
+
+def download_fabric_server_jar(version: str, destination: Path) -> None:
+    loaders = request_json(f"{FABRIC_META_API_URL}/versions/loader/{version}")
+    if not isinstance(loaders, list) or not loaders:
+        raise HTTPException(status_code=404, detail=f"Fabric loader for Minecraft {version} was not found")
+
+    loader_version = ""
+    for item in loaders:
+        loader = item.get("loader") if isinstance(item, dict) else None
+        if isinstance(loader, dict) and loader.get("stable") is True and loader.get("version"):
+            loader_version = str(loader["version"])
+            break
+    if not loader_version:
+        loader = loaders[0].get("loader") if isinstance(loaders[0], dict) else None
+        loader_version = str(loader.get("version") or "") if isinstance(loader, dict) else ""
+    if not loader_version:
+        raise HTTPException(status_code=404, detail=f"Fabric loader for Minecraft {version} was not found")
+
+    installer_version = latest_fabric_component("/versions/installer", "installer")
+    download_file(
+        f"{FABRIC_META_API_URL}/versions/loader/{version}/{loader_version}/{installer_version}/server/jar",
+        destination,
     )
-    if not build:
-        raise HTTPException(status_code=404, detail=f"Paper build for Minecraft {version} was not found")
-
-    file_name = build.get("downloads", {}).get("application", {}).get("name")
-    build_number = build.get("build")
-    if not isinstance(file_name, str):
-        raise HTTPException(status_code=502, detail="Paper build metadata is invalid")
-
-    download_file(f"{PAPER_API_URL}/versions/{version}/builds/{build_number}/downloads/{file_name}", destination)
 
 
-def download_server_jar(server: StoredServer) -> None:
+def forge_versions() -> list[str]:
+    metadata = request_text(f"{FORGE_MAVEN_URL}/maven-metadata.xml")
+    try:
+        root = ET.fromstring(metadata)
+    except ET.ParseError as error:
+        raise HTTPException(status_code=502, detail="Forge metadata is invalid") from error
+    return [item.text.strip() for item in root.findall(".//version") if item.text and item.text.strip()]
+
+
+def latest_forge_version(minecraft_version: str) -> str:
+    prefix = f"{minecraft_version}-"
+    matches = [version for version in forge_versions() if version.startswith(prefix)]
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"Forge build for Minecraft {minecraft_version} was not found")
+    return matches[-1]
+
+
+def install_forge_server(server: StoredServer) -> list[str]:
+    server_path = Path(server.path)
+    forge_version = latest_forge_version(server.version)
+    installer = server_path / f"forge-{forge_version}-installer.jar"
+    download_file(f"{FORGE_MAVEN_URL}/{forge_version}/forge-{forge_version}-installer.jar", installer)
+
+    result = run_in([java_binary(), "-jar", str(installer), "--installServer"], cwd=server_path, timeout=600)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "Forge installer failed"
+        raise HTTPException(status_code=502, detail=detail)
+
+    unix_args = server_path / "libraries" / "net" / "minecraftforge" / "forge" / forge_version / "unix_args.txt"
+    if unix_args.exists():
+        return [
+            java_binary(),
+            "-Xms1G",
+            "-Xmx2G",
+            "@libraries/net/minecraftforge/forge/{forge_version}/unix_args.txt".format(forge_version=forge_version),
+            "nogui",
+        ]
+
+    forge_jar = next(server_path.glob(f"forge-{forge_version}*.jar"), None)
+    if forge_jar:
+        return [java_binary(), "-Xms1G", "-Xmx2G", "-jar", forge_jar.name, "nogui"]
+
+    raise HTTPException(status_code=502, detail="Forge installer did not produce a runnable server")
+
+
+def default_start_command() -> list[str]:
+    return [java_binary(), "-Xms1G", "-Xmx2G", "-jar", "server.jar", "nogui"]
+
+
+def provision_server_files(server: StoredServer) -> StoredServer:
     destination = Path(server.path) / "server.jar"
     if server.type == "vanilla":
-        download_vanilla_server_jar(server.version, destination)
-        return
-    if server.type in {"paper", "purpur"}:
-        download_paper_server_jar(server.version, destination)
-        return
+        if not destination.exists():
+            download_vanilla_server_jar(server.version, destination)
+        server.start_command = default_start_command()
+        return server
+    if server.type == "fabric":
+        if not destination.exists():
+            download_fabric_server_jar(server.version, destination)
+        server.start_command = default_start_command()
+        return server
+    if server.type == "forge":
+        if not server.start_command:
+            server.start_command = install_forge_server(server)
+        return server
     raise HTTPException(status_code=400, detail=f"Server type {server.type} cannot be provisioned")
 
 
@@ -457,6 +582,7 @@ def java_binary() -> str:
 
 def write_systemd_unit(server: StoredServer) -> None:
     unit_path = SYSTEMD_DIR / server.service
+    start_command = server.start_command or default_start_command()
     content = "\n".join(
         [
             "[Unit]",
@@ -467,7 +593,7 @@ def write_systemd_unit(server: StoredServer) -> None:
             "Type=simple",
             "User=root",
             f"WorkingDirectory={server.path}",
-            f"ExecStart={java_binary()} -Xms1G -Xmx2G -jar server.jar nogui",
+            f"ExecStart={shlex.join(start_command)}",
             "Restart=on-failure",
             "RestartSec=10",
             "SuccessExitStatus=0 143",
@@ -488,18 +614,17 @@ def write_systemd_unit(server: StoredServer) -> None:
         raise HTTPException(status_code=500, detail=enable.stderr.strip() or "systemctl enable failed")
 
 
-def ensure_server_provisioned(server: StoredServer) -> None:
+def ensure_server_provisioned(server: StoredServer) -> StoredServer:
     if not server.managed:
-        return
+        return server
 
     write_server_scaffold(server)
-    jar_path = Path(server.path) / "server.jar"
-    if not jar_path.exists():
-        download_server_jar(server)
+    server = provision_server_files(server)
 
     unit_path = SYSTEMD_DIR / server.service
     if not unit_path.exists():
         write_systemd_unit(server)
+    return server
 
 
 def systemctl_issue_can_be_ignored(result: subprocess.CompletedProcess[str]) -> bool:
@@ -519,6 +644,95 @@ def service_state(service: str) -> Literal["online", "deploying", "offline"]:
     if result.stdout.strip() in {"activating", "reloading"}:
         return "deploying"
     return "offline"
+
+
+def read_exact(sock: socket.socket, size: int) -> bytes:
+    chunks = bytearray()
+    while len(chunks) < size:
+        chunk = sock.recv(size - len(chunks))
+        if not chunk:
+            raise OSError("Socket closed while reading packet")
+        chunks.extend(chunk)
+    return bytes(chunks)
+
+
+def minecraft_player_status(port: int, host: str = "127.0.0.1") -> str:
+    try:
+        with socket.create_connection((host, port), timeout=1.5) as sock:
+            sock.settimeout(1.5)
+            handshake = b"".join(
+                [
+                    encode_varint(765),
+                    minecraft_utf(host),
+                    port.to_bytes(2, "big"),
+                    encode_varint(1),
+                ]
+            )
+            sock.sendall(minecraft_packet(0, handshake))
+            sock.sendall(minecraft_packet(0))
+
+            packet_length = read_socket_varint(sock)
+            packet = read_exact(sock, packet_length)
+            packet_id_offset = 0
+            packet_id, packet_id_offset = read_response_varint(packet, packet_id_offset)
+            if packet_id != 0:
+                return "-"
+            response_length, offset = read_response_varint(packet, packet_id_offset)
+            response = read_exact_from_buffer(packet, offset, response_length).decode("utf-8")
+            data = json.loads(response)
+            players = data.get("players") if isinstance(data, dict) else None
+            if not isinstance(players, dict):
+                return "-"
+            online = int(players.get("online", 0))
+            maximum = int(players.get("max", 0))
+            return f"{online} / {maximum}" if maximum else str(online)
+    except (OSError, TimeoutError, ValueError, json.JSONDecodeError):
+        return "-"
+
+
+def configured_max_players(server_path: Path) -> int:
+    properties_path = server_path / "server.properties"
+    if not properties_path.exists():
+        return 20
+    try:
+        for line in properties_path.read_text().splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "max-players":
+                return max(int(value.strip()), 0)
+    except (OSError, ValueError):
+        return 20
+    return 20
+
+
+def server_players_label(config: StoredServer, state: str) -> str:
+    server_path = Path(config.path)
+    maximum = configured_max_players(server_path)
+    if state != "online":
+        return f"0 / {maximum}"
+
+    status = minecraft_player_status(config.port)
+    if status == "-":
+        return f"0 / {maximum}"
+    return status
+
+
+def read_response_varint(buffer: bytes, offset: int = 0) -> tuple[int, int]:
+    value = 0
+    for position in range(5):
+        if offset + position >= len(buffer):
+            raise ValueError("Incomplete varint")
+        byte = buffer[offset + position]
+        value |= (byte & 0x7F) << (7 * position)
+        if not byte & 0x80:
+            return value, offset + position + 1
+    raise ValueError("Varint is too large")
+
+
+def read_exact_from_buffer(buffer: bytes, offset: int, size: int) -> bytes:
+    end = offset + size
+    if end > len(buffer):
+        raise ValueError("Incomplete packet")
+    return buffer[offset:end]
 
 
 def format_bytes(value: int) -> str:
@@ -709,27 +923,40 @@ def folder_size(path: Path) -> str:
     return result.stdout.split()[0]
 
 
+def public_server_address(config: StoredServer) -> str:
+    if config.managed and PUBLIC_DOMAIN:
+        return f"{config.id}.{PUBLIC_DOMAIN}"
+    return config.address
+
+
 def to_agent_server(server_id: str) -> AgentServer:
     config = load_server_store()[server_id]
     cpu, ram = service_usage(config.service)
+    state = service_state(config.service)
 
     return AgentServer(
         id=server_id,
         name=config.name,
         pack=config.pack,
         version=config.version,
-        state=service_state(config.service),
-        players="-",
+        state=state,
+        players=server_players_label(config, state),
         ram=ram,
         cpu=cpu,
         disk=folder_size(Path(config.path)),
-        address=config.address,
+        address=public_server_address(config),
     )
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "ksylian-agent"}
+    return {
+        "status": "ok",
+        "service": "ksylian-agent",
+        "public_domain": PUBLIC_DOMAIN,
+        "proxy_domain": PROXY_DOMAIN,
+        "proxy_port": PROXY_PORT,
+    }
 
 
 @app.post("/agent/actions/restart")
@@ -801,7 +1028,7 @@ def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None
         created_at=datetime.now().isoformat(timespec="seconds"),
         managed=True,
     )
-    ensure_server_provisioned(server)
+    server = ensure_server_provisioned(server)
     store[server.id] = server
     save_server_store(store)
     return to_agent_server(server.id)
@@ -961,7 +1188,8 @@ def action(
 @app.delete("/servers/{server_id}")
 def delete_server(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> dict[str, bool]:
     require_token(x_ksylian_token)
-    config = load_server_store().get(server_id)
+    store = load_server_store()
+    config = store.get(server_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
 
@@ -974,7 +1202,16 @@ def delete_server(server_id: str, x_ksylian_token: str | None = Header(default=N
         raise HTTPException(status_code=500, detail=disable_result.stderr.strip() or "Failed to disable service")
 
     disabled = disabled_server_ids()
-    disabled.add(server_id)
+    if config.managed:
+        unit_path = SYSTEMD_DIR / config.service
+        unit_path.unlink(missing_ok=True)
+        run(["systemctl", "daemon-reload"], timeout=30)
+        shutil.rmtree(config.path, ignore_errors=True)
+        store.pop(server_id, None)
+        disabled.discard(server_id)
+        save_server_store(store)
+    else:
+        disabled.add(server_id)
     save_disabled_server_ids(disabled)
     return {"ok": True}
 

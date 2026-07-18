@@ -128,6 +128,34 @@ const emit = defineEmits<{
         </p>
       </section>
 
+      <section class="settings-section" aria-label="Публикация серверов">
+        <div class="settings-section-head">
+          <div>
+            <h3>Публикация</h3>
+          </div>
+          <span class="settings-status" :class="{ connected: settings.agent.public_domain }">
+            {{ settings.agent.public_domain ? 'Настроено' : 'Не настроено' }}
+          </span>
+        </div>
+
+        <dl class="settings-rows">
+          <div class="settings-row">
+            <dt>Домен</dt>
+            <dd>{{ settings.agent.public_domain || 'не задан' }}</dd>
+          </div>
+          <div class="settings-row">
+            <dt>Proxy</dt>
+            <dd>
+              {{
+                settings.agent.proxy_domain
+                  ? `${settings.agent.proxy_domain}:${settings.agent.proxy_port || '25565'}`
+                  : 'не настроен'
+              }}
+            </dd>
+          </div>
+        </dl>
+      </section>
+
       <section class="settings-section" aria-label="Обновления Ksylian">
         <div class="settings-section-head">
           <div>

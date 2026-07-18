@@ -32,10 +32,6 @@ export const serverTypeLabels: Record<NewServerDraft["type"], string> = {
   vanilla: "Vanilla",
   fabric: "Fabric",
   forge: "Forge",
-  neoforge: "NeoForge",
-  quilt: "Quilt",
-  paper: "Paper / Purpur",
-  purpur: "Paper / Purpur",
 };
 
 const defaultAgentStatus: AgentStatus = {
@@ -43,6 +39,9 @@ const defaultAgentStatus: AgentStatus = {
   available: false,
   status: "not_configured",
   message: "",
+  public_domain: "",
+  proxy_domain: "",
+  proxy_port: "",
 };
 
 const servers = ref<GameServer[]>(emptyServers);
@@ -301,7 +300,7 @@ async function createServer(newServer: NewServerDraft) {
       method: "POST",
       body: JSON.stringify({
         name: newServer.name,
-        type: newServer.type === "purpur" ? "paper" : newServer.type,
+        type: newServer.type,
         pack: serverTypeLabels[newServer.type],
         version: newServer.version,
         address: "",

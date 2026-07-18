@@ -1,6 +1,6 @@
 export type ServerState = "online" | "deploying" | "offline";
 export type TabId = "servers" | "monitoring" | "modpacks" | "users" | "settings";
-export type MinecraftServerType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "paper" | "purpur";
+export type MinecraftServerType = "vanilla" | "fabric" | "forge";
 export type ThemeName = "pink" | "black" | "white" | "green";
 
 export interface NewServerDraft {
@@ -63,6 +63,9 @@ export interface AgentStatus {
   available: boolean;
   status: "online" | "offline" | "not_configured";
   message: string;
+  public_domain: string;
+  proxy_domain: string;
+  proxy_port: string;
 }
 
 export interface DashboardPayload {

@@ -57,7 +57,7 @@ class BackupItem(BaseModel):
 
 class CreateServerRequest(BaseModel):
     name: str
-    type: Literal["vanilla", "paper", "purpur"] = "vanilla"
+    type: Literal["vanilla", "fabric", "forge"] = "vanilla"
     pack: str
     version: str = "1.20.1"
     address: str = ""
@@ -81,6 +81,9 @@ class AgentStatus(BaseModel):
     available: bool
     status: Literal["online", "offline", "not_configured"]
     message: str = ""
+    public_domain: str = ""
+    proxy_domain: str = ""
+    proxy_port: str = ""
 
 
 class SettingsPayload(BaseModel):
@@ -751,11 +754,15 @@ def current_agent_status() -> AgentStatus:
     try:
         response = agent_get("/health")
         response.raise_for_status()
+        data = response.json()
         return AgentStatus(
             configured=True,
             available=True,
             status="online",
             message="Host agent is online",
+            public_domain=str(data.get("public_domain") or "") if isinstance(data, dict) else "",
+            proxy_domain=str(data.get("proxy_domain") or "") if isinstance(data, dict) else "",
+            proxy_port=str(data.get("proxy_port") or "") if isinstance(data, dict) else "",
         )
     except Exception as error:
         return AgentStatus(
