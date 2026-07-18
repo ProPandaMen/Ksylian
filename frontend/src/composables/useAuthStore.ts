@@ -14,9 +14,9 @@ const isAuthLoading = ref(false);
 
 export const themes: Array<{ id: ThemeName; label: string }> = [
   { id: "pink", label: "Розовая" },
-  { id: "black", label: "Чёрная" },
-  { id: "white", label: "Белая" },
   { id: "green", label: "Зелёная" },
+  { id: "white", label: "Белая" },
+  { id: "black", label: "Чёрная" },
 ];
 
 function token() {
