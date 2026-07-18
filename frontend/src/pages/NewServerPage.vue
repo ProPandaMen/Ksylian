@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  ArrowLeft,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -21,7 +20,6 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  cancel: [];
   submit: [];
 }>();
 
@@ -177,20 +175,6 @@ onMounted(loadMinecraftVersions);
 
 <template>
   <section class="new-server-page">
-    <section class="panel new-server-hero">
-      <button class="ghost-button compact" type="button" :disabled="isSubmitting" @click="emit('cancel')">
-        <ArrowLeft :size="16" />
-        <span>К списку</span>
-      </button>
-      <div>
-        <h2>Настройка нового сервера</h2>
-        <p>
-          Мастер проведет по базовой настройке: сначала выбираем основу сервера,
-          затем задаем название и версию Minecraft.
-        </p>
-      </div>
-    </section>
-
     <div class="new-server-steps" aria-label="Шаги создания сервера">
       <span :class="{ active: step === 1, done: step > 1 }">
         <Check v-if="step > 1" :size="15" />
@@ -203,20 +187,17 @@ onMounted(loadMinecraftVersions);
       </span>
     </div>
 
-    <form class="panel new-server-form" @submit.prevent="submit">
+    <form class="new-server-form" @submit.prevent="submit">
       <section v-if="step === 1" class="server-wizard-step">
-        <div class="settings-section-head">
-          <div>
-            <h3>Выбери основу сервера</h3>
-            <p>Пока полностью готов Vanilla. Fabric и Forge уже заложены в интерфейс, но появятся позже.</p>
-          </div>
+        <div class="new-server-section-head">
+          <h3>Тип сервера</h3>
         </div>
 
-        <div class="server-type-grid compact" role="radiogroup" aria-label="Тип сервера">
+        <div class="server-type-list" role="radiogroup" aria-label="Тип сервера">
           <button
             v-for="serverType in serverTypes"
             :key="serverType.id"
-            class="server-type-card"
+            class="server-type-row"
             :class="{ selected: modelValue.type === serverType.id, disabled: !serverType.available }"
             type="button"
             role="radio"
@@ -228,9 +209,9 @@ onMounted(loadMinecraftVersions);
             <span class="server-type-icon"><component :is="serverType.icon" :size="24" /></span>
             <div class="server-type-title">
               <strong>{{ serverType.label }}</strong>
-              <small>{{ serverType.note }}</small>
+              <span>{{ serverType.available ? 'Готов к созданию' : 'Появится позже' }}</span>
             </div>
-            <span>{{ serverType.description }}</span>
+            <small>{{ serverType.note }}</small>
           </button>
         </div>
 
@@ -247,11 +228,8 @@ onMounted(loadMinecraftVersions);
       </section>
 
       <section v-else class="server-wizard-step">
-        <div class="settings-section-head">
-          <div>
-            <h3>Основные данные</h3>
-            <p>Этого достаточно, чтобы подготовить папку сервера, скачать ядро и зарегистрировать сервис.</p>
-          </div>
+        <div class="new-server-section-head">
+          <h3>Основные данные</h3>
         </div>
 
         <div class="new-server-fields">

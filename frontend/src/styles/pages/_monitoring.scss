@@ -17,7 +17,6 @@
 .monitor-section-head,
 .monitor-row,
 .monitor-metric-row,
-.monitor-actions-row,
 .service-row,
 .monitor-empty-row {
   display: flex;
@@ -27,8 +26,7 @@
 
 .monitor-section-head,
 .monitor-row,
-.monitor-metric-row,
-.monitor-actions-row {
+.monitor-metric-row {
   justify-content: space-between;
 }
 
@@ -72,11 +70,6 @@
   overflow-wrap: anywhere;
   color: var(--app-text);
   font-weight: 800;
-}
-
-.monitor-actions-row {
-  flex-wrap: wrap;
-  padding-top: 14px;
 }
 
 .monitor-status {

@@ -29,6 +29,9 @@ const activeTab = computed<TabId>(() => {
   return (route.name as TabId | undefined) ?? "servers";
 });
 const isPublicLayout = computed(() => Boolean(route.meta.public));
+const isMonitoringPage = computed(() => route.name === "monitoring");
+const isServerDetailPage = computed(() => route.name === "server-detail");
+const isServerNestedPage = computed(() => route.name === "server-detail" || route.name === "server-new");
 
 const activeTabCopy = computed(() => tabCopy[activeTab.value]);
 const visibleNavItems = computed(() =>
@@ -52,6 +55,10 @@ function selectTab(tabId: TabId) {
     return;
   }
   router.push(routePaths[tabId]);
+}
+
+function openServersPage() {
+  router.push("/servers");
 }
 
 function logout() {
@@ -111,8 +118,28 @@ watch(
 
     <section class="workspace">
       <header class="topbar">
-        <div>
-          <h1>{{ pageTitle }}</h1>
+        <div class="topbar-title">
+          <h1 v-if="isServerNestedPage" class="breadcrumb-title">
+            <button type="button" @click="openServersPage">Серверы</button>
+            <span aria-hidden="true">→</span>
+            <span>{{ pageTitle }}</span>
+          </h1>
+          <h1 v-else>{{ pageTitle }}</h1>
+        </div>
+        <div v-if="isMonitoringPage || isServerDetailPage" class="topbar-actions">
+          <button v-if="isMonitoringPage" class="ghost-button compact" type="button" @click="store.loadMonitoring">
+            <RefreshCw :size="16" />
+            <span>{{ store.isMonitoringLoading.value ? 'Обновляю' : 'Обновить' }}</span>
+          </button>
+          <button
+            v-else
+            class="ghost-button compact"
+            type="button"
+            @click="store.loadDashboard(store.selectedServer.value?.id)"
+          >
+            <RefreshCw :size="16" />
+            <span>Обновить</span>
+          </button>
         </div>
       </header>
 

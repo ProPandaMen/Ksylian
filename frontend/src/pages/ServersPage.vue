@@ -27,7 +27,7 @@ function openNewServerPage() {
         <h3>Сводка</h3>
       </div>
       <div class="server-summary-list">
-        <article v-for="item in 4" :key="item" class="server-summary-row skeleton-tile">
+        <article v-for="item in 2" :key="item" class="server-summary-row skeleton-tile">
           <span class="skeleton-line short"></span>
           <strong class="skeleton-number"></strong>
         </article>
@@ -40,14 +40,14 @@ function openNewServerPage() {
       </div>
       <div class="server-summary-list">
         <article class="server-summary-row">
-          <span>Стабильно работают</span>
+          <span>Онлайн</span>
           <strong>{{ store.stableServersCount.value }}</strong>
         </article>
-        <article class="server-summary-row">
-          <span>Перезагружаются</span>
+        <article v-if="store.deployingServersCount.value" class="server-summary-row">
+          <span>Перезагрузка</span>
           <strong>{{ store.deployingServersCount.value }}</strong>
         </article>
-        <article class="server-summary-row">
+        <article v-if="store.offlineServersCount.value" class="server-summary-row">
           <span>Выключены</span>
           <strong>{{ store.offlineServersCount.value }}</strong>
         </article>
@@ -90,9 +90,6 @@ function openNewServerPage() {
           <div class="server-actions">
             <span v-for="button in 4" :key="button" class="skeleton-button"></span>
           </div>
-          <div class="progress-line static skeleton-progress">
-            <span></span>
-          </div>
         </article>
       </div>
 
@@ -128,6 +125,8 @@ function openNewServerPage() {
             <span>{{ server.disk }}</span>
           </div>
 
+          <span class="state-label" :class="server.state">{{ stateLabels[server.state] }}</span>
+
           <div class="server-actions" :aria-label="`Действия для ${server.name}`">
             <button
               class="icon-button"
@@ -156,11 +155,6 @@ function openNewServerPage() {
             </button>
           </div>
 
-          <div class="progress-line">
-            <span :style="{ width: `${server.cpu}%` }"></span>
-          </div>
-
-          <span class="state-label" :class="server.state">{{ stateLabels[server.state] }}</span>
         </article>
         <article v-if="!store.servers.value.length" class="server-empty-state">
           <div class="empty-icon">

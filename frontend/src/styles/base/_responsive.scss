@@ -55,7 +55,7 @@
   .app-shell {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    min-height: 100vh;
     padding: 14px;
     gap: 12px;
   }
@@ -114,8 +114,7 @@
     flex: 1 1 auto;
     height: auto;
     min-height: 0;
-    padding: 18px;
-    border-radius: 18px;
+    padding: 0;
   }
 
   .topbar,
@@ -150,22 +149,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .server-detail-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .server-info-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .new-server-hero {
-    flex-direction: column;
-  }
-
-  .server-type-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .new-server-fields,
   .new-server-summary {
     grid-template-columns: 1fr;
@@ -176,16 +159,6 @@
     flex-direction: column;
   }
 
-  .server-control-header,
-  .server-hero {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .server-control-actions {
-    flex-wrap: wrap;
-  }
-
   .settings-section-head,
   .settings-row,
   .users-section-head,
@@ -194,10 +167,12 @@
   .monitor-section-head,
   .monitor-row,
   .monitor-metric-row,
-  .monitor-actions-row,
   .service-row,
   .monitor-empty-row,
-  .servers-section-head {
+  .servers-section-head,
+  .server-detail-section-head,
+  .server-detail-row,
+  .server-resource-row {
     align-items: flex-start;
   }
 
@@ -205,35 +180,37 @@
   .users-control-row,
   .users-control-row label,
   .monitor-row,
-  .monitor-metric-row {
+  .monitor-metric-row,
+  .server-detail-row,
+  .server-resource-row {
     grid-template-columns: 1fr;
   }
 
   .users-control-row,
   .user-row,
   .monitor-section-head,
-  .monitor-actions-row,
   .monitor-empty-row,
-  .servers-section-head {
+  .servers-section-head,
+  .server-detail-section-head {
     flex-direction: column;
   }
 
   .users-actions,
-  .monitor-actions-row,
   .servers-section-head .panel-actions {
     justify-content: flex-start;
   }
 
   .settings-row dd,
   .settings-row strong,
-  .monitor-metric-row small {
+  .monitor-metric-row small,
+  .server-detail-row strong,
+  .server-resource-row strong {
     text-align: left;
   }
 
   .server-row {
     grid-template-columns: 1fr;
     gap: 12px;
-    padding-top: 36px;
   }
 
   .server-summary-list {
@@ -282,23 +259,8 @@
     grid-template-columns: 1fr;
   }
 
-  .server-summary-row,
-  .server-summary-row + .server-summary-row {
-    padding-left: 0;
-    padding-right: 0;
-    border-left: 0;
-  }
-
-  .server-detail-grid {
-    grid-template-columns: 1fr;
-  }
-
   .server-tabs {
     display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .server-info-grid {
     grid-template-columns: 1fr;
   }
 
@@ -307,8 +269,9 @@
     min-height: 360px;
   }
 
-  .server-type-grid,
-  .new-server-fields {
+  .new-server-steps,
+  .new-server-fields label,
+  .server-type-row {
     grid-template-columns: 1fr;
   }
 

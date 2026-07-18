@@ -1,50 +1,27 @@
-.server-control-header,
-.server-control-actions,
-.server-hero,
-.server-hero-main {
-  display: flex;
-  align-items: center;
-}
-
-.server-control-header,
-.server-hero {
-  justify-content: space-between;
+.server-control,
+.server-tab-panel {
+  display: grid;
   gap: 14px;
 }
 
-.server-control-actions,
-.server-hero-main {
-  gap: 10px;
-}
-
-.server-hero {
-  min-height: 108px;
-}
-
-.server-hero-main {
-  min-width: 0;
-}
-
-.server-hero-main > div {
-  min-width: 0;
-}
-
-.server-hero h2 {
-  margin-bottom: 4px;
-  font-size: 1.45rem;
-}
-
-.server-hero p:not(.eyebrow) {
-  overflow: hidden;
-  color: var(--app-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.server-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.server-detail-section-head,
+.server-detail-row,
+.server-resource-row,
+.server-detail-actions {
+  display: flex;
+  align-items: center;
   gap: 12px;
+}
+
+.server-detail-section-head,
+.server-detail-row,
+.server-resource-row,
+.server-detail-actions {
+  justify-content: space-between;
+}
+
+.server-detail-actions {
+  flex-wrap: wrap;
 }
 
 .server-tabs {
@@ -91,54 +68,70 @@
     inset -5px -5px 10px var(--app-inset-light);
 }
 
-.server-tab-panel {
+.server-detail-section {
   display: grid;
-  gap: 18px;
-}
-
-.server-info-panel {
-  display: grid;
-  gap: 16px;
-}
-
-.server-info-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.server-info-grid div {
-  min-width: 0;
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--app-surface-raised);
+  gap: 0;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--app-surface);
   box-shadow:
-    5px 5px 10px var(--app-shadow-dark),
-    -4px -4px 9px var(--app-shadow-light);
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
 }
 
-.server-info-grid span,
-.server-info-grid strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.server-detail-section-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
 }
 
-.server-info-grid span {
+.server-detail-section-head h3 {
+  font-size: 1rem;
+}
+
+.server-detail-row,
+.server-resource-row {
+  min-height: 54px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+}
+
+.server-detail-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.24fr) minmax(0, 1fr);
+  justify-content: start;
+}
+
+.server-resource-row {
+  display: grid;
+  grid-template-columns: 24px minmax(150px, 0.28fr) minmax(0, 1fr);
+}
+
+.server-detail-row span,
+.server-resource-row span {
   color: var(--app-muted);
-  font-size: 0.78rem;
+}
+
+.server-detail-row strong,
+.server-resource-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--app-text);
   font-weight: 800;
 }
 
-.server-info-grid strong {
-  margin-top: 4px;
-  color: var(--app-text);
+.server-resource-row svg {
+  color: var(--app-accent);
+}
+
+.server-detail-actions {
+  justify-content: flex-end;
+  padding-top: 14px;
 }
 
 .server-logs-panel pre {
   height: min(58vh, 640px);
   min-height: 420px;
+  margin-top: 14px;
 }
 
 .server-config-panel {

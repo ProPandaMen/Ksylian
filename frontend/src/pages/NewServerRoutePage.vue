@@ -13,10 +13,6 @@ const newServer = ref<NewServerDraft>({
   version: "",
 });
 
-function backToServerList() {
-  router.push("/servers");
-}
-
 async function createServer() {
   const created = await store.createServer(newServer.value);
   if (!created) {
@@ -32,7 +28,6 @@ async function createServer() {
   <NewServerPage
     v-model="newServer"
     :is-submitting="store.isCreatingServer.value"
-    @cancel="backToServerList"
     @submit="createServer"
   />
 </template>

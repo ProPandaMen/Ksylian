@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import {
-  ArrowLeft,
   CircleStop,
   Cpu,
   HardDrive,
@@ -17,7 +16,6 @@ import { stateLabels, useDashboardStore } from "../composables/useDashboardStore
 type ServerDetailTab = "overview" | "logs" | "settings";
 
 const route = useRoute();
-const router = useRouter();
 const store = useDashboardStore();
 const activeServerDetailTab = ref<ServerDetailTab>("overview");
 const logConsole = ref<HTMLPreElement | null>(null);
@@ -29,10 +27,6 @@ const serverDetailTabs: Array<{ id: ServerDetailTab; label: string }> = [
   { id: "logs", label: "Логи" },
   { id: "settings", label: "Настройки" },
 ];
-
-function backToServerList() {
-  router.push("/servers");
-}
 
 function updateLogStickiness() {
   const consoleElement = logConsole.value;
@@ -148,19 +142,6 @@ onUnmounted(stopLogAutoRefresh);
 
 <template>
   <section v-if="store.selectedServer.value" class="server-control">
-    <div class="server-control-header">
-      <button class="ghost-button compact" type="button" @click="backToServerList">
-        <ArrowLeft :size="16" />
-        <span>К списку</span>
-      </button>
-      <div class="server-control-actions">
-        <button class="ghost-button compact" type="button" @click="store.loadDashboard(store.selectedServer.value?.id)">
-          <RefreshCw :size="16" />
-          <span>Обновить</span>
-        </button>
-      </div>
-    </div>
-
     <nav class="server-tabs" aria-label="Разделы сервера">
       <button
         v-for="tab in serverDetailTabs"
@@ -174,16 +155,23 @@ onUnmounted(stopLogAutoRefresh);
     </nav>
 
     <section v-if="activeServerDetailTab === 'overview'" class="server-tab-panel">
-      <section class="server-hero panel">
-        <div class="server-hero-main">
-          <span class="server-state" :class="store.selectedServer.value.state"></span>
-          <div>
-            <p class="eyebrow">{{ store.selectedServer.value.pack }}</p>
-            <h2>{{ store.selectedServer.value.name }}</h2>
-            <p>{{ store.selectedServer.value.version }} · {{ store.selectedServer.value.address }}</p>
-          </div>
+      <section class="server-detail-section">
+        <div class="server-detail-section-head">
+          <h3>Управление</h3>
+          <span class="state-label" :class="store.selectedServer.value.state">
+            {{ stateLabels[store.selectedServer.value.state] }}
+          </span>
         </div>
-        <div class="server-actions">
+
+        <div class="server-detail-row">
+          <span>Адрес</span>
+          <strong>{{ store.selectedServer.value.address }}</strong>
+        </div>
+        <div class="server-detail-row">
+          <span>Тип</span>
+          <strong>{{ store.selectedServer.value.pack }}</strong>
+        </div>
+        <div class="server-detail-actions">
           <button class="icon-button" type="button" title="Запустить" @click="store.runServerAction(store.selectedServer.value.id, 'start')">
             <Play :size="17" />
           </button>
@@ -196,59 +184,55 @@ onUnmounted(stopLogAutoRefresh);
         </div>
       </section>
 
-      <section class="server-detail-grid">
-        <article class="metric-tile">
+      <section class="server-detail-section">
+        <div class="server-detail-section-head">
+          <h3>Ресурсы</h3>
+        </div>
+        <article class="server-resource-row">
           <Cpu :size="20" />
           <span>Процессор</span>
           <strong>{{ store.selectedServer.value.cpu }}%</strong>
         </article>
-        <article class="metric-tile mint">
+        <article class="server-resource-row">
           <MemoryStick :size="20" />
           <span>Оперативка</span>
           <strong>{{ store.selectedServer.value.ram }}</strong>
         </article>
-        <article class="metric-tile amber">
+        <article class="server-resource-row">
           <HardDrive :size="20" />
           <span>Память</span>
           <strong>{{ store.selectedServer.value.disk }}</strong>
         </article>
-        <article class="metric-tile graphite">
+        <article class="server-resource-row">
           <Users :size="20" />
           <span>Онлайн</span>
           <strong>{{ store.selectedServer.value.players }}</strong>
         </article>
       </section>
-      <section class="panel server-info-panel">
-        <p class="eyebrow">connection</p>
-        <h2>Основная информация</h2>
-        <div class="server-info-grid">
-          <div>
-            <span>Адрес</span>
-            <strong>{{ store.selectedServer.value.address }}</strong>
-          </div>
-          <div>
-            <span>Тип</span>
-            <strong>{{ store.selectedServer.value.pack }}</strong>
-          </div>
-          <div>
-            <span>Версия Minecraft</span>
-            <strong>{{ store.selectedServer.value.version }}</strong>
-          </div>
-          <div>
-            <span>Статус</span>
-            <strong>{{ stateLabels[store.selectedServer.value.state] }}</strong>
-          </div>
+
+      <section class="server-detail-section">
+        <div class="server-detail-section-head">
+          <h3>Основная информация</h3>
+        </div>
+        <div class="server-detail-row">
+          <span>Версия Minecraft</span>
+          <strong>{{ store.selectedServer.value.version }}</strong>
+        </div>
+        <div class="server-detail-row">
+          <span>Пакет</span>
+          <strong>{{ store.selectedServer.value.pack }}</strong>
+        </div>
+        <div class="server-detail-row">
+          <span>Статус</span>
+          <strong>{{ stateLabels[store.selectedServer.value.state] }}</strong>
         </div>
       </section>
     </section>
 
     <section v-if="activeServerDetailTab === 'logs'" class="server-tab-panel">
-      <section class="panel terminal-panel server-logs-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">server output</p>
-            <h2>Логи</h2>
-          </div>
+      <section class="server-detail-section terminal-panel server-logs-panel">
+        <div class="server-detail-section-head">
+          <h3>Логи</h3>
           <button class="ghost-button compact" type="button" @click="refreshLogs">
             <RefreshCw :size="16" />
             <span>{{ store.isLogLoading.value ? 'Загрузка' : 'Обновить' }}</span>
@@ -261,12 +245,9 @@ onUnmounted(stopLogAutoRefresh);
     </section>
 
     <section v-if="activeServerDetailTab === 'settings'" class="server-tab-panel">
-      <section class="panel server-config-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">minecraft config</p>
-            <h2>server.properties</h2>
-          </div>
+      <section class="server-detail-section server-config-panel">
+        <div class="server-detail-section-head">
+          <h3>server.properties</h3>
           <div class="panel-actions">
             <button class="ghost-button compact" type="button" @click="store.loadServerConfig()">
               <RefreshCw :size="16" />
@@ -277,9 +258,6 @@ onUnmounted(stopLogAutoRefresh);
             </button>
           </div>
         </div>
-        <p class="settings-hint">
-          Изменения в server.properties обычно применяются после перезапуска Minecraft-сервера.
-        </p>
         <textarea
           v-model="store.selectedServerConfig.value"
           class="config-editor"

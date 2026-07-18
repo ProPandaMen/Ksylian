@@ -14,8 +14,6 @@ onMounted(() => {
   <MonitoringPage
     :monitoring="store.monitoring.value"
     :monitoring-status="store.monitoringStatus.value"
-    :is-loading="store.isMonitoringLoading.value"
     :state-labels="stateLabels"
-    @refresh="store.loadMonitoring"
   />
 </template>

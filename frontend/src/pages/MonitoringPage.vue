@@ -1,16 +1,11 @@
 <script setup lang="ts">
-import { Cpu, Gauge, HardDrive, MemoryStick, RefreshCw } from "@lucide/vue";
+import { Cpu, Gauge, HardDrive, MemoryStick } from "@lucide/vue";
 import type { DiskUsage, HostMonitoring, ServerState } from "../types";
 
 defineProps<{
   monitoring: HostMonitoring;
   monitoringStatus: { label: string; tone: string };
-  isLoading: boolean;
   stateLabels: Record<ServerState, string>;
-}>();
-
-const emit = defineEmits<{
-  refresh: [];
 }>();
 
 function clampPercent(percent: number) {
@@ -58,12 +53,6 @@ function diskCircleStyle(percent: number) {
       <div class="monitor-row">
         <span>Снято</span>
         <strong>{{ monitoring.collected_at || 'только что' }}</strong>
-      </div>
-      <div class="monitor-actions-row">
-        <button class="ghost-button compact" type="button" @click="emit('refresh')">
-          <RefreshCw :size="16" />
-          <span>{{ isLoading ? 'Обновляю' : 'Обновить' }}</span>
-        </button>
       </div>
     </section>
 

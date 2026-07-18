@@ -3,8 +3,6 @@
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 24px;
-  overflow: hidden;
-  height: 100vh;
   min-height: 100vh;
   padding: 28px;
   color: var(--app-text);

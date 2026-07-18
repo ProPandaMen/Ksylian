@@ -1,18 +1,20 @@
 .server-list {
   display: grid;
-  gap: 0;
+  gap: 12px;
+  padding-top: 14px;
 }
 
 .server-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 0.9fr) auto;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, 0.78fr) max-content auto;
   gap: 14px;
   align-items: center;
   min-height: 92px;
-  padding: 14px 0;
+  padding: 16px;
   cursor: pointer;
-  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--app-surface-raised) 62%, transparent);
   transition:
     background 150ms ease,
     color 150ms ease;
@@ -21,11 +23,11 @@
 .server-row:hover,
 .server-row:focus-visible {
   outline: none;
-  background: color-mix(in srgb, var(--app-accent) 4%, transparent);
+  background: color-mix(in srgb, var(--app-accent) 5%, var(--app-surface));
 }
 
 .server-row.selected {
-  background: color-mix(in srgb, var(--app-accent-light) 8%, transparent);
+  background: color-mix(in srgb, var(--app-accent-light) 9%, var(--app-surface));
 }
 
 .server-main {
@@ -127,30 +129,17 @@
   justify-content: flex-end;
 }
 
-.progress-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--app-surface-soft);
-}
-
-.progress-line span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--app-accent), var(--app-success));
-}
-
 .state-label {
-  position: absolute;
-  top: 14px;
-  right: 0;
-  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-surface-raised) 72%, transparent);
+  font-size: 0.8rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .state-label.online {

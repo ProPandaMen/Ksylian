@@ -27,7 +27,6 @@ body[data-theme="black"] {
       linear-gradient(135deg, #101115 0%, #1a1d24 52%, #08090d 100%);
   }
 
-  .workspace,
   .sidebar,
   .panel,
   .summary-tile,
@@ -36,7 +35,9 @@ body[data-theme="black"] {
   .settings-section,
   .monitor-section,
   .users-section,
-  .servers-section {
+  .servers-section,
+  .server-detail-section,
+  .new-server-form {
     color: var(--app-text);
     border-color: rgba(255, 255, 255, 0.12);
     background: rgba(25, 28, 36, 0.74);
@@ -48,7 +49,7 @@ body[data-theme="black"] {
   h3,
   strong,
   .nav-button.active,
-  .server-hero h2 {
+  .server-detail-section h3 {
     color: #f7f8fb;
   }
 

@@ -26,7 +26,6 @@ body[data-theme="white"] {
       linear-gradient(135deg, #ffffff, #edf2f8);
   }
 
-  .workspace,
   .sidebar,
   .panel,
   .summary-tile,
@@ -35,7 +34,9 @@ body[data-theme="white"] {
   .settings-section,
   .monitor-section,
   .users-section,
-  .servers-section {
+  .servers-section,
+  .server-detail-section,
+  .new-server-form {
     background: rgba(255, 255, 255, 0.82);
   }
 
