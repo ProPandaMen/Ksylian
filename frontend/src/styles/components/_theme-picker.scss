@@ -18,11 +18,18 @@
   gap: 6px;
   min-height: 74px;
   padding: 10px;
-  color: #574052;
-  border: 1px solid rgba(255, 255, 255, 0.64);
+  color: var(--app-muted);
+  border: 0;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--app-surface);
+  box-shadow:
+    5px 5px 10px var(--app-shadow-dark),
+    -4px -4px 9px var(--app-shadow-light);
   font-weight: 800;
+  transition:
+    box-shadow 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
 }
 
 .theme-option span {
@@ -44,8 +51,25 @@
 }
 
 .theme-option.selected {
-  color: #a20f6d;
-  border-color: rgba(255, 47, 163, 0.48);
-  box-shadow: 0 12px 24px rgba(204, 60, 132, 0.16);
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent-light) 8%, var(--app-surface));
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
 }
 
+.theme-option:hover {
+  color: var(--app-text);
+  background: var(--app-surface-raised);
+  box-shadow:
+    7px 7px 14px var(--app-shadow-dark),
+    -5px -5px 12px var(--app-shadow-light);
+}
+
+.theme-option.selected:hover {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent-light) 8%, var(--app-surface));
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
+}

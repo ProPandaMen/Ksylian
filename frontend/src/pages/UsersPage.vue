@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Copy, Link2, RefreshCw, UserPlus } from "@lucide/vue";
+import { Copy, RefreshCw, UserPlus } from "@lucide/vue";
 import { requestJson } from "../services/api";
 import type { AuthUser, UserInvite } from "../types";
 import { useToasts } from "../composables/useToasts";
@@ -60,13 +60,12 @@ onMounted(loadUsers);
 
 <template>
   <section class="users-page">
-    <section class="panel users-toolbar">
-      <div>
-        <p class="eyebrow">access</p>
-        <h2>Команда панели</h2>
-        <p>Создавай временные ссылки, чтобы приглашать людей без ручной выдачи пароля.</p>
+    <section class="users-section" aria-label="Приглашения пользователей">
+      <div class="users-section-head">
+        <h3>Приглашения</h3>
       </div>
-      <div class="users-actions">
+
+      <div class="users-control-row">
         <label>
           <span>Срок ссылки</span>
           <select v-model.number="ttlHours">
@@ -76,55 +75,29 @@ onMounted(loadUsers);
             <option :value="168">7 дней</option>
           </select>
         </label>
-        <button class="ghost-button compact" type="button" @click="loadUsers">
-          <RefreshCw :size="16" />
-          <span>{{ isLoading ? 'Обновляю' : 'Обновить' }}</span>
-        </button>
-        <button class="primary-button compact" type="button" :disabled="isCreating" @click="createInvite">
-          <UserPlus :size="16" />
-          <span>{{ isCreating ? 'Создаю' : 'Создать ссылку' }}</span>
-        </button>
-      </div>
-    </section>
-
-    <section v-if="lastInviteUrl" class="panel invite-result">
-      <Link2 :size="20" />
-      <div>
-        <strong>Новая ссылка приглашения</strong>
-        <span>{{ lastInviteUrl }}</span>
-      </div>
-      <button class="icon-button" type="button" title="Скопировать" @click="copyInvite(lastInviteUrl)">
-        <Copy :size="17" />
-      </button>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">users</p>
-          <h2>Пользователи</h2>
+        <div class="users-actions">
+          <button class="ghost-button compact" type="button" @click="loadUsers">
+            <RefreshCw :size="16" />
+            <span>{{ isLoading ? 'Обновляю' : 'Обновить' }}</span>
+          </button>
+          <button class="primary-button compact" type="button" :disabled="isCreating" @click="createInvite">
+            <UserPlus :size="16" />
+            <span>{{ isCreating ? 'Создаю' : 'Создать ссылку' }}</span>
+          </button>
         </div>
       </div>
-      <div class="user-list">
-        <article v-for="item in users" :key="item.id" class="user-row">
-          <div>
-            <strong>{{ item.display_name }}</strong>
-            <span>@{{ item.username }} · {{ item.role === 'admin' ? 'Админ' : 'Участник' }}</span>
-          </div>
-          <span class="settings-status connected">{{ item.theme }}</span>
-        </article>
-      </div>
-    </section>
 
-    <section class="panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">invites</p>
-          <h2>Активные приглашения</h2>
-        </div>
+      <div class="users-subhead">
+        <span>Активные приглашения</span>
       </div>
+
       <div class="user-list">
-        <article v-for="invite in activeInvites" :key="invite.id" class="user-row">
+        <article
+          v-for="invite in activeInvites"
+          :key="invite.id"
+          class="user-row"
+          :class="{ highlighted: lastInviteUrl === inviteUrl(invite.token) }"
+        >
           <div>
             <strong>{{ invite.role === 'admin' ? 'Админ' : 'Участник' }}</strong>
             <span>Действует до {{ invite.expires_at }}</span>
@@ -139,6 +112,21 @@ onMounted(loadUsers);
             <strong>Активных ссылок нет</strong>
             <span>Создай приглашение, когда понадобится добавить пользователя.</span>
           </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="users-section" aria-label="Пользователи">
+      <div class="users-section-head">
+        <h3>Пользователи</h3>
+      </div>
+      <div class="user-list">
+        <article v-for="item in users" :key="item.id" class="user-row">
+          <div>
+            <strong>{{ item.display_name }}</strong>
+            <span>@{{ item.username }} · {{ item.role === 'admin' ? 'Админ' : 'Участник' }}</span>
+          </div>
+          <span class="users-status">{{ item.theme }}</span>
         </article>
       </div>
     </section>

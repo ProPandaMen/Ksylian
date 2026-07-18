@@ -1,6 +1,7 @@
 .panel {
   min-width: 0;
-  padding: 18px;
+  padding: 20px;
+  border-radius: 24px;
 }
 
 .panel-heading {
@@ -26,4 +27,3 @@
 .expanded-list {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
-

@@ -98,17 +98,22 @@ const pawPrints = computed(() =>
 
 const mode = computed(() => route.name);
 const title = computed(() =>
-  mode.value === "setup" ? "Ksylian" : mode.value === "invite" ? "Регистрация пользователя" : "Вход в панель",
+  mode.value === "setup" || mode.value === "login" ? "Ksylian" : "Регистрация пользователя",
 );
 const eyebrow = computed(() =>
-  mode.value === "setup" ? "Настройка доступа" : "Доступ Ksylian",
+  mode.value === "setup" ? "Настройка доступа" : mode.value === "login" ? "Вход в панель" : "Доступ Ksylian",
 );
 const description = computed(() =>
-  mode.value === "setup"
+  mode.value === "setup" || mode.value === "login"
     ? ""
+    : "Регистрация по приглашению для доступа к панели.",
+);
+const mascotBubbleText = computed(() =>
+  mode.value === "setup"
+    ? "Сначала создадим администратора, а дальше я помогу с панелью"
     : mode.value === "invite"
-      ? "Регистрация по приглашению для доступа к панели."
-      : "Доступ к панели по логину и паролю.",
+      ? "Заполни приглашение, и я открою тебе дверь в панель"
+      : "С возвращением. Введи логин и пароль, я присмотрю за серверами",
 );
 const submitLabel = computed(() =>
   mode.value === "setup" ? "Создать учётную запись" : mode.value === "invite" ? "Завершить регистрацию" : "Войти",
@@ -190,7 +195,7 @@ function stopPettingMascot() {
 
 <template>
   <main class="auth-shell" :class="`theme-${theme}`">
-    <div v-if="mode === 'setup'" class="paw-trail" aria-hidden="true">
+    <div class="paw-trail" aria-hidden="true">
       <span
         v-for="(footprint, index) in pawPrints"
         :key="index"
@@ -202,7 +207,6 @@ function stopPettingMascot() {
 
     <div class="auth-scene">
       <div
-        v-if="mode === 'setup'"
         class="auth-mascot"
         :class="{ loved: mascotLoved }"
         aria-hidden="true"
@@ -213,7 +217,7 @@ function stopPettingMascot() {
           <span class="bubble-dot small"></span>
           <span class="bubble-dot medium"></span>
           <span class="bubble-dot large"></span>
-          <span>Сначала создадим администратора, а дальше я помогу с панелью</span>
+          <span>{{ mascotBubbleText }}</span>
         </span>
         <span class="mascot-hearts" aria-hidden="true">
           <span v-for="heart in 7" :key="heart"></span>
@@ -224,7 +228,7 @@ function stopPettingMascot() {
       <section class="auth-card panel">
       <div>
         <div class="auth-brand-title">
-          <span v-if="mode === 'setup'" class="auth-logo" aria-hidden="true">
+          <span class="auth-logo" aria-hidden="true">
             <img :src="catLogo" alt="" />
           </span>
           <h1>{{ title }}</h1>

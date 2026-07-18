@@ -3,26 +3,26 @@
   gap: 9px;
   min-height: 106px;
   padding: 16px;
-  color: #8a1c62;
+  color: var(--app-accent);
 }
 
 .metric-tile.mint {
-  color: #176a50;
-  background: rgba(235, 255, 247, 0.58);
+  color: #237069;
+  background: color-mix(in srgb, var(--app-success) 10%, var(--app-surface));
 }
 
 .metric-tile.amber {
-  color: #735019;
-  background: rgba(255, 248, 233, 0.68);
+  color: #8c611d;
+  background: color-mix(in srgb, var(--app-warning) 10%, var(--app-surface));
 }
 
 .metric-tile.graphite {
-  color: #374151;
-  background: rgba(247, 248, 251, 0.62);
+  color: var(--app-text);
+  background: var(--app-surface);
 }
 
 .metric-tile span {
-  color: #80687c;
+  color: var(--app-muted);
 }
 
 .metric-tile strong {
@@ -33,7 +33,6 @@
 
 .metric-tile small {
   overflow-wrap: anywhere;
-  color: #80687c;
+  color: var(--app-muted);
   line-height: 1.35;
 }
-

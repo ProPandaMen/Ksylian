@@ -5,3 +5,34 @@
   margin-top: 4px;
 }
 
+.workspace input,
+.workspace select,
+.workspace textarea {
+  color: var(--app-text);
+  border: 0;
+  outline: 0;
+  background: var(--app-surface);
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
+}
+
+.workspace input,
+.workspace select {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 13px;
+}
+
+.workspace textarea {
+  border-radius: 14px;
+}
+
+.workspace input:focus,
+.workspace select:focus,
+.workspace textarea:focus {
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light),
+    0 0 0 3px color-mix(in srgb, var(--app-accent) 10%, transparent);
+}

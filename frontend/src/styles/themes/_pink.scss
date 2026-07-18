@@ -1,0 +1,21 @@
+body[data-theme="pink"] {
+  --app-surface: #eadfe8;
+  --app-surface-raised: #efe5ed;
+  --app-surface-soft: #e0d0dc;
+  --app-text: #4a3948;
+  --app-muted: #7a6878;
+  --app-muted-soft: rgba(122, 104, 120, 0.72);
+  --app-accent: #d934ad;
+  --app-accent-light: #9a59ff;
+  --app-pink: #f43fb5;
+  --app-success: #38b2ac;
+  --app-warning: #c4862f;
+  --app-danger: #cf4676;
+  --app-shadow-dark: rgb(186, 156, 179, 0.58);
+  --app-shadow-dark-strong: rgb(186, 156, 179, 0.68);
+  --app-shadow-light: rgba(255, 255, 255, 0.55);
+  --app-shadow-light-strong: rgba(255, 255, 255, 0.64);
+  --app-inset-dark: rgb(186, 156, 179, 0.58);
+  --app-inset-light: rgba(255, 255, 255, 0.52);
+  background: var(--app-surface);
+}

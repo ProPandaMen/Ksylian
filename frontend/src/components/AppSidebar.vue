@@ -2,7 +2,6 @@
 import { LogOut } from "@lucide/vue";
 import type { Component } from "vue";
 import catLogo from "../assets/cat-logo.svg";
-import catMascot from "../assets/ksylian-cat.png";
 import type { AuthUser, TabId } from "../types";
 
 defineProps<{
@@ -46,14 +45,6 @@ const emit = defineEmits<{
     </nav>
 
     <div class="sidebar-footer">
-      <section class="mascot-card">
-        <img :src="catMascot" alt="Розовый кот-талисман Ksylian" />
-        <div>
-          <strong>Ксю-контроль</strong>
-          <span>3 мира под присмотром</span>
-        </div>
-      </section>
-
       <section v-if="user" class="sidebar-user-card" aria-label="Профиль пользователя">
         <div>
           <strong>{{ user.display_name }}</strong>

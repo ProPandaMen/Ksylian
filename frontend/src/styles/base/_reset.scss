@@ -1,8 +1,26 @@
 :root {
-  color: #2f2531;
-  background: #eadfe3;
+  --app-surface: #e0e5ec;
+  --app-surface-raised: #e6ebf2;
+  --app-surface-soft: #dbe1e9;
+  --app-text: #3d4852;
+  --app-muted: #6b7280;
+  --app-muted-soft: rgba(107, 114, 128, 0.72);
+  --app-accent: #6c63ff;
+  --app-accent-light: #8b84ff;
+  --app-pink: #ff6bac;
+  --app-success: #38b2ac;
+  --app-warning: #d09232;
+  --app-danger: #d8527d;
+  --app-shadow-dark: rgb(163, 177, 198, 0.62);
+  --app-shadow-dark-strong: rgb(163, 177, 198, 0.72);
+  --app-shadow-light: rgba(255, 255, 255, 0.54);
+  --app-shadow-light-strong: rgba(255, 255, 255, 0.68);
+  --app-inset-dark: rgb(163, 177, 198, 0.58);
+  --app-inset-light: rgba(255, 255, 255, 0.56);
+  color: var(--app-text);
+  background: var(--app-surface);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Onest, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -34,4 +52,3 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.62;
 }
-

@@ -1,0 +1,72 @@
+body[data-theme="black"] {
+  --app-surface: #242a33;
+  --app-surface-raised: #2b323d;
+  --app-surface-soft: #1b2028;
+  --app-text: #edf2f7;
+  --app-muted: #aeb8c5;
+  --app-muted-soft: rgba(174, 184, 197, 0.72);
+  --app-accent: #8b84ff;
+  --app-accent-light: #38b2ac;
+  --app-pink: #8b84ff;
+  --app-success: #38b2ac;
+  --app-warning: #d09a45;
+  --app-danger: #e06286;
+  --app-shadow-dark: rgba(9, 13, 19, 0.58);
+  --app-shadow-dark-strong: rgba(9, 13, 19, 0.68);
+  --app-shadow-light: rgba(255, 255, 255, 0.08);
+  --app-shadow-light-strong: rgba(255, 255, 255, 0.12);
+  --app-inset-dark: rgba(8, 12, 18, 0.66);
+  --app-inset-light: rgba(255, 255, 255, 0.08);
+  color: var(--app-text);
+  background: #101115;
+
+  .app-shell {
+    background:
+      radial-gradient(circle at 16% 50%, rgba(255, 47, 163, 0.18), transparent 22%),
+      radial-gradient(circle at 72% 17%, rgba(91, 118, 255, 0.16), transparent 18%),
+      linear-gradient(135deg, #101115 0%, #1a1d24 52%, #08090d 100%);
+  }
+
+  .workspace,
+  .sidebar,
+  .panel,
+  .summary-tile,
+  .metric-tile,
+  .settings-form,
+  .settings-section,
+  .monitor-section,
+  .users-section,
+  .servers-section {
+    color: var(--app-text);
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(25, 28, 36, 0.74);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  }
+
+  h1,
+  h2,
+  h3,
+  strong,
+  .nav-button.active,
+  .server-hero h2 {
+    color: #f7f8fb;
+  }
+
+  p,
+  span,
+  small,
+  .settings-hint,
+  .settings-row dd {
+    color: var(--app-muted);
+  }
+
+  .ghost-button,
+  .icon-button,
+  input,
+  select,
+  textarea {
+    color: var(--app-text);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+  }
+}

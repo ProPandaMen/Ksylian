@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, Palette, RefreshCw, ShieldCheck } from "@lucide/vue";
+import { Download, RefreshCw, ShieldCheck } from "@lucide/vue";
 import type { AuthUser, SettingsPayload, ThemeName, UpdateStatusPayload } from "../types";
 
 defineProps<{
@@ -15,7 +15,6 @@ defineProps<{
 
 const emit = defineEmits<{
   "update:curseForgeApiKey": [value: string];
-  refresh: [];
   "refresh-agent": [];
   "refresh-update": [];
   "restart-agent": [];
@@ -27,116 +26,24 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="panel settings-panel">
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">configuration</p>
-        <h2>Настройки проекта</h2>
-      </div>
-      <button class="icon-button" type="button" title="Обновить" @click="emit('refresh')">
-        <RefreshCw :size="18" />
-      </button>
-    </div>
-    <div class="settings-layout">
-      <form class="settings-form" @submit.prevent="emit('save')">
+  <section class="settings-page">
+    <div class="settings-sections">
+      <section class="settings-section" aria-label="Профиль пользователя">
         <div class="settings-section-head">
           <div>
-            <p class="eyebrow">curseforge</p>
-            <h3>Интеграция с каталогом</h3>
-          </div>
-          <span class="settings-status" :class="{ connected: settings.has_curseforge_api_key }">
-            {{ settings.has_curseforge_api_key ? 'Подключено' : 'Не подключено' }}
-          </span>
-        </div>
-
-        <div class="settings-current">
-          <span>Текущий ключ</span>
-          <strong>
-            {{ settings.has_curseforge_api_key ? settings.curseforge_api_key_mask : 'не задан' }}
-          </strong>
-        </div>
-
-        <label>
-          <span>CurseForge API key</span>
-          <input
-            :value="curseForgeApiKey"
-            autocomplete="off"
-            spellcheck="false"
-            type="password"
-            placeholder="Вставь новый ключ"
-            @input="emit('update:curseForgeApiKey', ($event.target as HTMLInputElement).value)"
-          />
-        </label>
-
-        <p class="settings-hint">
-          Ключ хранится только на backend. В браузер возвращается только статус и маска.
-        </p>
-
-        <div class="form-actions">
-          <button class="ghost-button" type="button" @click="emit('clear')">
-            Очистить
-          </button>
-          <button class="primary-button" type="submit" :disabled="isSaving">
-            <ShieldCheck :size="18" />
-            <span>{{ isSaving ? 'Сохраняю' : 'Сохранить' }}</span>
-          </button>
-        </div>
-      </form>
-
-      <section class="settings-summary" aria-label="Системная информация">
-        <div class="settings-section-head">
-          <div>
-            <p class="eyebrow">system</p>
-            <h3>Окружение</h3>
-          </div>
-        </div>
-        <dl>
-          <div>
-            <dt>Host Agent</dt>
-            <dd>{{ settings.agent.available ? 'Запущен' : settings.agent.configured ? 'Недоступен' : 'Не настроен' }}</dd>
-          </div>
-          <div>
-            <dt>Backend</dt>
-            <dd>Подключён через /api</dd>
-          </div>
-          <div>
-            <dt>Deploy</dt>
-            <dd>Self-update через agent</dd>
-          </div>
-          <div>
-            <dt>Frontend port</dt>
-            <dd>8088</dd>
-          </div>
-          <div>
-            <dt>Backend port</dt>
-            <dd>8090</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="settings-profile panel-lite" aria-label="Профиль пользователя">
-        <div class="settings-section-head">
-          <div>
-            <p class="eyebrow">profile</p>
             <h3>Профиль</h3>
           </div>
-          <span v-if="user" class="settings-status connected">{{ user.role === 'admin' ? 'Администратор' : 'Пользователь' }}</span>
         </div>
 
-        <div v-if="user" class="settings-current">
-          <span>Текущий пользователь</span>
+        <div class="settings-row" v-if="user">
+          <span>Пользователь</span>
           <strong>{{ user.display_name }}</strong>
         </div>
 
-        <div v-if="user" class="settings-theme-block">
-          <div class="settings-section-head compact-head">
-            <div>
-              <h3>Цветовая схема</h3>
-              <p class="settings-hint">Тема сохраняется для твоей учетной записи.</p>
-            </div>
-            <Palette :size="20" />
+        <div v-if="user" class="settings-theme-row">
+          <div class="settings-row-title">
+            <span>Цветовая схема</span>
           </div>
-
           <div class="theme-picker settings-theme-picker">
             <button
               v-for="item in themes"
@@ -153,10 +60,77 @@ const emit = defineEmits<{
         </div>
       </section>
 
-      <section class="settings-updates panel-lite" aria-label="Обновления Ksylian">
+      <section class="settings-section" aria-label="Интеграции">
+        <form class="settings-form" @submit.prevent="emit('save')">
+          <div class="settings-section-head">
+            <div>
+              <h3>CurseForge</h3>
+            </div>
+            <span class="settings-status" :class="{ connected: settings.has_curseforge_api_key }">
+              {{ settings.has_curseforge_api_key ? 'Подключено' : 'Не подключено' }}
+            </span>
+          </div>
+
+          <div class="settings-row">
+            <span>Текущий ключ</span>
+            <strong>
+              {{ settings.has_curseforge_api_key ? settings.curseforge_api_key_mask : 'не задан' }}
+            </strong>
+          </div>
+
+          <label>
+            <span>API key</span>
+            <input
+              :value="curseForgeApiKey"
+              autocomplete="off"
+              spellcheck="false"
+              type="password"
+              placeholder="Новый ключ"
+              @input="emit('update:curseForgeApiKey', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+
+          <div class="form-actions">
+            <button class="ghost-button" type="button" @click="emit('clear')">
+              Очистить
+            </button>
+            <button class="primary-button" type="submit" :disabled="isSaving">
+              <ShieldCheck :size="18" />
+              <span>{{ isSaving ? 'Сохраняю' : 'Сохранить' }}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="settings-section" aria-label="Host Agent">
         <div class="settings-section-head">
           <div>
-            <p class="eyebrow">updates</p>
+            <h3>Agent</h3>
+          </div>
+          <span class="settings-status" :class="{ connected: settings.agent.available }">
+            {{ settings.agent.available ? 'Онлайн' : settings.agent.configured ? 'Недоступен' : 'Не настроен' }}
+          </span>
+        </div>
+
+        <div class="settings-actions-row">
+          <button class="ghost-button" type="button" @click="emit('refresh-agent')">
+            <RefreshCw :size="17" />
+            <span>Проверить</span>
+          </button>
+          <button class="primary-button" type="button" :disabled="!settings.agent.available" @click="emit('restart-agent')">
+            <RefreshCw :size="17" />
+            <span>Перезапустить</span>
+          </button>
+        </div>
+
+        <p v-if="settings.agent.configured && !settings.agent.available" class="settings-hint danger">
+          Agent не отвечает. Запусти на сервере: sudo systemctl start ksylian-agent.service
+        </p>
+      </section>
+
+      <section class="settings-section" aria-label="Обновления Ksylian">
+        <div class="settings-section-head">
+          <div>
             <h3>Обновления</h3>
           </div>
           <span
@@ -167,12 +141,12 @@ const emit = defineEmits<{
           </span>
         </div>
 
-        <div class="update-version-grid">
-          <div>
+        <div class="settings-version-list">
+          <div class="settings-row">
             <span>Текущая версия</span>
             <strong>{{ updateStatus.current_version }} · {{ updateStatus.current_sha }}</strong>
           </div>
-          <div>
+          <div class="settings-row">
             <span>Последняя версия</span>
             <strong>
               {{ updateStatus.latest_version || 'не найдена' }}
@@ -180,10 +154,6 @@ const emit = defineEmits<{
             </strong>
           </div>
         </div>
-
-        <p class="settings-hint">
-          Сервер сам проверяет GitHub tags и может обновиться до выбранного release без GitHub Actions runner.
-        </p>
 
         <p v-if="updateStatus.updater_status !== 'ready'" class="settings-hint danger">
           Updater пока не готов:
@@ -198,7 +168,7 @@ const emit = defineEmits<{
 
         <p v-if="updateStatus.notes" class="update-notes">{{ updateStatus.notes }}</p>
 
-        <div class="form-actions">
+        <div class="settings-actions-row">
           <a
             v-if="updateStatus.release_url"
             class="ghost-button"
@@ -224,34 +194,30 @@ const emit = defineEmits<{
         </div>
       </section>
 
-      <section class="settings-agent panel-lite" aria-label="Host Agent">
+      <section class="settings-section" aria-label="Системная информация">
         <div class="settings-section-head">
           <div>
-            <p class="eyebrow">host agent</p>
-            <h3>Сбор метрик и управление серверами</h3>
+            <h3>Окружение</h3>
           </div>
-          <span class="settings-status" :class="{ connected: settings.agent.available }">
-            {{ settings.agent.available ? 'Онлайн' : settings.agent.configured ? 'Недоступен' : 'Не настроен' }}
-          </span>
         </div>
-        <p class="settings-hint">
-          Agent работает на хосте и отдаёт реальные серверы, логи, systemd-статусы и нагрузку.
-          Если он недоступен, панель больше не показывает демо-серверы.
-        </p>
-        <div class="form-actions">
-          <button class="ghost-button" type="button" @click="emit('refresh-agent')">
-            <RefreshCw :size="17" />
-            <span>Проверить</span>
-          </button>
-          <button class="primary-button" type="button" :disabled="!settings.agent.available" @click="emit('restart-agent')">
-            <RefreshCw :size="17" />
-            <span>Перезапустить agent</span>
-          </button>
-        </div>
-        <p v-if="settings.agent.configured && !settings.agent.available" class="settings-hint danger">
-          Agent не отвечает. Если кнопка перезапуска недоступна, запусти на сервере:
-          sudo systemctl start ksylian-agent.service
-        </p>
+        <dl class="settings-rows">
+          <div class="settings-row">
+            <dt>Host Agent</dt>
+            <dd>{{ settings.agent.available ? 'Запущен' : settings.agent.configured ? 'Недоступен' : 'Не настроен' }}</dd>
+          </div>
+          <div class="settings-row">
+            <dt>Backend</dt>
+            <dd>/api</dd>
+          </div>
+          <div class="settings-row">
+            <dt>Frontend port</dt>
+            <dd>8088</dd>
+          </div>
+          <div class="settings-row">
+            <dt>Backend port</dt>
+            <dd>8090</dd>
+          </div>
+        </dl>
       </section>
     </div>
   </section>

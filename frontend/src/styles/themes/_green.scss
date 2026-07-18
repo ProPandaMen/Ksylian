@@ -1,0 +1,51 @@
+body[data-theme="green"] {
+  --app-surface: #dfe8dc;
+  --app-surface-raised: #e7efe4;
+  --app-surface-soft: #d0ddcc;
+  --app-text: #35483b;
+  --app-muted: #647467;
+  --app-muted-soft: rgba(100, 116, 103, 0.72);
+  --app-accent: #42a95b;
+  --app-accent-light: #7ac65e;
+  --app-pink: #42a95b;
+  --app-success: #38b26f;
+  --app-warning: #b18428;
+  --app-danger: #c8526b;
+  --app-shadow-dark: rgb(151, 170, 149, 0.58);
+  --app-shadow-dark-strong: rgb(151, 170, 149, 0.68);
+  --app-shadow-light: rgba(255, 255, 255, 0.54);
+  --app-shadow-light-strong: rgba(255, 255, 255, 0.64);
+  --app-inset-dark: rgb(151, 170, 149, 0.58);
+  --app-inset-light: rgba(255, 255, 255, 0.52);
+
+  .app-shell {
+    background:
+      radial-gradient(circle at 14% 44%, rgba(64, 176, 84, 0.32), transparent 24%),
+      radial-gradient(circle at 78% 22%, rgba(157, 210, 91, 0.34), transparent 20%),
+      linear-gradient(135deg, #dbe9d4, #f3f7ea 48%, #c8d8bf);
+  }
+
+  .brand-mark,
+  .primary-button,
+  .empty-icon {
+    background:
+      radial-gradient(circle at 28% 10%, rgba(255, 255, 255, 0.42), transparent 16%),
+      linear-gradient(135deg, #2fa84f, #7dbd39);
+    box-shadow: 0 18px 34px rgba(67, 132, 60, 0.28);
+  }
+
+  .nav-button.active,
+  .server-tabs button.active {
+    color: #1f6f3c;
+    background: rgba(232, 248, 221, 0.9);
+  }
+
+  .summary-tile strong,
+  .metric-tile strong {
+    color: #1f7a43;
+  }
+
+  .server-state.online {
+    background: #45c46c;
+  }
+}

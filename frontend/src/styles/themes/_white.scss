@@ -1,0 +1,45 @@
+body[data-theme="white"] {
+  --app-surface: #e0e5ec;
+  --app-surface-raised: #edf2f8;
+  --app-surface-soft: #d7e2f0;
+  --app-text: #3d4852;
+  --app-muted: #6b7280;
+  --app-muted-soft: rgba(107, 114, 128, 0.72);
+  --app-accent: #3b82f6;
+  --app-accent-light: #7c3aed;
+  --app-pink: #7c3aed;
+  --app-success: #38b2ac;
+  --app-warning: #d09232;
+  --app-danger: #d8527d;
+  --app-shadow-dark: rgb(163, 177, 198, 0.62);
+  --app-shadow-dark-strong: rgb(163, 177, 198, 0.72);
+  --app-shadow-light: rgba(255, 255, 255, 0.64);
+  --app-shadow-light-strong: rgba(255, 255, 255, 0.74);
+  --app-inset-dark: rgb(163, 177, 198, 0.58);
+  --app-inset-light: rgba(255, 255, 255, 0.62);
+  background: #f7f8fb;
+
+  .app-shell {
+    background:
+      radial-gradient(circle at 20% 34%, rgba(215, 226, 240, 0.72), transparent 24%),
+      radial-gradient(circle at 78% 22%, rgba(255, 210, 232, 0.42), transparent 22%),
+      linear-gradient(135deg, #ffffff, #edf2f8);
+  }
+
+  .workspace,
+  .sidebar,
+  .panel,
+  .summary-tile,
+  .metric-tile,
+  .settings-form,
+  .settings-section,
+  .monitor-section,
+  .users-section,
+  .servers-section {
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .primary-button {
+    background: linear-gradient(135deg, #3b82f6, #7c3aed);
+  }
+}

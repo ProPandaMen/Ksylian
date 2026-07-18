@@ -1,10 +1,21 @@
 .users-page {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
-.users-toolbar,
-.invite-result,
+.users-section {
+  display: grid;
+  gap: 0;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--app-surface);
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
+}
+
+.users-section-head,
+.users-control-row,
 .user-row,
 .users-actions {
   display: flex;
@@ -12,15 +23,41 @@
   gap: 12px;
 }
 
-.users-toolbar,
-.invite-result,
+.users-section-head,
+.users-control-row,
 .user-row {
   justify-content: space-between;
 }
 
-.users-toolbar p:not(.eyebrow) {
-  color: #80687c;
-  line-height: 1.5;
+.users-section-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+}
+
+.users-section-head h3 {
+  font-size: 1rem;
+}
+
+.users-control-row,
+.user-row {
+  min-height: 54px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+}
+
+.users-control-row label {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.24fr) minmax(180px, 260px);
+  align-items: center;
+  gap: 12px;
+  min-width: min(100%, 460px);
+  color: var(--app-text);
+  font-weight: 800;
+}
+
+.users-control-row label span {
+  color: var(--app-muted);
+  font-weight: 700;
 }
 
 .users-actions {
@@ -28,47 +65,52 @@
   justify-content: flex-end;
 }
 
-.users-actions label {
-  display: grid;
-  gap: 5px;
-  min-width: 140px;
-  color: #72566b;
-  font-size: 0.8rem;
+.users-subhead {
+  padding: 18px 0 14px;
+  color: var(--app-muted);
+  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+  font-size: 0.9rem;
   font-weight: 800;
-}
-
-.invite-result span,
-.user-row span {
-  color: #8f7d8c;
-}
-
-.invite-result > div,
-.user-row > div {
-  display: grid;
-  min-width: 0;
-}
-
-.invite-result span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .user-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
 
-.user-row {
-  min-height: 58px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.54);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.42);
+.user-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.user-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--app-text);
+  font-weight: 800;
+}
+
+.user-row span {
+  color: var(--app-muted);
+}
+
+.user-row.highlighted strong {
+  color: var(--app-accent);
+}
+
+.users-status {
+  min-height: 28px;
+  padding: 6px 10px;
+  color: var(--app-muted);
+  border-radius: 999px;
+  background: var(--app-surface-raised);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .user-row.muted {
   justify-content: flex-start;
   opacity: 0.72;
 }
-

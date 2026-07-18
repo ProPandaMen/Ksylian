@@ -41,14 +41,25 @@ function diskCircleStyle(percent: number) {
 
 <template>
   <section class="monitoring-page">
-    <section class="panel monitor-hero">
-      <div>
-        <p class="eyebrow">host health</p>
-        <h2>{{ monitoring.hostname }}</h2>
-        <p>Работает {{ monitoring.uptime }}</p>
-      </div>
-      <div class="monitor-hero-actions">
+    <section class="monitor-section" aria-label="Состояние хоста">
+      <div class="monitor-section-head">
+        <h3>Хост</h3>
         <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
+      </div>
+
+      <div class="monitor-row">
+        <span>Имя</span>
+        <strong>{{ monitoring.hostname }}</strong>
+      </div>
+      <div class="monitor-row">
+        <span>Работает</span>
+        <strong>{{ monitoring.uptime }}</strong>
+      </div>
+      <div class="monitor-row">
+        <span>Снято</span>
+        <strong>{{ monitoring.collected_at || 'только что' }}</strong>
+      </div>
+      <div class="monitor-actions-row">
         <button class="ghost-button compact" type="button" @click="emit('refresh')">
           <RefreshCw :size="16" />
           <span>{{ isLoading ? 'Обновляю' : 'Обновить' }}</span>
@@ -56,43 +67,45 @@ function diskCircleStyle(percent: number) {
       </div>
     </section>
 
-    <section class="monitor-grid">
-      <article class="metric-tile">
-        <Cpu :size="20" />
+    <section class="monitor-section" aria-label="Ресурсы">
+      <div class="monitor-section-head">
+        <h3>Ресурсы</h3>
+      </div>
+
+      <div class="monitor-metric-row">
+        <Cpu :size="18" />
         <span>CPU</span>
         <strong>{{ monitoring.cpu_percent }}%</strong>
         <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
-      </article>
-      <article class="metric-tile mint">
-        <MemoryStick :size="20" />
+      </div>
+      <div class="monitor-metric-row">
+        <MemoryStick :size="18" />
         <span>RAM</span>
         <strong>{{ monitoring.memory.percent }}%</strong>
         <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
-      </article>
-      <article class="metric-tile amber">
-        <HardDrive :size="20" />
+      </div>
+      <div class="monitor-metric-row">
+        <HardDrive :size="18" />
         <span>Swap</span>
         <strong>{{ monitoring.swap.percent }}%</strong>
         <small>{{ monitoring.swap.used_label }} / {{ monitoring.swap.total_label }}</small>
-      </article>
-      <article class="metric-tile graphite">
-        <Gauge :size="20" />
+      </div>
+      <div class="monitor-metric-row">
+        <Gauge :size="18" />
         <span>Температура</span>
         <strong>{{ monitoring.temperature }}</strong>
-        <small>Снято {{ monitoring.collected_at || 'только что' }}</small>
-      </article>
+        <small>{{ monitoring.collected_at || 'только что' }}</small>
+      </div>
     </section>
 
     <section class="monitor-columns">
-      <section class="panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">storage</p>
-            <h2>Диски</h2>
-          </div>
+      <section class="monitor-section" aria-label="Диски">
+        <div class="monitor-section-head">
+          <h3>Диски</h3>
         </div>
+
         <div class="disk-list">
-          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card">
+          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-row">
             <div class="disk-chart" :style="diskCircleStyle(disk.percent)" aria-hidden="true">
               <svg viewBox="0 0 120 120" role="img">
                 <circle class="disk-ring free" cx="60" cy="60" r="46" />
@@ -103,28 +116,26 @@ function diskCircleStyle(percent: number) {
                 <span>занято</span>
               </div>
             </div>
-            <div class="disk-info">
-              <div>
-                <strong>{{ disk.mount }}</strong>
-                <span>{{ disk.filesystem }}</span>
-              </div>
-              <dl>
-                <div>
-                  <dt>Занято</dt>
-                  <dd>{{ disk.used_label }}</dd>
-                </div>
-                <div>
-                  <dt>Свободно</dt>
-                  <dd>{{ freeLabel(disk) }}</dd>
-                </div>
-                <div>
-                  <dt>Всего</dt>
-                  <dd>{{ disk.total_label }}</dd>
-                </div>
-              </dl>
+            <div>
+              <strong>{{ disk.mount }}</strong>
+              <span>{{ disk.filesystem }}</span>
             </div>
+            <dl>
+              <div>
+                <dt>Занято</dt>
+                <dd>{{ disk.used_label }}</dd>
+              </div>
+              <div>
+                <dt>Свободно</dt>
+                <dd>{{ freeLabel(disk) }}</dd>
+              </div>
+              <div>
+                <dt>Всего</dt>
+                <dd>{{ disk.total_label }}</dd>
+              </div>
+            </dl>
           </article>
-          <article v-if="!monitoring.disks.length" class="stack-item muted">
+          <article v-if="!monitoring.disks.length" class="monitor-empty-row">
             <HardDrive :size="18" />
             <div>
               <strong>Диски пока не прочитаны</strong>
@@ -134,32 +145,39 @@ function diskCircleStyle(percent: number) {
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">systemd</p>
-            <h2>Сервисы</h2>
-          </div>
+      <section class="monitor-section" aria-label="Сервисы">
+        <div class="monitor-section-head">
+          <h3>Сервисы</h3>
         </div>
-        <div class="stack-list">
-          <article v-for="service in monitoring.services" :key="service.id" class="stack-item service-item">
+
+        <div class="service-list">
+          <article v-for="service in monitoring.services" :key="service.id" class="service-row">
             <span class="server-state" :class="service.state"></span>
-            <div>
+            <div class="service-name">
               <strong>{{ service.name }}</strong>
-              <span>{{ stateLabels[service.state] }} · CPU {{ service.cpu }}% · RAM {{ service.ram }}</span>
+            </div>
+            <div>
+              <span>Статус</span>
+              <strong>{{ stateLabels[service.state] }}</strong>
+            </div>
+            <div>
+              <span>CPU</span>
+              <strong>{{ service.cpu }}%</strong>
+            </div>
+            <div>
+              <span>RAM</span>
+              <strong>{{ service.ram }}</strong>
             </div>
           </article>
         </div>
       </section>
     </section>
 
-    <section class="panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">processes</p>
-          <h2>Топ процессов</h2>
-        </div>
+    <section class="monitor-section" aria-label="Топ процессов">
+      <div class="monitor-section-head">
+        <h3>Топ процессов</h3>
       </div>
+
       <div class="process-table">
         <div class="process-row head">
           <span>PID</span>
