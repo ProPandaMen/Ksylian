@@ -17,6 +17,10 @@ import {
 import { stateLabels, useDashboardStore } from "../composables/useDashboardStore";
 import { requestJson } from "../services/api";
 import type { RconCommandResult } from "../types";
+import ServerBackupsTab from "./server-detail/ServerBackupsTab.vue";
+import ServerDiagnosticsTab from "./server-detail/ServerDiagnosticsTab.vue";
+import ServerOverviewTab from "./server-detail/ServerOverviewTab.vue";
+import ServerSettingsTab from "./server-detail/ServerSettingsTab.vue";
 import { serverDetailTabs, type ServerDetailTab } from "./serverDetailTabs";
 
 const route = useRoute();
@@ -363,97 +367,7 @@ onUnmounted(stopLogStream);
       </button>
     </nav>
 
-    <section v-if="activeServerDetailTab === 'overview'" class="server-tab-panel">
-      <section class="server-detail-section">
-        <div class="server-detail-section-head">
-          <h3>Управление</h3>
-          <span class="state-label" :class="store.selectedServer.value.state">
-            {{ stateLabels[store.selectedServer.value.state] }}
-          </span>
-        </div>
-
-        <div class="server-detail-row">
-          <span>Адрес</span>
-          <strong>{{ store.selectedServer.value.address }}</strong>
-        </div>
-        <div class="server-detail-row">
-          <span>Тип</span>
-          <strong>{{ store.selectedServer.value.pack }}</strong>
-        </div>
-        <div class="server-detail-row">
-          <span>Код выхода</span>
-          <strong>{{ store.selectedServer.value.exit_code ?? '—' }}</strong>
-        </div>
-        <div v-if="store.selectedServer.value.last_event" class="server-detail-row">
-          <span>Последнее событие</span>
-          <strong>{{ store.selectedServer.value.last_event }}</strong>
-        </div>
-        <div v-if="store.selectedServer.value.warnings?.length" class="server-warning-list">
-          <strong v-for="warning in store.selectedServer.value.warnings" :key="warning">{{ warning }}</strong>
-        </div>
-        <div class="server-detail-actions">
-          <button class="icon-button" type="button" title="Запустить" @click="store.runServerAction(store.selectedServer.value.id, 'start')">
-            <Play :size="17" />
-          </button>
-          <button class="icon-button" type="button" title="Перезагрузить" @click="store.runServerAction(store.selectedServer.value.id, 'restart')">
-            <ListRestart :size="17" />
-          </button>
-          <button class="icon-button" type="button" title="Обновить файлы сервера" @click="store.runServerAction(store.selectedServer.value.id, 'update')">
-            <RefreshCw :size="17" />
-          </button>
-          <button class="icon-button" type="button" title="Откатить последнее обновление" @click="store.runServerAction(store.selectedServer.value.id, 'rollback')">
-            <ListRestart :size="17" />
-          </button>
-          <button class="icon-button danger" type="button" title="Остановить" @click="store.runServerAction(store.selectedServer.value.id, 'stop')">
-            <CircleStop :size="17" />
-          </button>
-        </div>
-      </section>
-
-      <section class="server-detail-section">
-        <div class="server-detail-section-head">
-          <h3>Ресурсы</h3>
-        </div>
-        <article class="server-resource-row">
-          <Cpu :size="20" />
-          <span>Процессор</span>
-          <strong>{{ store.selectedServer.value.cpu }}%</strong>
-        </article>
-        <article class="server-resource-row">
-          <MemoryStick :size="20" />
-          <span>Оперативка</span>
-          <strong>{{ store.selectedServer.value.ram }}</strong>
-        </article>
-        <article class="server-resource-row">
-          <HardDrive :size="20" />
-          <span>Память</span>
-          <strong>{{ store.selectedServer.value.disk }}</strong>
-        </article>
-        <article class="server-resource-row">
-          <Users :size="20" />
-          <span>Онлайн</span>
-          <strong>{{ store.selectedServer.value.players }}</strong>
-        </article>
-      </section>
-
-      <section class="server-detail-section">
-        <div class="server-detail-section-head">
-          <h3>Основная информация</h3>
-        </div>
-        <div class="server-detail-row">
-          <span>Версия Minecraft</span>
-          <strong>{{ store.selectedServer.value.version }}</strong>
-        </div>
-        <div class="server-detail-row">
-          <span>Пакет</span>
-          <strong>{{ store.selectedServer.value.pack }}</strong>
-        </div>
-        <div class="server-detail-row">
-          <span>Статус</span>
-          <strong>{{ stateLabels[store.selectedServer.value.state] }}</strong>
-        </div>
-      </section>
-    </section>
+    <ServerOverviewTab v-if="activeServerDetailTab === 'overview'" />
 
     <section v-if="activeServerDetailTab === 'logs'" class="server-tab-panel">
       <section class="server-detail-section terminal-panel server-logs-panel">
@@ -503,45 +417,7 @@ onUnmounted(stopLogStream);
       </section>
     </section>
 
-    <section v-if="activeServerDetailTab === 'diagnostics'" class="server-tab-panel">
-      <section class="server-detail-section">
-        <div class="server-detail-section-head">
-          <h3>Отчёты о падениях</h3>
-          <button class="ghost-button compact" type="button" @click="store.loadServerCrashReports()">
-            <RefreshCw :size="16" />
-            <span>{{ store.isCrashReportLoading.value ? 'Загрузка' : 'Обновить' }}</span>
-          </button>
-        </div>
-        <div class="crash-report-list">
-          <article v-for="report in store.selectedServerCrashReports.value" :key="report.name" class="crash-report-row">
-            <div>
-              <strong>{{ report.name }}</strong>
-              <span>{{ report.created }} · {{ report.size }}</span>
-            </div>
-            <div class="crash-report-analysis">
-              <p>{{ report.probable_cause || report.summary || 'Краткая причина не найдена' }}</p>
-              <span v-if="report.conflicting_mod">{{ report.conflicting_mod }}</span>
-              <span v-if="report.missing_dependency">{{ report.missing_dependency }}</span>
-              <span v-if="report.client_only_mod">{{ report.client_only_mod }}</span>
-              <details v-if="report.stack_trace?.length">
-                <summary>Stack trace</summary>
-                <code v-for="line in report.stack_trace" :key="line">{{ line }}</code>
-              </details>
-              <details v-if="report.recent_changes?.length">
-                <summary>Последние изменения</summary>
-                <code v-for="line in report.recent_changes" :key="line">{{ line }}</code>
-              </details>
-            </div>
-          </article>
-          <article v-if="!store.selectedServerCrashReports.value.length" class="server-empty-state">
-            <div>
-              <strong>Отчётов о падениях нет</strong>
-              <span>Когда сервер упадёт с отчётом, он появится здесь.</span>
-            </div>
-          </article>
-        </div>
-      </section>
-    </section>
+    <ServerDiagnosticsTab v-if="activeServerDetailTab === 'diagnostics'" />
 
     <section v-if="activeServerDetailTab === 'files'" class="server-tab-panel">
       <section class="server-detail-section server-files-panel">
@@ -693,58 +569,8 @@ onUnmounted(stopLogStream);
       </section>
     </section>
 
-    <section v-if="activeServerDetailTab === 'backups'" class="server-tab-panel">
-      <section class="server-detail-section">
-        <div class="server-detail-section-head">
-          <h3>Бэкапы</h3>
-          <button class="primary-button compact" type="button" @click="store.createServerBackup()">
-            Создать безопасный бэкап
-          </button>
-        </div>
-        <div class="server-backup-list">
-          <article
-            v-for="backup in store.backups.value.filter((item) => item.server_id === store.selectedServer.value?.id)"
-            :key="backup.id"
-            class="server-backup-row"
-          >
-            <div>
-              <strong>{{ backup.name }}</strong>
-              <span>{{ backup.created }} · {{ backup.size }}</span>
-              <small v-if="backup.checksum">SHA-256 {{ backup.checksum.slice(0, 18) }}…</small>
-            </div>
-          </article>
-          <article v-if="!store.backups.value.some((item) => item.server_id === store.selectedServer.value?.id)" class="server-empty-state">
-            <div>
-              <strong>Бэкапов пока нет</strong>
-              <span>Создай первый backup перед изменениями мира или модов.</span>
-            </div>
-          </article>
-        </div>
-      </section>
-    </section>
+    <ServerBackupsTab v-if="activeServerDetailTab === 'backups'" />
 
-    <section v-if="activeServerDetailTab === 'settings'" class="server-tab-panel">
-      <section class="server-detail-section server-config-panel">
-        <div class="server-detail-section-head">
-          <h3>server.properties</h3>
-          <div class="panel-actions">
-            <button class="ghost-button compact" type="button" @click="store.loadServerConfig()">
-              <RefreshCw :size="16" />
-              <span>{{ store.isConfigLoading.value ? 'Загрузка' : 'Обновить' }}</span>
-            </button>
-            <button class="primary-button compact" type="button" :disabled="store.isConfigSaving.value" @click="store.saveServerConfig">
-              <span>{{ store.isConfigSaving.value ? 'Сохраняю' : 'Сохранить' }}</span>
-            </button>
-          </div>
-        </div>
-        <textarea
-          v-model="store.selectedServerConfig.value"
-          class="config-editor"
-          spellcheck="false"
-          :disabled="store.isConfigLoading.value || store.isConfigSaving.value"
-          placeholder="server.properties пока не загружен"
-        ></textarea>
-      </section>
-    </section>
+    <ServerSettingsTab v-if="activeServerDetailTab === 'settings'" />
   </section>
 </template>
