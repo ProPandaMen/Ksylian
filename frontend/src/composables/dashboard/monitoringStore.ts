@@ -13,6 +13,7 @@ import {
 } from "./state";
 
 const monitoringRequests = useMonitoringRequests();
+let lastHistoryErrorToast = "";
 
 export function useMonitoringDashboardActions() {
   async function loadAgentStatus() {
@@ -55,6 +56,14 @@ export function useMonitoringDashboardActions() {
       const data = await monitoringRequests.monitoringHistory(window);
       monitoringHistoryMeta.value = data;
       monitoringHistory.value = data.points;
+      if (data.error) {
+        if (data.error !== lastHistoryErrorToast) {
+          showToast(data.error, "error");
+          lastHistoryErrorToast = data.error;
+        }
+      } else {
+        lastHistoryErrorToast = "";
+      }
     } catch (error) {
       showToast("Не удалось загрузить историю мониторинга", "error");
       console.error(error);

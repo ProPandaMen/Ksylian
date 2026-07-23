@@ -431,10 +431,6 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
       </div>
       <div class="monitor-toolbar-actions">
         <span>{{ historyMeta.points.length }} точек · шаг {{ historyMeta.sample_seconds }} сек</span>
-        <span v-if="historyMeta.error" class="monitor-history-warning">
-          <AlertTriangle :size="14" />
-          {{ historyMeta.error }}
-        </span>
         <button v-if="!isEditingLayout" class="ghost-button compact" type="button" @click="startLayoutEdit">
           <SlidersHorizontal :size="16" />
           Настроить
