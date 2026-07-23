@@ -1,101 +1,24 @@
 from __future__ import annotations
 
-import os
-import base64
-import io
 import json
-import hashlib
 import re
-import secrets
 import shutil
-import shlex
-import socket
-import subprocess
-import tarfile
-import threading
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import xml.etree.ElementTree as ET
-import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python < 3.11
-    tomllib = None  # type: ignore[assignment]
+from fastapi import FastAPI, HTTPException
 
 
 from .schemas import (
     AgentServer,
     StoredServer,
-    CreateAgentServerRequest,
-    AgentActionResult,
-    ServerConfigPayload,
-    RconCommandPayload,
-    RconCommandResult,
-    BackupRequest,
-    RestoreRequest,
-    BackupItem,
-    FileEntry,
-    FileListPayload,
-    FileWriteRequest,
-    FileOperationRequest,
-    FileContentPayload,
-    FileSearchResult,
-    ModDependency,
-    InstalledModItem,
-    ModInstallRequest,
-    ModOperationRequest,
-    ModBulkInstallRequest,
-    ModBulkActionRequest,
-    CrashReportItem,
-    AppUpdateRequest,
-    AppUpdateResult,
-    MetricUsage,
-    DiskUsage,
-    ProcessUsage,
-    ServiceUsage,
-    HostMonitoring,
 )
 from .config import (
-    SERVERS,
     BACKUP_DIR,
-    BACKUP_KEEP_LAST,
-    BACKUP_KEEP_DAILY,
-    BACKUP_KEEP_WEEKLY,
-    BACKUP_KEEP_MONTHLY,
-    BACKUP_MAX_BYTES,
-    BACKUP_S3_URI,
-    DATA_DIR,
-    DISABLED_SERVERS_FILE,
-    SERVERS_FILE,
-    SERVER_ROOT,
-    APP_DIR,
-    APP_ENV_FILE,
-    APP_COMPOSE_FILE,
-    UPDATE_LOG,
     TOKEN,
     ACTION_LOG,
     PUBLIC_DOMAIN,
-    PROXY_DOMAIN,
-    PROXY_PORT,
-    MINECRAFT_USER,
-    RATE_LIMIT_REQUESTS,
-    RATE_LIMIT_WINDOW_SECONDS,
-    MINECRAFT_VERSION_MANIFEST_URL,
-    FABRIC_META_API_URL,
-    MODRINTH_API_URL,
-    FORGE_MAVEN_URL,
-    NEOFORGE_MAVEN_URL,
-    PAPER_API_URL,
-    PURPUR_API_URL,
-    AGENT_USER_AGENT,
     SYSTEMD_DIR,
 )
 app = FastAPI(title="Ksylian Host Agent", version="0.1.0")
@@ -108,19 +31,13 @@ def ensure_agent_token_configured() -> None:
 
 
 from .security import (
-    ensure_child_path,
-    is_relative_path,
     managed_server_path,
-    relative_server_path,
     require_token,
     server_base_path,
-    server_child_path,
 )
 from .processes import (
     apply_server_permissions,
-    ensure_minecraft_user_exists,
     run,
-    run_in,
     service_state,
     systemctl_issue_can_be_ignored,
 )
@@ -131,21 +48,14 @@ from .minecraft import (
     host_primary_ip,
     is_port_available,
     java_binary,
-    java_candidates,
-    java_major_version,
     minecraft_player_status,
-    minecraft_version_key,
     normalize_cpu_limit,
     normalize_jvm_args,
     normalize_ram,
-    ram_to_bytes,
     rcon_available,
-    required_java_major,
     server_players_label,
     server_type_label,
     server_warnings,
-    start_command_for_server,
-    write_server_scaffold,
     ensure_disk_space_for_server,
 )
 from .updates import (
@@ -158,7 +68,6 @@ from .activity import append_action_log
 from .storage import (
     active_server_ids,
     disabled_server_ids,
-    legacy_server_store,
     load_server_or_404,
     load_server_store,
     save_disabled_server_ids,
@@ -167,28 +76,14 @@ from .storage import (
 )
 from .runtime import server_runtime_states
 from .backups import (
-    apply_backup_retention,
-    backup_archive_path,
-    backup_manifest,
-    backup_manifest_path,
-    backup_part_paths,
     backup_to_item,
-    backup_total_bytes,
     create_backup_archive,
-    iter_backup_files,
-    latest_restore_candidate,
-    remove_backup_file,
     restore_backup,
     rollback_last_update,
-    sync_backup_to_s3,
-    verify_backup_archive,
 )
 from .files import (
-    file_entry,
-    file_syntax,
     list_server_files,
     operate_server_file,
-    quick_file_label,
     read_server_file,
     search_server_files,
     write_server_file,
@@ -197,15 +92,9 @@ from .mods import (
     bulk_install_mods,
     bulk_operate_mods,
     install_mod,
-    mod_metadata_from_fabric,
-    mod_metadata_from_toml,
-    normalize_dependency,
     operate_mod,
-    parse_mod_toml_fallback,
-    read_mod_metadata,
     scan_installed_mods,
 )
-from .hashing import file_digest
 from .manifest import (
     build_manifest,
     diff_manifests,
@@ -221,27 +110,9 @@ from .players import list_players, run_player_action
 
 
 from .loaders import (
-    FabricLoader,
-    ForgeLoader,
-    JarServerLoader,
-    NeoForgeLoader,
     SERVER_LOADERS,
-    ServerLoader,
-    download_fabric_server_jar,
-    download_paper_server_jar,
-    download_purpur_server_jar,
-    download_vanilla_server_jar,
     fabric_installer_versions,
     fabric_loader_versions,
-    forge_versions,
-    install_fabric_api,
-    install_forge_server,
-    install_neoforge_server,
-    latest_fabric_component,
-    latest_forge_version,
-    latest_neoforge_version,
-    neoforge_versions,
-    provision_server_files,
     update_server_files,
     ensure_server_provisioned,
 )

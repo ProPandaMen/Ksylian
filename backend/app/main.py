@@ -1,114 +1,53 @@
 from __future__ import annotations
 
 import os
-import asyncio
 import json
 import re
-import base64
-import hashlib
-import hmac
-import secrets
-import sqlite3
 import time
 from datetime import datetime
-from enum import Enum
-from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 
 from .agent_client import AgentClient
 from .schemas import (
-    ActionResult,
     AgentStatus,
-    ApplyUpdateRequest,
-    ApplyUpdateResult,
-    AuthRequest,
-    AuthSessionPayload,
-    AuthStatusPayload,
-    AuthUser,
     BackupItem,
-    BackupRequest,
-    BootstrapAdminRequest,
-    CreateInviteRequest,
-    CreateServerRequest,
-    CrashReportItem,
     CurseForgeProject,
-    CurseForgeSearchPayload,
     DashboardPayload,
-    FileContentPayload,
-    FileEntry,
     FileItem,
-    FileListPayload,
-    FileOperationRequest,
-    FileSearchResult,
-    FileWriteRequest,
     GameServer,
     HostMonitoring,
-    InstalledModItem,
-    InviteRegistrationRequest,
     MinecraftVersion,
     MinecraftVersionsPayload,
-    ModBulkActionRequest,
-    ModBulkInstallRequest,
-    ModInstallRequest,
     ModItem,
-    ModOperationRequest,
-    RconCommandPayload,
-    RconCommandResult,
-    RestoreRequest,
-    ServerAction,
-    ServerConfigPayload,
     ServerState,
-    SettingsPayload,
-    ThemeName,
-    ThemeUpdateRequest,
-    UpdateSettingsRequest,
     UpdateStatusPayload,
-    UserInvite,
-    UserRole,
 )
 
 
 from .settings import (
     AGENT_TOKEN,
     AGENT_URL,
-    AUTH_SECRET,
     BUILD_SHA,
     BUILD_VERSION,
     CURSEFORGE_BASE_URL,
-    CURSEFORGE_CLASS_IDS,
     CURSEFORGE_LOADER_LABELS,
-    CURSEFORGE_LOADER_TYPES,
-    CURSEFORGE_SORT_FIELDS,
-    DATABASE_PATH,
     GITHUB_API_BASE_URL,
     GITHUB_TOKEN,
-    MINECRAFT_GAME_ID,
     MINECRAFT_VERSION_CACHE_SECONDS,
     MINECRAFT_VERSION_MANIFEST_URL,
     PUBLIC_API_PATHS,
     RELEASE_REPOSITORY,
-    SESSION_TTL_SECONDS,
-    SETTINGS_PATH,
-    USERS_PATH,
 )
 from .settings import load_settings, save_settings
 from .auth import (
-    create_token,
     current_user_from_request,
-    hash_password,
-    normalize_username,
     require_admin_user,
     require_current_user,
-    stored_users,
-    user_public,
-    validate_password,
-    verify_password,
 )
 from .db import init_database
 from .routes.auth import create_auth_router
