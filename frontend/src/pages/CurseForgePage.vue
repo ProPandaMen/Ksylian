@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { PackagePlus, RefreshCw, Search } from "@lucide/vue";
+import { ChevronLeft, ChevronRight, Download, ExternalLink, PackagePlus, RefreshCw, Search, Server, X } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useDashboardStore } from "../composables/useDashboardStore";
 import { requestJson } from "../services/api";
 import type {
@@ -12,11 +13,15 @@ import type {
 } from "../types";
 
 const store = useDashboardStore();
+const router = useRouter();
 const kind = ref<"mods" | "modpacks">("modpacks");
 const query = ref("");
 const minecraftVersion = ref("");
 const loader = ref<"any" | "forge" | "fabric" | "quilt" | "neoforge">("any");
 const sort = ref<"popularity" | "updated" | "name" | "downloads">("popularity");
+const pageSize = 24;
+const page = ref(1);
+const totalCount = ref(0);
 const selectedProject = ref<CurseForgeProject | null>(null);
 const selectedFile = ref<CurseForgeFile | null>(null);
 const projects = ref<CurseForgeProject[]>([]);
@@ -30,10 +35,22 @@ const errorMessage = ref("");
 const installMessage = ref("");
 
 const hasApiKey = computed(() => store.settings.value.has_curseforge_api_key);
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)));
+const visibleFrom = computed(() => (totalCount.value ? (page.value - 1) * pageSize + 1 : 0));
+const visibleTo = computed(() => Math.min(page.value * pageSize, totalCount.value));
+const modalActionLabel = computed(() => (kind.value === "modpacks" ? "Создать сервер по сборке" : "Установить мод"));
+const selectedVersion = computed(() => {
+  const versions = selectedFile.value?.game_versions.length ? selectedFile.value.game_versions : selectedProject.value?.game_versions ?? [];
+  return versions.find((value) => /^\d+\.\d+(?:\.\d+)?$/.test(value)) ?? "";
+});
 
-async function searchProjects() {
+async function searchProjects(resetPage = true) {
+  if (resetPage) {
+    page.value = 1;
+  }
   isSearching.value = true;
   errorMessage.value = "";
+  installMessage.value = "";
   try {
     const params = new URLSearchParams({
       kind: kind.value,
@@ -41,14 +58,17 @@ async function searchProjects() {
       minecraft_version: minecraftVersion.value,
       loader: loader.value,
       sort: sort.value,
-      page_size: "24",
+      page_size: String(pageSize),
+      index: String((page.value - 1) * pageSize),
     });
     const payload = await requestJson<CurseForgeSearchPayload>(`/api/curseforge/search?${params.toString()}`);
     projects.value = payload.items;
-    selectedProject.value = payload.items[0] ?? null;
+    totalCount.value = payload.total_count;
+    selectedProject.value = null;
   } catch (error) {
     errorMessage.value = "Не удалось загрузить CurseForge каталог";
     projects.value = [];
+    totalCount.value = 0;
     selectedProject.value = null;
     console.error(error);
   } finally {
@@ -124,8 +144,63 @@ function selectProject(project: CurseForgeProject) {
   selectedProject.value = project;
 }
 
+function closeProject() {
+  selectedProject.value = null;
+  files.value = [];
+  selectedFile.value = null;
+  dependencies.value = [];
+  installMessage.value = "";
+}
+
+async function changePage(nextPage: number) {
+  const normalized = Math.min(Math.max(nextPage, 1), totalPages.value);
+  if (normalized === page.value || isSearching.value) {
+    return;
+  }
+  page.value = normalized;
+  await searchProjects(false);
+}
+
+function inferServerType() {
+  const projectLoaders = selectedProject.value?.loaders.map((item) => item.toLowerCase()) ?? [];
+  if (projectLoaders.includes("neoforge") || loader.value === "neoforge") {
+    return "neoforge";
+  }
+  if (projectLoaders.includes("forge") || loader.value === "forge") {
+    return "forge";
+  }
+  if (projectLoaders.includes("fabric") || projectLoaders.includes("quilt") || loader.value === "fabric" || loader.value === "quilt") {
+    return "fabric";
+  }
+  return "vanilla";
+}
+
+async function createServerFromModpack() {
+  if (!selectedProject.value || !selectedFile.value) {
+    return;
+  }
+
+  await router.push({
+    path: "/servers/new",
+    query: {
+      source: "curseforge",
+      project_id: String(selectedProject.value.id),
+      file_id: String(selectedFile.value.id),
+      name: selectedProject.value.name,
+      version: selectedVersion.value,
+      type: inferServerType(),
+    },
+  });
+}
+
 watch(selectedProject, loadFiles);
 watch(selectedFile, loadDependencies);
+watch(kind, () => {
+  closeProject();
+  if (hasApiKey.value) {
+    searchProjects(true);
+  }
+});
 
 onMounted(async () => {
   if (!store.isDashboardLoaded.value) {
@@ -140,16 +215,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="panel curseforge-panel">
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">curseforge</p>
-        <h2>Каталог сборок и модов</h2>
-      </div>
-      <span class="settings-status" :class="{ connected: hasApiKey }">{{ hasApiKey ? 'API key подключён' : 'API key не задан' }}</span>
-    </div>
-
-    <form class="catalog-toolbar" @submit.prevent="searchProjects">
+  <section class="curseforge-page">
+    <form class="catalog-toolbar" @submit.prevent="searchProjects(true)">
       <div class="segmented-control" aria-label="Тип проекта">
         <button type="button" :class="{ active: kind === 'modpacks' }" @click="kind = 'modpacks'">Сборки</button>
         <button type="button" :class="{ active: kind === 'mods' }" @click="kind = 'mods'">Моды</button>
@@ -190,13 +257,31 @@ onMounted(async () => {
     <p v-if="!hasApiKey" class="catalog-notice">Добавь CurseForge API key в настройках, чтобы включить поиск и установку.</p>
     <p v-else-if="errorMessage" class="catalog-notice">{{ errorMessage }}</p>
 
-    <div class="catalog-layout">
+    <section class="catalog-section">
+      <div class="catalog-section-head">
+        <div>
+          <h3>{{ kind === 'modpacks' ? 'Сборки' : 'Моды' }}</h3>
+          <span v-if="totalCount">{{ visibleFrom }}–{{ visibleTo }} из {{ totalCount.toLocaleString() }}</span>
+          <span v-else>{{ isSearching ? 'Загружаю каталог' : 'Нет результатов' }}</span>
+        </div>
+        <div class="catalog-pagination">
+          <button class="ghost-button compact" type="button" :disabled="page <= 1 || isSearching" @click="changePage(page - 1)">
+            <ChevronLeft :size="18" />
+            <span>Назад</span>
+          </button>
+          <span>Страница {{ page }} / {{ totalPages }}</span>
+          <button class="ghost-button compact" type="button" :disabled="page >= totalPages || isSearching" @click="changePage(page + 1)">
+            <span>Вперёд</span>
+            <ChevronRight :size="18" />
+          </button>
+        </div>
+      </div>
+
       <div class="catalog-results">
         <button
           v-for="project in projects"
           :key="project.id"
           class="project-card"
-          :class="{ selected: selectedProject?.id === project.id }"
           type="button"
           @click="selectProject(project)"
         >
@@ -205,26 +290,31 @@ onMounted(async () => {
           <div>
             <strong>{{ project.name }}</strong>
             <p>{{ project.summary }}</p>
-            <span>{{ project.downloads.toLocaleString() }} downloads · {{ project.game_versions.slice(0, 3).join(', ') || 'версии не указаны' }}</span>
+            <span>{{ project.downloads.toLocaleString() }} загрузок · {{ project.game_versions.slice(0, 3).join(', ') || 'версии не указаны' }}</span>
           </div>
         </button>
         <div v-if="!projects.length && !isSearching" class="project-card muted">Нет результатов</div>
       </div>
+    </section>
 
-      <aside class="project-details">
-        <template v-if="selectedProject">
+    <Teleport to="body">
+      <div v-if="selectedProject" class="project-modal-backdrop" role="presentation" @click.self="closeProject">
+        <section class="project-modal" role="dialog" aria-modal="true" :aria-label="selectedProject.name">
+          <button class="modal-close-button" type="button" aria-label="Закрыть" @click="closeProject">
+            <X :size="20" />
+          </button>
           <div class="project-details-head">
             <img v-if="selectedProject.icon_url" :src="selectedProject.icon_url" alt="" />
             <span v-else class="project-icon-fallback"><PackagePlus :size="24" /></span>
             <div>
               <h3>{{ selectedProject.name }}</h3>
-              <span>{{ selectedProject.loaders.join(', ') || 'loader не указан' }}</span>
+              <span>{{ selectedProject.downloads.toLocaleString() }} загрузок · {{ selectedProject.loaders.join(', ') || 'loader не указан' }}</span>
             </div>
           </div>
 
           <p class="project-summary">{{ selectedProject.summary }}</p>
 
-          <label>
+          <label v-if="kind === 'mods'">
             Сервер
             <select v-model="selectedServerId">
               <option v-for="server in store.servers.value" :key="server.id" :value="server.id">{{ server.name }}</option>
@@ -242,8 +332,8 @@ onMounted(async () => {
 
           <dl class="project-facts">
             <div>
-              <dt>Файлов</dt>
-              <dd>{{ files.length }}</dd>
+              <dt>Версия</dt>
+              <dd>{{ selectedVersion || selectedProject.game_versions.slice(0, 3).join(', ') || 'не указана' }}</dd>
             </div>
             <div>
               <dt>Зависимости</dt>
@@ -251,26 +341,39 @@ onMounted(async () => {
             </div>
             <div>
               <dt>Источник</dt>
-              <dd>{{ selectedFile?.restricted ? 'скачивание ограничено' : 'готов к установке' }}</dd>
+              <dd>{{ selectedFile?.restricted ? 'скачивание ограничено CurseForge' : 'доступен' }}</dd>
             </div>
           </dl>
 
           <div class="project-actions">
             <button
+              v-if="kind === 'mods'"
               class="primary-button"
               type="button"
               :disabled="!selectedFile || selectedFile.restricted || !selectedServerId || isInstalling"
               @click="installSelectedFile"
             >
-              <PackagePlus :size="18" />
-              <span>{{ isInstalling ? 'Устанавливаю...' : 'Установить' }}</span>
+              <Download :size="18" />
+              <span>{{ isInstalling ? 'Устанавливаю...' : modalActionLabel }}</span>
             </button>
-            <a v-if="selectedProject.website_url" class="ghost-button" :href="selectedProject.website_url" target="_blank" rel="noreferrer">Открыть CurseForge</a>
+            <button
+              v-else
+              class="primary-button"
+              type="button"
+              :disabled="!selectedFile"
+              @click="createServerFromModpack"
+            >
+              <Server :size="18" />
+              <span>{{ modalActionLabel }}</span>
+            </button>
+            <a v-if="selectedProject.website_url" class="ghost-button" :href="selectedProject.website_url" target="_blank" rel="noreferrer">
+              <ExternalLink :size="18" />
+              <span>Открыть CurseForge</span>
+            </a>
             <p v-if="installMessage" class="catalog-notice">{{ installMessage }}</p>
           </div>
-        </template>
-        <div v-else class="empty-details">Выбери проект из списка</div>
-      </aside>
-    </div>
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>

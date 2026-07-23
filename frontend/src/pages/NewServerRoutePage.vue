@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useDashboardStore } from "../composables/useDashboardStore";
 import { requestJson } from "../services/api";
-import type { ImportServerPreview, ImportServerRequest, NewServerDraft } from "../types";
+import type { ImportServerPreview, ImportServerRequest, MinecraftServerType, NewServerDraft } from "../types";
 import NewServerPage from "./NewServerPage.vue";
 
+const route = useRoute();
 const router = useRouter();
 const store = useDashboardStore();
+const serverTypes: MinecraftServerType[] = ["vanilla", "paper", "purpur", "fabric", "forge", "neoforge"];
+const routeSource = String(route.query.source || "");
+const routeType = String(route.query.type || "");
+const routeVersion = String(route.query.version || "");
+const routeName = String(route.query.name || "");
+
 const newServer = ref<NewServerDraft>({
-  name: "",
-  type: "vanilla",
-  version: "",
+  name: routeSource === "curseforge" && routeName ? routeName : "",
+  type: serverTypes.includes(routeType as MinecraftServerType) ? (routeType as MinecraftServerType) : "vanilla",
+  version: routeSource === "curseforge" ? routeVersion : "",
   min_ram: "1G",
   max_ram: "2G",
   java_runtime: "auto",
