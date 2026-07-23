@@ -420,7 +420,7 @@ const monitoringInsights = computed(() => {
     insights.push({
       tone: "ok",
       title: "Критичных признаков нет",
-      detail: `CPU, RAM, диски и сервисы штатно · ${historyPoints.value.length} точек за период`,
+      detail: "CPU, RAM, диски и сервисы штатно",
     });
   }
 
@@ -459,7 +459,7 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
         </button>
       </div>
       <div class="monitor-toolbar-actions">
-        <span>{{ historyMeta.points.length }} точек · шаг {{ historyMeta.sample_seconds }} сек</span>
+        <span>Автообновление: {{ historyMeta.sample_seconds }} сек</span>
         <button v-if="!isEditingLayout" class="ghost-button compact" type="button" @click="startLayoutEdit">
           <SlidersHorizontal :size="16" />
           Настроить
