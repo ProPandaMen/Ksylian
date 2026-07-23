@@ -131,6 +131,8 @@ app.add_middleware(
 
 agent_client = AgentClient(AGENT_URL, AGENT_TOKEN)
 MINECRAFT_VERSION_CACHE: dict[str, object] = {"loaded_at": None, "payload": None}
+CURSEFORGE_CACHE_SECONDS = 60
+CURSEFORGE_CACHE: dict[str, tuple[float, dict]] = {}
 DATABASE_READY = False
 
 servers: dict[str, GameServer] = {
@@ -537,11 +539,16 @@ def curseforge_headers() -> dict[str, str]:
 
 
 def curseforge_get(path: str, params: dict[str, int | str] | None = None) -> dict:
+    query = params or {}
+    cache_key = json.dumps([path, sorted(query.items())], ensure_ascii=False)
+    cached = CURSEFORGE_CACHE.get(cache_key)
+    if cached and time.monotonic() - cached[0] < CURSEFORGE_CACHE_SECONDS:
+        return cached[1]
     try:
         response = httpx.get(
             f"{CURSEFORGE_BASE_URL}{path}",
             headers=curseforge_headers(),
-            params=params or {},
+            params=query,
             timeout=20,
         )
         response.raise_for_status()
@@ -551,6 +558,9 @@ def curseforge_get(path: str, params: dict[str, int | str] | None = None) -> dic
         status_code = error.response.status_code
         if status_code in {401, 403}:
             detail = "CurseForge API key was rejected"
+        elif status_code == 429:
+            retry_after = error.response.headers.get("Retry-After", "")
+            detail = f"CurseForge rate limit reached{f', retry after {retry_after}s' if retry_after else ''}"
         else:
             detail = f"CurseForge API returned {status_code}"
         raise HTTPException(status_code=502, detail=detail) from error
@@ -560,6 +570,7 @@ def curseforge_get(path: str, params: dict[str, int | str] | None = None) -> dic
     data = response.json()
     if not isinstance(data, dict):
         raise HTTPException(status_code=502, detail="CurseForge API returned an unexpected response")
+    CURSEFORGE_CACHE[cache_key] = (time.monotonic(), data)
     return data
 
 

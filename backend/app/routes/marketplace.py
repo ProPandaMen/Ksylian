@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import zipfile
 from collections.abc import Callable
+from datetime import datetime
 from typing import Literal
 
 import httpx
@@ -20,8 +22,13 @@ from ..schemas import (
     CurseForgeSearchPayload,
     FileItem,
     FileWriteRequest,
+    BuildManifestDiff,
+    BuildManifestMod,
+    ModUpdatePlan,
+    ModUpdatePlanItem,
     ModInstallRequest,
     ModItem,
+    SafeUpdateResult,
 )
 from ..settings import CURSEFORGE_CLASS_IDS, CURSEFORGE_LOADER_TYPES, CURSEFORGE_SORT_FIELDS, MINECRAFT_GAME_ID
 
@@ -312,6 +319,100 @@ def create_marketplace_router(
                 skipped.append(f"manifest refresh: {error}")
         append_log(f"{payload.server_id}: CurseForge installed {len(installed)}, skipped {len(skipped)}")
         return CurseForgeInstallResult(ok=bool(installed), message=f"Installed {len(installed)} files", installed=installed, skipped=skipped)
+
+
+    def loader_for_manifest(value: str) -> Literal["any", "forge", "fabric", "quilt", "neoforge"]:
+        if value in {"forge", "fabric", "neoforge"}:
+            return value  # type: ignore[return-value]
+        return "any"
+
+
+    def choose_update_candidate(current: BuildManifestMod, minecraft_version: str, loader: str) -> CurseForgeFile | None:
+        if current.source != "curseforge" or not current.project_id:
+            return None
+        project_id = int(current.project_id)
+        params: dict[str, int | str] = {"pageSize": 50, "index": 0}
+        if minecraft_version:
+            params["gameVersion"] = minecraft_version
+        mod_loader_type = CURSEFORGE_LOADER_TYPES[loader_for_manifest(loader)]
+        if mod_loader_type is not None:
+            params["modLoaderType"] = mod_loader_type
+        data = curseforge_get(f"/v1/mods/{project_id}/files", params)
+        raw_items = data.get("data") or []
+        first_candidate: CurseForgeFile | None = None
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            candidate = transform_file(project_id, item)
+            if candidate.restricted:
+                continue
+            if not candidate.file_name.endswith(".jar"):
+                continue
+            if str(candidate.id) == current.file_id:
+                return first_candidate
+            if first_candidate is None:
+                first_candidate = candidate
+        return None
+
+
+    @router.post("/api/servers/{server_id}/updates/resolve", response_model=SafeUpdateResult)
+    def resolve_curseforge_updates(server_id: str) -> SafeUpdateResult:
+        if not agent_client.configured:
+            raise HTTPException(status_code=409, detail="Host agent is required for safe updates")
+        manifest = agent_client.refresh_manifest(server_id)
+        plan_items: list[ModUpdatePlanItem] = []
+        warnings: list[str] = []
+        for current in manifest.mods:
+            if current.source != "curseforge":
+                continue
+            try:
+                candidate_file = choose_update_candidate(current, manifest.minecraft_version, manifest.loader)
+            except Exception as error:
+                warnings.append(f"{current.filename}: {error}")
+                continue
+            if candidate_file is None:
+                continue
+            try:
+                content = download_curseforge_file(candidate_file)
+            except Exception as error:
+                warnings.append(f"{current.filename}: {error}")
+                continue
+            candidate = BuildManifestMod(
+                id=current.id,
+                name=current.name,
+                version=candidate_file.display_name or current.version,
+                loader=current.loader,
+                side=current.side,
+                filename=candidate_file.file_name,
+                path=f"mods/{candidate_file.file_name}",
+                sha256=hashlib.sha256(content).hexdigest(),
+                source="curseforge",
+                project_id=str(candidate_file.mod_id),
+                file_id=str(candidate_file.id),
+                installed_at=datetime.now().isoformat(timespec="seconds"),
+                dependencies=current.dependencies,
+            )
+            plan_items.append(
+                ModUpdatePlanItem(
+                    current=current,
+                    candidate=candidate,
+                    action="update",
+                    reason=f"CurseForge file {candidate_file.id}",
+                    content=base64.b64encode(content).decode("ascii"),
+                ),
+            )
+        added = []
+        removed = []
+        changed = [{"before": item.current, "after": item.candidate} for item in plan_items]
+        plan = ModUpdatePlan(
+            server_id=server_id,
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            items=plan_items,
+            diff=BuildManifestDiff(added=added, removed=removed, changed=changed),
+            warnings=warnings,
+        )
+        message = f"Найдено обновлений: {len(plan_items)}"
+        return SafeUpdateResult(ok=True, message=message, plan=plan)
 
 
     @router.get("/api/files", response_model=list[FileItem])

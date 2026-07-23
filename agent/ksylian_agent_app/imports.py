@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from .activity import append_action_log
 from .loaders import write_systemd_unit
 from .manifest import save_manifest
-from .minecraft import allocate_port, host_primary_ip, normalize_cpu_limit, normalize_jvm_args, normalize_ram, server_type_label
+from .minecraft import allocate_port, host_primary_ip, normalize_cpu_limit, normalize_jvm_args, normalize_ram, required_java_major, server_type_label
 from .mods import scan_installed_mods
 from .processes import apply_server_permissions, run, service_state
 from .schemas import AgentActionResult, AgentServer, ImportServerPreview, ImportServerRequest, StoredServer
@@ -116,7 +116,7 @@ def preview_existing_server(path: str, name: str = "") -> ImportServerPreview:
         type=loader,  # type: ignore[arg-type]
         version=version,
         loader_version=loader_version,
-        java_runtime="auto",
+        java_runtime=str(required_java_major(version)) if version else "auto",
         port=port,
         has_server_properties=bool(properties),
         mod_count=mod_count,

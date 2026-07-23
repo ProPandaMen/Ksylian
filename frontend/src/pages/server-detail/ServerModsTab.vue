@@ -83,7 +83,7 @@ async function planSafeUpdate() {
   }
   isManifestLoading.value = true;
   try {
-    safeUpdate.value = await requestJson<SafeUpdateResult>(`/api/servers/${serverId}/updates/plan`, { method: "POST" });
+    safeUpdate.value = await requestJson<SafeUpdateResult>(`/api/servers/${serverId}/updates/resolve`, { method: "POST" });
     manifestMessage.value = safeUpdate.value.message;
   } catch (error) {
     manifestMessage.value = "Не удалось подготовить safe update";
@@ -124,7 +124,7 @@ async function applySafeUpdate() {
             <button class="ghost-button compact" type="button" :disabled="isManifestLoading" @click="refreshManifest">Обновить manifest</button>
             <button class="ghost-button compact" type="button" :disabled="isManifestLoading" @click="exportManifest">Экспорт</button>
             <button class="ghost-button compact" type="button" :disabled="isManifestLoading" @click="planSafeUpdate">Тест обновления</button>
-            <button class="ghost-button compact" type="button" :disabled="isManifestLoading || !safeUpdate?.ok" @click="applySafeUpdate">Применить</button>
+            <button class="ghost-button compact" type="button" :disabled="isManifestLoading || !safeUpdate?.ok || !safeUpdate.plan.items.length" @click="applySafeUpdate">Применить</button>
           </div>
         </div>
         <div class="server-mod-list">
@@ -135,6 +135,10 @@ async function applySafeUpdate() {
               <span>{{ manifest?.minecraft_version || store.selectedServer.value?.version }} · {{ manifest?.loader || store.selectedServer.value?.pack }}</span>
               <small v-if="manifest?.manual_changes.length">Ручные изменения: {{ manifest.manual_changes.join(', ') }}</small>
               <small v-if="safeUpdate">Safe update: {{ safeUpdate.message }}</small>
+              <small v-if="safeUpdate?.plan.items.length">Review diff: {{ safeUpdate.plan.items.length }} обновлений</small>
+              <em v-for="item in safeUpdate?.plan.items || []" :key="`${item.current.path}-${item.candidate.file_id}`">
+                {{ item.current.filename }} → {{ item.candidate.filename }} · {{ item.reason }}
+              </em>
               <em v-for="warning in safeUpdate?.plan.warnings || []" :key="warning">{{ warning }}</em>
               <em v-for="finding in safeUpdate?.log_findings || []" :key="finding">{{ finding }}</em>
               <small v-if="manifestMessage">{{ manifestMessage }}</small>

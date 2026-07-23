@@ -162,6 +162,7 @@ class ImportPreviewTests(unittest.TestCase):
 
             self.assertEqual(preview.type, "forge")
             self.assertEqual(preview.version, "1.20.1")
+            self.assertEqual(preview.java_runtime, "17")
             self.assertEqual(preview.port, 25570)
 
 

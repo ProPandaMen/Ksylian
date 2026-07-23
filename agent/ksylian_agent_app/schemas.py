@@ -139,6 +139,8 @@ class ModUpdatePlanItem(BaseModel):
     candidate: BuildManifestMod
     action: Literal["update", "keep"] = "keep"
     reason: str = ""
+    content: str = ""
+    encoding: Literal["base64"] = "base64"
 
 
 class ModUpdatePlan(BaseModel):

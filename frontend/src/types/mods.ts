@@ -133,7 +133,7 @@ export interface BuildManifestDiff {
 export interface ModUpdatePlan {
   server_id: string;
   created_at: string;
-  items: Array<{ current: BuildManifestMod; candidate: BuildManifestMod; action: "update" | "keep"; reason: string }>;
+  items: Array<{ current: BuildManifestMod; candidate: BuildManifestMod; action: "update" | "keep"; reason: string; content: string; encoding: "base64" }>;
   diff: BuildManifestDiff;
   warnings: string[];
 }
