@@ -4,7 +4,6 @@
   gap: 18px;
 }
 
-.users-hero,
 .users-section,
 .players-hero,
 .player-console {
@@ -18,11 +17,9 @@
     inset -5px -5px 10px var(--app-inset-light);
 }
 
-.users-hero,
 .users-section-head,
 .user-row,
 .users-actions,
-.users-hero-actions,
 .invite-row,
 .players-hero .server-detail-section-head {
   display: flex;
@@ -30,18 +27,12 @@
   gap: 12px;
 }
 
-.users-hero,
 .users-section-head,
 .user-row,
 .invite-row {
   justify-content: space-between;
 }
 
-.users-hero h2 {
-  font-size: clamp(1.35rem, 2vw, 2rem);
-}
-
-.users-hero-actions,
 .users-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -54,35 +45,25 @@
 }
 
 .users-summary-card {
-  position: relative;
   display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) max-content;
+  gap: 8px 10px;
+  align-content: start;
   min-height: 128px;
-  align-content: space-between;
-  gap: 8px;
-  padding: 18px;
-  overflow: hidden;
-  color: var(--app-text);
-  border-radius: 18px;
-  background: var(--app-surface);
-  box-shadow:
-    9px 9px 18px var(--app-shadow-dark),
-    -6px -6px 14px var(--app-shadow-light),
-    inset 1px 1px 0 var(--app-shadow-light-strong);
+  padding: 16px;
+  border: 1px solid rgba(107, 114, 128, 0.1);
 }
 
-.users-summary-card svg,
-.users-summary-card strong {
-  color: var(--app-accent);
+.users-summary-card svg {
+  color: var(--summary-tone, var(--app-accent));
 }
 
-.users-summary-card.ok svg,
-.users-summary-card.ok strong {
-  color: var(--app-success);
+.users-summary-card.ok {
+  --summary-tone: var(--app-accent);
 }
 
-.users-summary-card.warning svg,
-.users-summary-card.warning strong {
-  color: var(--app-warning);
+.users-summary-card.warning {
+  --summary-tone: var(--app-warning);
 }
 
 .users-summary-card span,
@@ -93,9 +74,27 @@
   color: var(--app-muted);
 }
 
+.users-summary-card span,
+.users-summary-card small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.users-summary-card span {
+  font-weight: 800;
+}
+
 .users-summary-card strong {
-  font-size: 2rem;
+  grid-column: 1 / -1;
+  color: var(--summary-tone, var(--app-accent));
+  font-size: 1.8rem;
   line-height: 1;
+}
+
+.users-summary-card small {
+  grid-column: 1 / -1;
 }
 
 .users-section {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { Copy, RefreshCw, RotateCcw, ShieldCheck, UserCheck, UserPlus, UserX } from "@lucide/vue";
+import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { Copy, RotateCcw, ShieldCheck, UserCheck, UserPlus, UserX } from "@lucide/vue";
 import { requestJson } from "../services/api";
 import { useAuthStore } from "../composables/useAuthStore";
+import { useUsersToolbar } from "../composables/useUsersToolbar";
 import type { AuthUser, UserInvite } from "../types";
 import { useToasts } from "../composables/useToasts";
 
@@ -17,6 +18,7 @@ const busyUserId = ref("");
 const busyInviteId = ref("");
 const lastInviteUrl = ref("");
 const { showToast } = useToasts();
+const usersToolbar = useUsersToolbar();
 
 const ttlOptions = [
   { value: 6, label: "6ч" },
@@ -218,28 +220,27 @@ async function revokeInvite(invite: UserInvite) {
   }
 }
 
-onMounted(loadUsers);
+onMounted(() => {
+  usersToolbar.usersToolbarRefresh.value = loadUsers;
+  usersToolbar.usersToolbarCreateInvite.value = createInvite;
+  loadUsers();
+});
+
+watchEffect(() => {
+  usersToolbar.isUsersToolbarLoading.value = isLoading.value;
+  usersToolbar.isUsersToolbarCreating.value = isCreating.value;
+});
+
+onUnmounted(() => {
+  usersToolbar.usersToolbarRefresh.value = null;
+  usersToolbar.usersToolbarCreateInvite.value = null;
+  usersToolbar.isUsersToolbarLoading.value = false;
+  usersToolbar.isUsersToolbarCreating.value = false;
+});
 </script>
 
 <template>
   <section class="users-page">
-    <section class="users-hero panel">
-      <div>
-        <p class="eyebrow">ksylian accounts</p>
-        <h2>Пользователи панели</h2>
-      </div>
-      <div class="users-hero-actions">
-        <button class="ghost-button compact" type="button" :aria-busy="isLoading" @click="loadUsers">
-          <RefreshCw :class="{ spinning: isLoading }" :size="16" />
-          <span>Обновить</span>
-        </button>
-        <button class="primary-button compact" type="button" :disabled="isCreating" @click="createInvite">
-          <UserPlus :size="16" />
-          <span>{{ isCreating ? 'Создаю' : 'Создать приглашение' }}</span>
-        </button>
-      </div>
-    </section>
-
     <section class="users-summary-grid" aria-label="Сводка пользователей">
       <article class="users-summary-card">
         <UserCheck :size="18" />

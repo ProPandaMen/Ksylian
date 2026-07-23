@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
-import { RefreshCw } from "@lucide/vue";
+import { RefreshCw, UserPlus } from "@lucide/vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import ToastStack from "./components/ToastStack.vue";
 import { useAuthStore } from "./composables/useAuthStore";
 import { useDashboardStore } from "./composables/useDashboardStore";
+import { useUsersToolbar } from "./composables/useUsersToolbar";
 import { navItems, routePaths, tabCopy } from "./navigation";
 import type { TabId } from "./types";
 
@@ -13,6 +14,7 @@ const route = useRoute();
 const router = useRouter();
 const store = useDashboardStore();
 const auth = useAuthStore();
+const usersToolbar = useUsersToolbar();
 
 const appVersionLabel = __APP_VERSION__.startsWith("v") || __APP_VERSION__ === "dev"
   ? __APP_VERSION__
@@ -29,6 +31,7 @@ const activeTab = computed<TabId>(() => {
 });
 const isPublicLayout = computed(() => Boolean(route.meta.public));
 const isMonitoringPage = computed(() => route.name === "monitoring");
+const isUsersPage = computed(() => route.name === "users");
 const isServerDetailPage = computed(() => route.name === "server-detail");
 const isServerNestedPage = computed(() => route.name === "server-detail" || route.name === "server-new");
 
@@ -148,7 +151,7 @@ watch(
           </h1>
           <h1 v-else>{{ pageTitle }}</h1>
         </div>
-        <div v-if="isMonitoringPage || isServerDetailPage" class="topbar-actions">
+        <div v-if="isMonitoringPage || isServerDetailPage || isUsersPage" class="topbar-actions">
           <span v-if="isMonitoringPage" class="topbar-refresh-meta">
             Автообновление: {{ store.monitoringHistoryMeta.value.sample_seconds }} сек
           </span>
@@ -162,6 +165,26 @@ watch(
             <RefreshCw :class="{ spinning: store.isMonitoringLoading.value }" :size="16" />
             <span>Обновить</span>
           </button>
+          <template v-else-if="isUsersPage">
+            <button
+              class="ghost-button compact"
+              type="button"
+              :aria-busy="usersToolbar.isUsersToolbarLoading.value"
+              @click="usersToolbar.usersToolbarRefresh.value?.()"
+            >
+              <RefreshCw :class="{ spinning: usersToolbar.isUsersToolbarLoading.value }" :size="16" />
+              <span>Обновить</span>
+            </button>
+            <button
+              class="primary-button compact"
+              type="button"
+              :disabled="usersToolbar.isUsersToolbarCreating.value"
+              @click="usersToolbar.usersToolbarCreateInvite.value?.()"
+            >
+              <UserPlus :size="16" />
+              <span>{{ usersToolbar.isUsersToolbarCreating.value ? 'Создаю' : 'Создать приглашение' }}</span>
+            </button>
+          </template>
           <button
             v-else
             class="ghost-button compact"

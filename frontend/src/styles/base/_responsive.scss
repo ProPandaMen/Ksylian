@@ -199,7 +199,6 @@
   .settings-section-head,
   .settings-row,
   .users-section-head,
-  .users-hero,
   .user-row,
   .monitor-section-head,
   .monitor-row,
@@ -228,7 +227,6 @@
     grid-template-columns: 1fr;
   }
 
-  .users-hero,
   .user-row,
   .monitor-section-head,
   .monitor-empty-row,
@@ -238,7 +236,6 @@
   }
 
   .users-actions,
-  .users-hero-actions,
   .user-meta,
   .servers-section-head .panel-actions {
     justify-content: flex-start;
@@ -246,9 +243,7 @@
 
   .account-actions,
   .account-actions select,
-  .invite-builder .segmented-control,
-  .users-hero-actions .primary-button,
-  .users-hero-actions .ghost-button {
+  .invite-builder .segmented-control {
     width: 100%;
   }
 
