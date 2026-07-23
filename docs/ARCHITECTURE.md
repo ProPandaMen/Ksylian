@@ -18,15 +18,16 @@ from ksylian_agent_app.main import app
 - `storage.py` — store серверов, disabled server ids и slugify.
 - `processes.py` — subprocess, Minecraft-user, права и systemd-message helpers.
 - `monitoring.py` — метрики хоста, форматирование размеров, процессы, диски и usage сервисов.
-- `updates.py` — self-update flow.
+- `updates.py` — проверка конфигурации self-update и запуск постоянного `deploy/scripts/update-ksylian.sh`.
 - `minecraft.py` — RCON, Java, ping и JVM/resource normalization.
 - `loaders.py` — Vanilla/Paper/Purpur/Fabric/Forge/NeoForge loaders.
 - `backups.py` — backup, restore, rollback, retention.
 - `files.py` — файловый менеджер.
 - `mods.py` — scanner и операции с модами.
+- `players.py` — чтение player-файлов, online/history и RCON-действия модерации.
 - `activity.py`, `hashing.py`, `runtime.py` — action log, checksum helpers и transient runtime state.
 - `routes/system.py` — health, app update, action logs и host monitoring routes.
-- `routes/servers.py` — server lifecycle, loaders, logs, config/RCON, files, mods и backups routes.
+- `routes/servers.py` — server lifecycle, loaders, logs, config/RCON, files, mods, backups и players routes.
 
 Следующий безопасный шаг — уменьшить dependency fan-out в agent route factories, постепенно выделяя service/facade modules для server lifecycle, logs/config и admin actions.
 
@@ -42,7 +43,7 @@ Backend пока сохраняет совместимый `backend/app/main.py`
 - `routes/auth.py` — auth/users handlers без изменения публичных URL.
 - `routes/dashboard.py` — dashboard, monitoring, Minecraft versions и agent status/restart handlers.
 - `routes/marketplace.py` — marketplace/demo handlers: `/api/mods`, CurseForge search и `/api/files`.
-- `routes/servers.py` — server lifecycle, logs, config, RCON, backups, files, mods и loaders handlers.
+- `routes/servers.py` — server lifecycle, logs, config, RCON, backups, files, mods, players и loaders handlers.
 - `routes/settings.py` — settings/update handlers без изменения публичных URL.
 
 Следующий безопасный шаг — уменьшить dependency fan-out между route factories и helper-функциями, выделив backend service modules для logs, CurseForge/GitHub и demo fallback data.
@@ -57,6 +58,7 @@ Frontend начал выделение небольших модулей:
 - `composables/dashboard/state.ts` хранит общий dashboard state и computed значения.
 - `composables/dashboard/*Store.ts` хранит доменные actions: servers, monitoring, files, mods, backups и settings.
 - `pages/server-detail/` содержит вынесенные вкладки страницы сервера: overview, logs, diagnostics, files, mods, backups и settings.
+- `pages/UsersPage.vue` совмещает управление пользователями панели и Minecraft players/moderation для выбранного сервера.
 
 Следующий безопасный шаг — постепенно ужать route factory dependency fan-out в backend/agent service modules без изменения публичных API.
 
