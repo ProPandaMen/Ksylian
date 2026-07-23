@@ -46,9 +46,9 @@ Frontend начал выделение небольших модулей:
 - `dashboardLabels.ts` хранит display labels для состояний и типов серверов.
 - `serverDetailTabs.ts` хранит тип и список вкладок страницы сервера.
 - `types/` хранит доменные типы, а `types.ts` остаётся barrel export для совместимости старых импортов.
-- `pages/server-detail/` содержит первые вынесенные вкладки страницы сервера: overview, diagnostics, backups и settings.
+- `pages/server-detail/` содержит вынесенные вкладки страницы сервера: overview, logs, diagnostics, files, mods, backups и settings.
 
-Следующий безопасный шаг — вынести оставшиеся интерактивные вкладки `ServerDetailPage.vue` в компоненты по одной: logs, files и mods.
+Следующий безопасный шаг — вынести state/actions из `useDashboardStore.ts` в доменные composables, оставив store совместимым facade для текущих страниц.
 
 ## Проверки
 

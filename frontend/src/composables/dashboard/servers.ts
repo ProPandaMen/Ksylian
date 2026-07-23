@@ -5,6 +5,7 @@ import type {
   DashboardPayload,
   GameServer,
   NewServerDraft,
+  RconCommandResult,
   ServerConfigPayload,
 } from "../../types";
 
@@ -20,6 +21,10 @@ export function useServerRequests() {
     }),
     action: (serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "rollback" | "backup") =>
       requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" }),
+    rconCommand: (serverId: string, command: string) => requestJson<RconCommandResult>(`/api/servers/${serverId}/rcon/command`, {
+      method: "POST",
+      body: JSON.stringify({ command }),
+    }),
     create: (newServer: NewServerDraft) => requestJson<GameServer>("/api/servers", {
       method: "POST",
       body: JSON.stringify({
