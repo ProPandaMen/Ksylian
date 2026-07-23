@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { MonitoringHistoryPoint } from "../types";
+import type { MonitoringHistoryPoint, MonitoringWindow } from "../types";
 
 const props = defineProps<{
   title: string;
   unit: string;
   points: MonitoringHistoryPoint[];
+  window: MonitoringWindow;
+  sampleSeconds: number;
   valueForPoint: (point: MonitoringHistoryPoint) => number | null | undefined;
   tone?: "ok" | "warning" | "danger";
   current: string;
@@ -17,9 +19,16 @@ const props = defineProps<{
 const width = 260;
 const height = 82;
 const activeIndex = ref<number | null>(null);
+const windowSeconds: Record<MonitoringWindow, number> = {
+  "1h": 60 * 60,
+  "6h": 6 * 60 * 60,
+  "24h": 24 * 60 * 60,
+};
+const maxVisiblePoints = computed(() => Math.floor((windowSeconds[props.window] || windowSeconds["1h"]) / Math.max(1, props.sampleSeconds)) + 1);
+const visiblePoints = computed(() => props.points.slice(-maxVisiblePoints.value));
 
 const chartPoints = computed(() =>
-  props.points
+  visiblePoints.value
     .map((point, index) => ({ point, index, value: props.valueForPoint(point) }))
     .filter((item): item is { point: MonitoringHistoryPoint; index: number; value: number } =>
       typeof item.value === "number" && Number.isFinite(item.value),
@@ -28,10 +37,20 @@ const chartPoints = computed(() =>
 
 const hasHistory = computed(() => chartPoints.value.length >= 2);
 const safeMax = computed(() => Math.max(props.maxValue || 100, ...chartPoints.value.map((item) => item.value), 1));
+const timeRange = computed(() => {
+  const selectedWindow = windowSeconds[props.window] || windowSeconds["1h"];
+  const latestTimestamp = chartPoints.value.at(-1)?.point.timestamp ?? Math.floor(Date.now() / 1000);
+  return {
+    start: latestTimestamp - selectedWindow,
+    end: latestTimestamp,
+    span: selectedWindow,
+  };
+});
 
 const plotted = computed(() =>
-  chartPoints.value.map((item, index) => {
-    const x = (index / Math.max(1, chartPoints.value.length - 1)) * width;
+  chartPoints.value.map((item) => {
+    const progress = (item.point.timestamp - timeRange.value.start) / Math.max(1, timeRange.value.span);
+    const x = Math.min(width, Math.max(0, progress * width));
     const y = height - (Math.min(safeMax.value, Math.max(0, item.value)) / safeMax.value) * height;
     return { ...item, x, y };
   }),
