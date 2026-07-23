@@ -55,9 +55,12 @@
   display: flex;
   min-height: 44px;
   padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.68);
+  border: 1px solid color-mix(in srgb, var(--app-inset-light) 70%, transparent);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.5);
+  background: color-mix(in srgb, var(--app-surface-raised) 72%, var(--app-inset-light));
+  box-shadow:
+    inset 3px 3px 8px color-mix(in srgb, var(--app-inset-dark) 42%, transparent),
+    inset -3px -3px 8px color-mix(in srgb, var(--app-inset-light) 72%, transparent);
 }
 
 .segmented-control button {

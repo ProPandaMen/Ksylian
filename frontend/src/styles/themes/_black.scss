@@ -70,4 +70,21 @@ body[data-theme="black"] {
     border-color: rgba(255, 255, 255, 0.14);
     background: rgba(255, 255, 255, 0.08);
   }
+
+  .segmented-control {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(17, 21, 28, 0.74);
+    box-shadow:
+      inset 4px 4px 10px rgba(2, 5, 10, 0.42),
+      inset -3px -3px 8px rgba(255, 255, 255, 0.04);
+  }
+
+  .segmented-control button.active {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--app-accent) 82%, var(--app-surface-raised)),
+      color-mix(in srgb, var(--app-accent-light) 74%, var(--app-surface-raised))
+    );
+    box-shadow: 0 12px 26px color-mix(in srgb, var(--app-accent) 20%, transparent);
+  }
 }
