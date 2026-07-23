@@ -24,6 +24,8 @@ fi
 
 sudo mkdir -p "$APP_DIR"
 sudo cp ksylian_agent.py ksylian_proxy.py requirements.txt "$APP_DIR/"
+sudo rm -rf "$APP_DIR/ksylian_agent_app"
+sudo cp -R ksylian_agent_app "$APP_DIR/"
 sudo python3 -m venv "$APP_DIR/.venv"
 sudo "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"

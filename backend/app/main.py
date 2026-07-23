@@ -21,6 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
+from .agent_client import AgentClient
+
 
 class ServerState(str, Enum):
     installing = "installing"
@@ -449,6 +451,7 @@ PUBLIC_API_PATHS = {
 
 AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
 AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
+agent_client = AgentClient(AGENT_URL, AGENT_TOKEN)
 SETTINGS_PATH = Path(os.getenv("KSYLIAN_SETTINGS_PATH", "/data/settings.json"))
 USERS_PATH = Path(os.getenv("KSYLIAN_USERS_PATH", "/data/users.json"))
 DATABASE_PATH = Path(os.getenv("KSYLIAN_DATABASE_PATH", "/data/ksylian.db"))
@@ -863,33 +866,23 @@ async def require_auth_for_api(request: Request, call_next):
 
 
 def agent_headers() -> dict[str, str]:
-    if not AGENT_TOKEN:
-        return {}
-    return {"x-ksylian-token": AGENT_TOKEN}
+    return agent_client.headers()
 
 
 def agent_get(path: str, params: dict[str, str] | None = None) -> httpx.Response:
-    if not AGENT_URL:
-        raise RuntimeError("Agent is not configured")
-    return httpx.get(f"{AGENT_URL}{path}", headers=agent_headers(), params=params, timeout=10)
+    return agent_client.get(path, params=params)
 
 
 def agent_post(path: str, json: dict | None = None) -> httpx.Response:
-    if not AGENT_URL:
-        raise RuntimeError("Agent is not configured")
-    return httpx.post(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=240)
+    return agent_client.post(path, json=json)
 
 
 def agent_put(path: str, json: dict | None = None) -> httpx.Response:
-    if not AGENT_URL:
-        raise RuntimeError("Agent is not configured")
-    return httpx.put(f"{AGENT_URL}{path}", headers=agent_headers(), json=json, timeout=30)
+    return agent_client.put(path, json=json)
 
 
 def agent_delete(path: str) -> httpx.Response:
-    if not AGENT_URL:
-        raise RuntimeError("Agent is not configured")
-    return httpx.delete(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=90)
+    return agent_client.delete(path)
 
 
 def current_agent_status() -> AgentStatus:

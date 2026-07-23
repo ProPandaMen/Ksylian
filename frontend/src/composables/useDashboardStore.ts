@@ -20,10 +20,11 @@ import type {
   ModInstallRequest,
   NewServerDraft,
   ServerConfigPayload,
-  ServerState,
   SettingsPayload,
   UpdateStatusPayload,
 } from "../types";
+export { serverTypeLabels, stateLabels } from "./dashboardLabels";
+import { serverTypeLabels } from "./dashboardLabels";
 import { useToasts } from "./useToasts";
 
 const emptyServers: GameServer[] = [];
@@ -32,26 +33,6 @@ const emptyBackups: BackupItem[] = [];
 const emptyCrashReports: CrashReportItem[] = [];
 const emptyMods: ModItem[] = [];
 const emptyFiles: FileItem[] = [];
-
-export const stateLabels: Record<ServerState, string> = {
-  installing: "Устанавливается",
-  stopped: "Выключен",
-  starting: "Запускается",
-  running: "Работает",
-  stopping: "Останавливается",
-  crashed: "Упал",
-  updating: "Обновляется",
-  backing_up: "Бэкап",
-};
-
-export const serverTypeLabels: Record<NewServerDraft["type"], string> = {
-  vanilla: "Vanilla",
-  paper: "Paper",
-  purpur: "Purpur",
-  fabric: "Fabric",
-  forge: "Forge",
-  neoforge: "NeoForge",
-};
 
 const defaultAgentStatus: AgentStatus = {
   configured: false,
