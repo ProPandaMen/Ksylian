@@ -61,7 +61,7 @@ const windows: Array<{ id: MonitoringWindow; label: string }> = [
   { id: "6h", label: "6 часов" },
   { id: "24h", label: "24 часа" },
 ];
-const layoutVersion = 4;
+const layoutVersion = 5;
 const blockLabels: Record<StaticBlockId, string> = {
   host: "Хост",
   summary: "Сводка",
@@ -86,13 +86,13 @@ const diskBlocks = computed<BlockId[]>(() => props.monitoring.disks.map((disk) =
 const defaultBlocks = computed<BlockId[]>(() => [
   "host",
   "summary",
+  ...diskBlocks.value,
   "charts.cpu",
   "charts.memory",
   "charts.temperature",
   "charts.swap",
-  "processes",
-  ...diskBlocks.value,
   "services",
+  "processes",
 ]);
 
 function sanitizeBlocks(blocks: string[] | undefined | null): BlockId[] {
