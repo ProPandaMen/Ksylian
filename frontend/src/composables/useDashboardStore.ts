@@ -1,5 +1,4 @@
 import { computed, ref } from "vue";
-import { requestJson } from "../services/api";
 import type {
   AgentStatus,
   BackupItem,
@@ -25,6 +24,12 @@ import type {
 } from "../types";
 export { serverTypeLabels, stateLabels } from "./dashboardLabels";
 import { serverTypeLabels } from "./dashboardLabels";
+import { useBackupRequests } from "./dashboard/backups";
+import { useFileRequests } from "./dashboard/files";
+import { useModRequests } from "./dashboard/mods";
+import { useMonitoringRequests } from "./dashboard/monitoring";
+import { useServerRequests } from "./dashboard/servers";
+import { useSettingsRequests } from "./dashboard/settings";
 import { useToasts } from "./useToasts";
 
 const emptyServers: GameServer[] = [];
@@ -33,6 +38,13 @@ const emptyBackups: BackupItem[] = [];
 const emptyCrashReports: CrashReportItem[] = [];
 const emptyMods: ModItem[] = [];
 const emptyFiles: FileItem[] = [];
+
+const backupRequests = useBackupRequests();
+const fileRequests = useFileRequests();
+const modRequests = useModRequests();
+const monitoringRequests = useMonitoringRequests();
+const serverRequests = useServerRequests();
+const settingsRequests = useSettingsRequests();
 
 const defaultAgentStatus: AgentStatus = {
   configured: false,
@@ -164,7 +176,7 @@ async function loadDashboard(preferredServerId = "") {
   isLoading.value = true;
 
   try {
-    const data = await requestJson<DashboardPayload>("/api/dashboard");
+    const data = await serverRequests.dashboard();
     servers.value = data.servers;
     logs.value = data.logs;
     backups.value = data.backups;
@@ -184,7 +196,7 @@ async function loadDashboard(preferredServerId = "") {
 async function loadSettings() {
   const { showToast } = useToasts();
   try {
-    settings.value = await requestJson<SettingsPayload>("/api/settings");
+    settings.value = await settingsRequests.settings();
     agentStatus.value = settings.value.agent;
   } catch (error) {
     showToast("Не удалось загрузить настройки", "error");
@@ -197,7 +209,7 @@ async function loadUpdateStatus() {
   isUpdateLoading.value = true;
 
   try {
-    updateStatus.value = await requestJson<UpdateStatusPayload>("/api/update/status");
+    updateStatus.value = await settingsRequests.updateStatus();
   } catch (error) {
     showToast("Не удалось проверить обновления", "error");
     console.error(error);
@@ -209,7 +221,7 @@ async function loadUpdateStatus() {
 async function loadAgentStatus() {
   const { showToast } = useToasts();
   try {
-    agentStatus.value = await requestJson<AgentStatus>("/api/agent/status");
+    agentStatus.value = await monitoringRequests.agentStatus();
     settings.value = {
       ...settings.value,
       agent: agentStatus.value,
@@ -225,7 +237,7 @@ async function loadMonitoring() {
   isMonitoringLoading.value = true;
 
   try {
-    const data = await requestJson<HostMonitoring>("/api/monitoring");
+    const data = await monitoringRequests.monitoring();
     monitoring.value = data;
     recordMonitoringSnapshot(data);
     await loadAgentStatus();
@@ -249,7 +261,7 @@ async function loadServerLogs(serverId = selectedServerId.value) {
   isLogLoading.value = true;
 
   try {
-    selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${serverId}/logs`);
+    selectedServerLogs.value = await serverRequests.logs(serverId);
   } catch (error) {
     showToast("Не удалось загрузить логи выбранного сервера", "error");
     selectedServerLogs.value = [];
@@ -265,7 +277,7 @@ async function refreshServerLogs(serverId = selectedServerId.value) {
   }
 
   try {
-    selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${serverId}/logs`);
+    selectedServerLogs.value = await serverRequests.logs(serverId);
   } catch (error) {
     console.error(error);
   }
@@ -280,7 +292,7 @@ async function loadServerCrashReports(serverId = selectedServerId.value) {
 
   isCrashReportLoading.value = true;
   try {
-    selectedServerCrashReports.value = await requestJson<CrashReportItem[]>(`/api/servers/${serverId}/crash-reports`);
+    selectedServerCrashReports.value = await serverRequests.crashReports(serverId);
   } catch (error) {
     showToast("Не удалось загрузить crash reports", "error");
     selectedServerCrashReports.value = [];
@@ -299,7 +311,7 @@ async function loadServerConfig(serverId = selectedServerId.value) {
 
   isConfigLoading.value = true;
   try {
-    const payload = await requestJson<ServerConfigPayload>(`/api/servers/${serverId}/config`);
+    const payload = await serverRequests.config(serverId);
     selectedServerConfig.value = payload.content;
   } catch (error) {
     showToast("Не удалось загрузить server.properties", "error");
@@ -320,8 +332,7 @@ async function loadServerFiles(serverId = selectedServerId.value, path = selecte
   selectedServerId.value = serverId;
   isFileLoading.value = true;
   try {
-    const query = new URLSearchParams({ path });
-    const payload = await requestJson<{ path: string; entries: FileEntry[] }>(`/api/servers/${serverId}/files?${query}`);
+    const payload = await fileRequests.list(serverId, path);
     selectedServerFilePath.value = payload.path;
     selectedServerFiles.value = payload.entries;
   } catch (error) {
@@ -340,8 +351,7 @@ async function openServerFile(path: string, serverId = selectedServerId.value) {
   }
   isFileLoading.value = true;
   try {
-    const query = new URLSearchParams({ path });
-    selectedServerFileContent.value = await requestJson<FileContentPayload>(`/api/servers/${serverId}/files/content?${query}`);
+    selectedServerFileContent.value = await fileRequests.content(serverId, path);
   } catch (error) {
     showToast("Не удалось открыть файл", "error");
     console.error(error);
@@ -358,8 +368,7 @@ async function searchServerFiles(query: string, serverId = selectedServerId.valu
   }
   isFileLoading.value = true;
   try {
-    const params = new URLSearchParams({ query: query.trim(), path });
-    selectedServerFileSearchResults.value = await requestJson<FileSearchResult[]>(`/api/servers/${serverId}/files/search?${params}`);
+    selectedServerFileSearchResults.value = await fileRequests.search(serverId, query, path);
   } catch (error) {
     showToast("Не удалось выполнить поиск по файлам", "error");
     selectedServerFileSearchResults.value = [];
@@ -378,10 +387,7 @@ async function saveServerFile(content: string, serverId = selectedServerId.value
   isFileSaving.value = true;
   try {
     const payload: FileWriteRequest = { path: file.path, content, encoding: "text" };
-    await requestJson<FileEntry>(`/api/servers/${serverId}/files`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
+    await fileRequests.write(serverId, payload);
     selectedServerFileContent.value = { ...file, content };
     await loadServerFiles(serverId);
     showToast("Файл сохранён", "success");
@@ -414,10 +420,7 @@ async function uploadServerFile(file: File, serverId = selectedServerId.value, p
       content,
       encoding: "base64",
     };
-    await requestJson<FileEntry>(`/api/servers/${serverId}/files`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
+    await fileRequests.write(serverId, payload);
     await loadServerFiles(serverId, path);
     showToast("Файл загружен", "success");
   } catch (error) {
@@ -434,10 +437,7 @@ async function runFileAction(action: FileOperationRequest["action"], path: strin
     return;
   }
   try {
-    await requestJson(`/api/servers/${serverId}/files/actions`, {
-      method: "POST",
-      body: JSON.stringify({ action, path, target_path: targetPath }),
-    });
+    await fileRequests.action(serverId, { action, path, target_path: targetPath });
     await loadServerFiles(serverId);
     showToast("Файловая операция выполнена", "success");
   } catch (error) {
@@ -454,7 +454,7 @@ async function loadServerMods(serverId = selectedServerId.value) {
   }
   isModLoading.value = true;
   try {
-    selectedServerMods.value = await requestJson<InstalledModItem[]>(`/api/servers/${serverId}/mods`);
+    selectedServerMods.value = await modRequests.list(serverId);
   } catch (error) {
     showToast("Не удалось просканировать моды", "error");
     selectedServerMods.value = [];
@@ -470,10 +470,7 @@ async function runModAction(action: "delete" | "disable" | "enable" | "pin", pat
     return;
   }
   try {
-    await requestJson(`/api/servers/${serverId}/mods/actions`, {
-      method: "POST",
-      body: JSON.stringify({ action, path }),
-    });
+    await modRequests.action(serverId, { action, path });
     await loadServerMods(serverId);
     showToast("Операция с модом выполнена", "success");
   } catch (error) {
@@ -505,10 +502,7 @@ async function installServerMods(modFiles: File[], serverId = selectedServerId.v
       pinned: false,
       release_channel: "release",
     })));
-    await requestJson(`/api/servers/${serverId}/mods/bulk`, {
-      method: "POST",
-      body: JSON.stringify({ items }),
-    });
+    await modRequests.bulkInstall(serverId, items);
     await loadServerMods(serverId);
     showToast("Моды установлены", "success");
   } catch (error) {
@@ -526,15 +520,12 @@ async function updateServerMod(path: string, file: File, serverId = selectedServ
   }
   isModLoading.value = true;
   try {
-    await requestJson(`/api/servers/${serverId}/mods/actions`, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "update",
-        path,
-        filename: file.name,
-        content: await readFileAsBase64(file),
-        release_channel: "release",
-      }),
+    await modRequests.action(serverId, {
+      action: "update",
+      path,
+      filename: file.name,
+      content: await readFileAsBase64(file),
+      release_channel: "release",
     });
     await loadServerMods(serverId);
     showToast("Мод обновлён", "success");
@@ -561,19 +552,13 @@ async function bulkUpdateServerMods(modFiles: File[], serverId = selectedServerI
   }
   isModLoading.value = true;
   try {
-    await requestJson(`/api/servers/${serverId}/mods/bulk-actions`, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "update",
-        items: await Promise.all(matchedFiles.map(async (file) => ({
-          action: "update",
-          path: installedByName.get(file.name) || "",
-          filename: file.name,
-          content: await readFileAsBase64(file),
-          release_channel: "release",
-        }))),
-      }),
-    });
+    await modRequests.bulkAction(serverId, "update", await Promise.all(matchedFiles.map(async (file) => ({
+      action: "update",
+      path: installedByName.get(file.name) || "",
+      filename: file.name,
+      content: await readFileAsBase64(file),
+      release_channel: "release",
+    }))));
     await loadServerMods(serverId);
     showToast(`Моды обновлены: ${matchedFiles.length}`, "success");
   } catch (error) {
@@ -590,13 +575,7 @@ async function runBulkModAction(action: "delete" | "disable" | "enable" | "pin",
     return;
   }
   try {
-    await requestJson(`/api/servers/${serverId}/mods/bulk-actions`, {
-      method: "POST",
-      body: JSON.stringify({
-        action,
-        items: selectedServerMods.value.map((mod) => ({ action, path: mod.path })),
-      }),
-    });
+    await modRequests.bulkAction(serverId, action, selectedServerMods.value.map((mod) => ({ action, path: mod.path })));
     await loadServerMods(serverId);
     showToast("Массовая операция выполнена", "success");
   } catch (error) {
@@ -611,13 +590,10 @@ async function createServerBackup(serverId = selectedServerId.value, payload?: B
     return;
   }
   try {
-    const backup = await requestJson<BackupItem>(`/api/backups?server_id=${encodeURIComponent(serverId)}`, {
-      method: "POST",
-      body: JSON.stringify(payload ?? {
-        mode: "live",
-        parts: ["world", "mods", "config", "root"],
-        description: "Manual backup",
-      }),
+    const backup = await backupRequests.create(serverId, payload ?? {
+      mode: "live",
+      parts: ["world", "mods", "config", "root"],
+      description: "Manual backup",
     });
     backups.value = [backup, ...backups.value.filter((item) => item.id !== backup.id)];
     showToast("Бэкап создан", "success");
@@ -635,10 +611,7 @@ async function saveServerConfig() {
 
   isConfigSaving.value = true;
   try {
-    const payload = await requestJson<ServerConfigPayload>(`/api/servers/${selectedServerId.value}/config`, {
-      method: "PUT",
-      body: JSON.stringify({ content: selectedServerConfig.value }),
-    });
+    const payload = await serverRequests.saveConfig(selectedServerId.value, selectedServerConfig.value);
     selectedServerConfig.value = payload.content;
     showToast("server.properties сохранён", "success");
   } catch (error) {
@@ -652,7 +625,7 @@ async function saveServerConfig() {
 async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "rollback" | "backup") {
   const { showToast } = useToasts();
   try {
-    await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
+    await serverRequests.action(serverId, action);
     await loadDashboard(serverId);
   } catch (error) {
     showToast("Не удалось выполнить действие", "error");
@@ -664,24 +637,7 @@ async function createServer(newServer: NewServerDraft) {
   const { showToast } = useToasts();
   isCreatingServer.value = true;
   try {
-    await requestJson("/api/servers", {
-      method: "POST",
-      body: JSON.stringify({
-        name: newServer.name,
-        type: newServer.type,
-        pack: serverTypeLabels[newServer.type],
-        version: newServer.version,
-        min_ram: newServer.min_ram,
-        max_ram: newServer.max_ram,
-        java_runtime: newServer.java_runtime,
-        jvm_args: newServer.jvm_args,
-        cpu_limit: newServer.cpu_limit,
-        loader_version: newServer.loader_version,
-        installer_version: newServer.installer_version,
-        install_fabric_api: newServer.install_fabric_api,
-        address: "",
-      }),
-    });
+    await serverRequests.create(newServer);
     await loadDashboard();
     showToast("Сервер создан и готов к запуску", "success");
     return true;
@@ -705,7 +661,7 @@ async function deleteServer(serverId: string) {
   }
 
   try {
-    await requestJson(`/api/servers/${serverId}`, { method: "DELETE" });
+    await serverRequests.delete(serverId);
     await loadDashboard();
     showToast(`${server?.name ?? "Сервер"} удалён из панели`, "success");
   } catch (error) {
@@ -719,10 +675,7 @@ async function saveSettings() {
   isSavingSettings.value = true;
 
   try {
-    settings.value = await requestJson<SettingsPayload>("/api/settings", {
-      method: "PUT",
-      body: JSON.stringify({ curseforge_api_key: curseForgeApiKey.value }),
-    });
+    settings.value = await settingsRequests.saveSettings(curseForgeApiKey.value);
     curseForgeApiKey.value = "";
     showToast(
       settings.value.has_curseforge_api_key ? "Ключ CurseForge сохранён" : "Ключ CurseForge очищен",
@@ -744,7 +697,7 @@ async function clearCurseForgeKey() {
 async function restartAgent() {
   const { showToast } = useToasts();
   try {
-    agentStatus.value = await requestJson<AgentStatus>("/api/agent/restart", { method: "POST" });
+    agentStatus.value = await settingsRequests.restartAgent();
     settings.value = {
       ...settings.value,
       agent: agentStatus.value,
@@ -769,10 +722,7 @@ async function applyUpdate() {
 
   isApplyingUpdate.value = true;
   try {
-    const result = await requestJson<{ message: string; target_version: string }>("/api/update/apply", {
-      method: "POST",
-      body: JSON.stringify({ target_version: updateStatus.value.latest_version }),
-    });
+    const result = await settingsRequests.applyUpdate(updateStatus.value.latest_version);
     showToast(result.message || `Обновление до ${result.target_version} запущено`, "success");
     await loadUpdateStatus();
   } catch (error) {
