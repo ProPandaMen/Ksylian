@@ -77,6 +77,8 @@ const isEditingLayout = ref(false);
 const savedBlocks = ref<BlockId[]>([]);
 const draftBlocks = ref<BlockId[]>([]);
 const draggedBlock = ref<BlockId | null>(null);
+let dragScrollFrame = 0;
+let dragScrollStep = 0;
 
 const visibleBlocks = computed(() => (isEditingLayout.value ? draftBlocks.value : savedBlocks.value));
 const historyPoints = computed(() => props.metricHistory);
@@ -185,17 +187,31 @@ function autoScrollDuringDrag(event: DragEvent) {
   if (!draggedBlock.value) {
     return;
   }
-  const edgeSize = 110;
-  const maxStep = 26;
+  const edgeSize = 150;
+  const maxStep = 8;
   const { clientY } = event;
   const viewportHeight = window.innerHeight;
   if (clientY < edgeSize) {
     const ratio = (edgeSize - clientY) / edgeSize;
-    window.scrollBy({ top: -Math.ceil(maxStep * ratio), behavior: "auto" });
+    dragScrollStep = -Math.ceil(maxStep * ratio);
   } else if (clientY > viewportHeight - edgeSize) {
     const ratio = (clientY - (viewportHeight - edgeSize)) / edgeSize;
-    window.scrollBy({ top: Math.ceil(maxStep * ratio), behavior: "auto" });
+    dragScrollStep = Math.ceil(maxStep * ratio);
+  } else {
+    dragScrollStep = 0;
   }
+  if (!dragScrollFrame && dragScrollStep) {
+    dragScrollFrame = window.requestAnimationFrame(runDragScroll);
+  }
+}
+
+function runDragScroll() {
+  dragScrollFrame = 0;
+  if (!draggedBlock.value || !dragScrollStep) {
+    return;
+  }
+  window.scrollBy({ top: dragScrollStep, behavior: "auto" });
+  dragScrollFrame = window.requestAnimationFrame(runDragScroll);
 }
 
 function dragOverBlock(target: BlockId, event: DragEvent) {
@@ -210,6 +226,11 @@ function dropBlock(target: BlockId) {
 
 function endDrag() {
   draggedBlock.value = null;
+  dragScrollStep = 0;
+  if (dragScrollFrame) {
+    window.cancelAnimationFrame(dragScrollFrame);
+    dragScrollFrame = 0;
+  }
 }
 
 function blockClass(block: BlockId) {
