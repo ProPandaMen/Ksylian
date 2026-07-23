@@ -45,13 +45,18 @@
 }
 
 .users-summary-card {
+  min-width: 0;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) max-content;
   gap: 8px 10px;
   align-content: start;
   min-height: 128px;
   padding: 16px;
-  border: 1px solid rgba(107, 114, 128, 0.1);
+  border-radius: 20px;
+  background: var(--app-surface);
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
 }
 
 .users-summary-card svg {
