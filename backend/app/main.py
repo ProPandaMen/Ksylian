@@ -113,6 +113,7 @@ from .auth import (
     verify_password,
 )
 from .routes.auth import create_auth_router
+from .routes.dashboard import create_dashboard_router
 from .routes.settings import create_settings_router
 
 
@@ -636,93 +637,23 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "ksylian-backend"}
 
 
-@app.get("/api/dashboard", response_model=DashboardPayload)
-def dashboard() -> DashboardPayload:
-    agent = current_agent_status()
-    agent_servers = load_agent_servers()
-    current_servers = agent_servers if agent_servers is not None else ([] if agent.configured else list(servers.values()))
-    agent_backups = load_agent_backups()
-    current_backups = agent_backups if agent_backups is not None else ([] if agent.configured else backups)
-    current_logs = logs[-20:]
 
-    if agent_servers:
-        real_logs: list[str] = []
-        for server in agent_servers:
-            real_logs.extend(load_agent_logs(server.id)[-12:])
-        current_logs = real_logs[-40:] if real_logs else logs[-20:]
-
-    return DashboardPayload(
-        servers=current_servers,
-        logs=current_logs,
-        backups=current_backups,
-        mods=mods,
-        files=files,
-        agent=agent,
-    )
-
-
-@app.get("/api/servers", response_model=list[GameServer])
-def list_servers() -> list[GameServer]:
-    agent_servers = load_agent_servers()
-    if agent_servers is not None:
-        return agent_servers
-    require_agent_available()
-    return list(servers.values())
-
-
-@app.get("/api/monitoring", response_model=HostMonitoring)
-def host_monitoring() -> HostMonitoring:
-    agent_monitoring = load_agent_monitoring()
-    if agent_monitoring is not None:
-        return agent_monitoring
-    require_agent_available()
-
-    return HostMonitoring(
-        hostname="demo-host",
-        ip_addresses=["192.168.31.254"],
-        uptime="0m",
-        load_average=[0, 0, 0],
-        cpu_percent=0,
-        cpu_cores=1,
-        memory=MetricUsage(used=0, total=1, percent=0, used_label="0 MB", total_label="0 MB"),
-        swap=MetricUsage(used=0, total=0, percent=0, used_label="0 MB", total_label="0 MB"),
-        disks=[],
-        top_processes=[],
-        services=[],
-        temperature="n/a",
-        collected_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    )
-
-
-@app.get("/api/minecraft/versions", response_model=MinecraftVersionsPayload)
-def minecraft_versions() -> MinecraftVersionsPayload:
-    return load_minecraft_versions()
-
-
-@app.get("/api/agent/status", response_model=AgentStatus)
-def agent_status() -> AgentStatus:
-    return current_agent_status()
-
-
-@app.post("/api/agent/restart", response_model=AgentStatus)
-def restart_agent() -> AgentStatus:
-    status = current_agent_status()
-    if not status.configured:
-        raise HTTPException(status_code=409, detail="Host agent is not configured")
-    if not status.available:
-        raise HTTPException(
-            status_code=503,
-            detail="Host agent is unavailable. Start ksylian-agent.service on the host.",
-        )
-
-    try:
-        agent_client.restart()
-    except Exception as error:
-        append_log(f"agent restart failed: {error}")
-        raise HTTPException(status_code=502, detail="Host agent restart failed") from error
-
-    return current_agent_status()
-
+app.include_router(create_dashboard_router(
+    current_agent_status=current_agent_status,
+    load_agent_servers=load_agent_servers,
+    load_agent_backups=load_agent_backups,
+    load_agent_logs=load_agent_logs,
+    load_agent_monitoring=load_agent_monitoring,
+    require_agent_available=require_agent_available,
+    load_minecraft_versions=load_minecraft_versions,
+    agent_client=agent_client,
+    logs=logs,
+    backups=backups,
+    mods=mods,
+    files=files,
+    servers=servers,
+    append_log=append_log,
+))
 
 @app.post("/api/servers", response_model=GameServer)
 def create_server(payload: CreateServerRequest) -> GameServer:
