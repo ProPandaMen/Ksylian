@@ -48,7 +48,7 @@
   .monitor-block.charts-memory,
   .monitor-block.charts-disk,
   .monitor-block.charts-temperatureSwap,
-  .monitor-block.disks,
+  .monitor-block.disk,
   .monitor-block.services,
   .monitor-block.processes {
     grid-column: 1 / -1;
@@ -277,6 +277,14 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .disk-storage-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .disk-pie {
+    width: min(240px, 78vw);
+  }
+
   .catalog-toolbar {
     grid-template-columns: 1fr;
   }
@@ -356,6 +364,10 @@
   .disk-card-main,
   .service-card-main {
     align-items: flex-start;
+  }
+
+  .disk-storage-card {
+    min-height: auto;
   }
 
   .disk-card-stats,

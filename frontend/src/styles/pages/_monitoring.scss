@@ -46,6 +46,10 @@
   display: grid;
   min-width: 0;
   gap: 10px;
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .monitor-block.host,
@@ -59,11 +63,11 @@
 
 .monitor-block.charts-cpu,
 .monitor-block.charts-memory,
-.monitor-block.charts-disk {
+.monitor-block.charts-disk,
+.monitor-block.disk {
   grid-column: span 2;
 }
 
-.monitor-block.disks,
 .monitor-block.services {
   grid-column: 1 / -1;
 }
@@ -81,6 +85,7 @@
 
 .monitor-block.dragging {
   opacity: 0.5;
+  transform: scale(0.985);
 }
 
 .monitor-block-controls {
@@ -748,6 +753,127 @@
 .service-card.danger,
 .process-row.danger {
   --row-tone: var(--app-danger);
+}
+
+.disk-storage-card.ok {
+  --row-tone: var(--app-accent);
+}
+
+.disk-storage-card.warning {
+  --row-tone: var(--app-warning);
+}
+
+.disk-storage-card.danger {
+  --row-tone: var(--app-danger);
+}
+
+.disk-storage-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.95fr) minmax(160px, 0.7fr);
+  min-height: 260px;
+  gap: 22px;
+  align-items: center;
+}
+
+.disk-storage-card.warning,
+.disk-storage-card.danger {
+  border-color: color-mix(in srgb, var(--row-tone) 26%, transparent);
+  background: color-mix(in srgb, var(--row-tone) 8%, var(--app-surface-soft));
+}
+
+.disk-storage-visual {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.disk-pie {
+  width: min(210px, 100%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      color-mix(in srgb, var(--row-tone, var(--app-accent)) 78%, var(--app-text)) 0 var(--disk-used),
+      color-mix(in srgb, var(--row-tone, var(--app-accent)) 22%, var(--app-surface-soft)) var(--disk-used) 100%
+    );
+  border: 3px solid color-mix(in srgb, var(--app-surface) 88%, white);
+  box-shadow:
+    10px 16px 24px color-mix(in srgb, var(--row-tone, var(--app-accent)) 17%, transparent),
+    inset -18px -16px 28px color-mix(in srgb, var(--app-inset-dark) 16%, transparent),
+    inset 14px 14px 22px color-mix(in srgb, white 34%, transparent);
+}
+
+.disk-storage-info {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.disk-storage-title {
+  display: flex;
+  min-width: 0;
+  gap: 10px;
+  align-items: center;
+  color: var(--app-text);
+}
+
+.disk-storage-title > svg {
+  flex: 0 0 auto;
+  color: var(--row-tone, var(--app-accent));
+}
+
+.disk-storage-title h3,
+.disk-storage-title p,
+.disk-storage-stats,
+.disk-storage-stats dt,
+.disk-storage-stats dd {
+  margin: 0;
+}
+
+.disk-storage-title h3 {
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: 1.18rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-storage-title p {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-storage-stats {
+  display: grid;
+  gap: 14px;
+}
+
+.disk-storage-stats div {
+  display: grid;
+  gap: 3px;
+}
+
+.disk-storage-stats dt {
+  color: var(--app-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.disk-storage-stats dd {
+  color: var(--app-text);
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.disk-storage-stats small {
+  color: var(--row-tone, var(--app-accent));
+  font-size: 0.82rem;
+  font-weight: 900;
 }
 
 .disk-card.warning,

@@ -43,16 +43,17 @@ const emit = defineEmits<{
 }>();
 
 type InsightTone = "ok" | "warning" | "danger";
-type BlockId =
+type StaticBlockId =
   | "host"
   | "summary"
   | "charts.cpu"
   | "charts.memory"
   | "charts.disk"
   | "charts.temperatureSwap"
-  | "disks"
   | "services"
   | "processes";
+type DiskBlockId = `disk:${string}`;
+type BlockId = StaticBlockId | DiskBlockId;
 
 const auth = useAuthStore();
 const windows: Array<{ id: MonitoringWindow; label: string }> = [
@@ -60,7 +61,27 @@ const windows: Array<{ id: MonitoringWindow; label: string }> = [
   { id: "6h", label: "6 часов" },
   { id: "24h", label: "24 часа" },
 ];
-const defaultBlocks: BlockId[] = [
+const layoutVersion = 3;
+const blockLabels: Record<StaticBlockId, string> = {
+  host: "Хост",
+  summary: "Сводка",
+  "charts.cpu": "CPU",
+  "charts.memory": "RAM",
+  "charts.disk": "Диски",
+  "charts.temperatureSwap": "Температура и Swap",
+  services: "Сервисы",
+  processes: "Процессы",
+};
+
+const isEditingLayout = ref(false);
+const savedBlocks = ref<BlockId[]>([]);
+const draftBlocks = ref<BlockId[]>([]);
+const draggedBlock = ref<BlockId | null>(null);
+
+const visibleBlocks = computed(() => (isEditingLayout.value ? draftBlocks.value : savedBlocks.value));
+const historyPoints = computed(() => props.metricHistory);
+const diskBlocks = computed<BlockId[]>(() => props.monitoring.disks.map((disk) => diskBlockId(disk)));
+const defaultBlocks = computed<BlockId[]>(() => [
   "host",
   "summary",
   "charts.cpu",
@@ -68,34 +89,14 @@ const defaultBlocks: BlockId[] = [
   "charts.disk",
   "charts.temperatureSwap",
   "processes",
-  "disks",
+  ...diskBlocks.value,
   "services",
-];
-const layoutVersion = 2;
-const blockLabels: Record<BlockId, string> = {
-  host: "Хост",
-  summary: "Сводка",
-  "charts.cpu": "CPU",
-  "charts.memory": "RAM",
-  "charts.disk": "Диски",
-  "charts.temperatureSwap": "Температура и Swap",
-  disks: "Детали дисков",
-  services: "Сервисы",
-  processes: "Процессы",
-};
-
-const isEditingLayout = ref(false);
-const savedBlocks = ref<BlockId[]>([...defaultBlocks]);
-const draftBlocks = ref<BlockId[]>([...defaultBlocks]);
-const draggedBlock = ref<BlockId | null>(null);
-
-const visibleBlocks = computed(() => (isEditingLayout.value ? draftBlocks.value : savedBlocks.value));
-const historyPoints = computed(() => props.metricHistory);
+]);
 
 function sanitizeBlocks(blocks: string[] | undefined | null): BlockId[] {
-  const allowed = new Set(defaultBlocks);
+  const allowed = new Set(defaultBlocks.value);
   const result = (blocks || []).filter((block): block is BlockId => allowed.has(block as BlockId));
-  defaultBlocks.forEach((block) => {
+  defaultBlocks.value.forEach((block) => {
     if (!result.includes(block)) {
       result.push(block);
     }
@@ -105,7 +106,7 @@ function sanitizeBlocks(blocks: string[] | undefined | null): BlockId[] {
 
 function applyPreferences() {
   const storedLayout = auth.preferences.value.monitoring_layout;
-  savedBlocks.value = storedLayout?.version === layoutVersion ? sanitizeBlocks(storedLayout.blocks) : [...defaultBlocks];
+  savedBlocks.value = storedLayout?.version === layoutVersion ? sanitizeBlocks(storedLayout.blocks) : [...defaultBlocks.value];
   if (!isEditingLayout.value) {
     draftBlocks.value = [...savedBlocks.value];
   }
@@ -116,6 +117,7 @@ onMounted(() => {
 });
 
 watch(() => auth.preferences.value.monitoring_layout?.blocks, applyPreferences);
+watch(() => props.monitoring.disks.map((disk) => disk.mount).join("|"), applyPreferences);
 
 function startLayoutEdit() {
   draftBlocks.value = [...savedBlocks.value];
@@ -139,12 +141,12 @@ async function saveLayout() {
 }
 
 async function resetLayout() {
-  draftBlocks.value = [...defaultBlocks];
-  savedBlocks.value = [...defaultBlocks];
+  draftBlocks.value = [...defaultBlocks.value];
+  savedBlocks.value = [...defaultBlocks.value];
   await auth.updatePreferences({
     monitoring_layout: {
       version: layoutVersion,
-      blocks: defaultBlocks,
+      blocks: defaultBlocks.value,
     },
   });
   isEditingLayout.value = false;
@@ -161,26 +163,60 @@ function moveBlock(block: BlockId, direction: -1 | 1) {
   draftBlocks.value = next;
 }
 
-function dropBlock(target: BlockId) {
+function startDrag(block: BlockId, event: DragEvent) {
+  draggedBlock.value = block;
+  event.dataTransfer?.setData("text/plain", block);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
+}
+
+function reorderDraggedBlock(target: BlockId) {
   if (!draggedBlock.value || draggedBlock.value === target) {
-    draggedBlock.value = null;
     return;
   }
   const next = draftBlocks.value.filter((block) => block !== draggedBlock.value);
-  next.splice(next.indexOf(target), 0, draggedBlock.value);
+  const targetIndex = next.indexOf(target);
+  next.splice(targetIndex < 0 ? next.length : targetIndex, 0, draggedBlock.value);
   draftBlocks.value = next;
+}
+
+function dropBlock(target: BlockId) {
+  reorderDraggedBlock(target);
+  draggedBlock.value = null;
+}
+
+function endDrag() {
   draggedBlock.value = null;
 }
 
 function blockClass(block: BlockId) {
+  const cssBlock = block.startsWith("disk:") ? "disk" : block.replace(".", "-");
   return [
     "monitor-block",
-    block.replace(".", "-"),
+    cssBlock,
     {
       editing: isEditingLayout.value,
       dragging: draggedBlock.value === block,
     },
   ];
+}
+
+function diskBlockId(disk: DiskUsage): DiskBlockId {
+  return `disk:${encodeURIComponent(disk.mount)}`;
+}
+
+function diskForBlock(block: BlockId) {
+  if (!block.startsWith("disk:")) {
+    return null;
+  }
+  const mount = decodeURIComponent(block.slice(5));
+  return props.monitoring.disks.find((disk) => disk.mount === mount) || null;
+}
+
+function blockLabel(block: BlockId) {
+  const disk = diskForBlock(block);
+  return disk ? `Диск ${disk.mount}` : blockLabels[block as StaticBlockId];
 }
 
 function clampPercent(percent: number) {
@@ -403,12 +439,14 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
         :key="block"
         :class="blockClass(block)"
         :draggable="isEditingLayout"
-        @dragstart="draggedBlock = block"
-        @dragover.prevent
+        @dragstart="startDrag(block, $event)"
+        @dragover.prevent="reorderDraggedBlock(block)"
+        @dragenter.prevent="reorderDraggedBlock(block)"
         @drop="dropBlock(block)"
+        @dragend="endDrag"
       >
         <div v-if="isEditingLayout" class="monitor-block-controls">
-          <span><GripVertical :size="16" /> {{ blockLabels[block] }}</span>
+          <span><GripVertical :size="16" /> {{ blockLabel(block) }}</span>
           <div>
             <button type="button" :disabled="draftBlocks.indexOf(block) === 0" @click="moveBlock(block, -1)" aria-label="Выше">
               <ArrowUp :size="15" />
@@ -522,30 +560,33 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
           />
         </section>
 
-        <section v-else-if="block === 'disks'" class="monitor-section" aria-label="Диски">
-          <div class="monitor-section-head">
-            <div>
-              <h3>Диски</h3>
-              <p>{{ monitoring.disks.length }} точек монтирования</p>
-            </div>
+        <section v-else-if="diskForBlock(block)" class="monitor-section disk-storage-card" :class="metricTone(diskForBlock(block)!.percent)" aria-label="Диск">
+          <div class="disk-storage-visual">
+            <div class="disk-pie" :style="diskDonutStyle(diskForBlock(block)!)" aria-hidden="true"></div>
           </div>
-          <div class="disk-list">
-            <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card" :class="metricTone(disk.percent)">
-              <div class="disk-card-main">
-                <div class="disk-donut" :style="diskDonutStyle(disk)" aria-hidden="true">
-                  <span>{{ clampPercent(disk.percent) }}%</span>
-                </div>
-                <div class="disk-card-title">
-                  <strong>{{ disk.mount }}</strong>
-                  <span>{{ disk.filesystem }}</span>
-                </div>
+          <div class="disk-storage-info">
+            <div class="disk-storage-title">
+              <HardDrive :size="18" />
+              <div>
+                <h3>{{ diskForBlock(block)!.mount }}</h3>
+                <p>{{ diskForBlock(block)!.filesystem }}</p>
               </div>
-              <dl class="disk-card-stats">
-                <div><dt>Занято</dt><dd>{{ disk.used_label }}</dd></div>
-                <div><dt>Свободно</dt><dd>{{ freeLabel(disk) }}</dd></div>
-                <div><dt>Всего</dt><dd>{{ disk.total_label }}</dd></div>
-              </dl>
-            </article>
+            </div>
+            <dl class="disk-storage-stats">
+              <div>
+                <dt>Всего</dt>
+                <dd>{{ diskForBlock(block)!.total_label }}</dd>
+              </div>
+              <div>
+                <dt>Занято</dt>
+                <dd>{{ diskForBlock(block)!.used_label }}</dd>
+                <small>{{ clampPercent(diskForBlock(block)!.percent) }}% used</small>
+              </div>
+              <div>
+                <dt>Свободно</dt>
+                <dd>{{ freeLabel(diskForBlock(block)!) }}</dd>
+              </div>
+            </dl>
           </div>
         </section>
 
