@@ -113,6 +113,7 @@ from .auth import (
     verify_password,
 )
 from .routes.auth import create_auth_router
+from .routes.settings import create_settings_router
 
 
 
@@ -1155,66 +1156,15 @@ def fabric_installer_versions() -> list[str]:
         raise HTTPException(status_code=502, detail="Host agent fabric installer versions failed") from error
 
 
-@app.get("/api/settings", response_model=SettingsPayload)
-def get_settings() -> SettingsPayload:
-    key = curseforge_api_key()
-    return SettingsPayload(
-        has_curseforge_api_key=bool(key),
-        curseforge_api_key_mask=mask_secret(key),
-        agent=current_agent_status(),
-    )
 
-
-@app.put("/api/settings", response_model=SettingsPayload)
-def update_settings(payload: UpdateSettingsRequest) -> SettingsPayload:
-    settings = load_settings()
-    key = payload.curseforge_api_key.strip()
-
-    if key:
-        settings["curseforge_api_key"] = key
-        append_log("settings: CurseForge API key updated")
-    else:
-        settings.pop("curseforge_api_key", None)
-        append_log("settings: CurseForge API key cleared")
-
-    save_settings(settings)
-    key = curseforge_api_key()
-    return SettingsPayload(
-        has_curseforge_api_key=bool(key),
-        curseforge_api_key_mask=mask_secret(key),
-        agent=current_agent_status(),
-    )
-
-
-@app.get("/api/update/status", response_model=UpdateStatusPayload)
-def get_update_status() -> UpdateStatusPayload:
-    return update_status_payload()
-
-
-@app.post("/api/update/apply", response_model=ApplyUpdateResult)
-def apply_update(payload: ApplyUpdateRequest) -> ApplyUpdateResult:
-    status = update_status_payload()
-    target_version = payload.target_version.strip() or status.latest_version
-    if not target_version:
-        raise HTTPException(status_code=409, detail="No release tag is available")
-    if not AGENT_URL:
-        raise HTTPException(status_code=409, detail="Host agent is not configured")
-    if status.updater_status != "ready":
-        raise HTTPException(status_code=503, detail="Updater is not ready")
-
-    try:
-        data = agent_client.apply_update(target_version)
-    except Exception as error:
-        append_log(f"app update failed: {error}")
-        raise HTTPException(status_code=502, detail="Host agent update failed") from error
-
-    append_log(f"app update queued: {target_version}")
-    return ApplyUpdateResult(
-        ok=bool(data.get("ok", True)) if isinstance(data, dict) else True,
-        message=str(data.get("message") or "Обновление запущено") if isinstance(data, dict) else "Обновление запущено",
-        target_version=target_version,
-    )
-
+app.include_router(create_settings_router(
+    append_log=append_log,
+    current_agent_status=current_agent_status,
+    curseforge_api_key=curseforge_api_key,
+    mask_secret=mask_secret,
+    update_status_payload=update_status_payload,
+    agent_client=agent_client,
+))
 
 @app.get("/api/mods", response_model=list[ModItem])
 def list_mods() -> list[ModItem]:

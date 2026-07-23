@@ -37,8 +37,9 @@ Backend пока сохраняет совместимый `backend/app/main.py`
 - `auth.py` — пользователи, invite, SQLite init/migration и token auth helpers.
 - `agent_client.py` — единая typed-точка для всех запросов к host agent.
 - `routes/auth.py` — auth/users handlers без изменения публичных URL.
+- `routes/settings.py` — settings/update handlers без изменения публичных URL.
 
-Следующий безопасный шаг — перенести оставшиеся handlers из `main.py` в `routes/` по группам: dashboard/monitoring, servers, files/mods/backups, settings/update.
+Следующий безопасный шаг — перенести оставшиеся handlers из `main.py` в `routes/` по группам: dashboard/monitoring, servers и files/mods/backups.
 
 ## Frontend
 
