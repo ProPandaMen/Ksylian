@@ -63,7 +63,7 @@
 .segmented-control button {
   min-width: 86px;
   padding: 0 12px;
-  color: #72566e;
+  color: var(--app-muted);
   border: 0;
   border-radius: 10px;
   background: transparent;
@@ -72,8 +72,8 @@
 
 .segmented-control button.active {
   color: #fff;
-  background: linear-gradient(135deg, #ff2fa3, #8e4fff);
-  box-shadow: 0 10px 22px rgba(204, 60, 132, 0.24);
+  background: linear-gradient(135deg, var(--app-accent), var(--app-accent-light));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--app-accent) 24%, transparent);
 }
 
 .catalog-notice {
@@ -282,4 +282,3 @@
   max-width: 560px;
   line-height: 1.55;
 }
-
