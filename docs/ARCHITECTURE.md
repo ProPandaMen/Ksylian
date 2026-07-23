@@ -25,8 +25,9 @@ from ksylian_agent_app.main import app
 - `files.py` — файловый менеджер.
 - `mods.py` — scanner и операции с модами.
 - `activity.py`, `hashing.py`, `runtime.py` — action log, checksum helpers и transient runtime state.
+- `routes/system.py` — health, app update, action logs и host monitoring routes.
 
-Следующий безопасный шаг — сгруппировать FastAPI handlers в `routes/` по тем же доменам, оставляя публичные URL и JSON-схемы без изменений.
+Следующий безопасный шаг — перенести оставшиеся agent server/loaders/files/mods/backups handlers в `routes/` по доменам, оставляя публичные URL и JSON-схемы без изменений.
 
 ## Backend
 
