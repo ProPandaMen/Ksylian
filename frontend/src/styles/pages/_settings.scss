@@ -65,6 +65,11 @@
   background: color-mix(in srgb, var(--app-warning) 16%, var(--app-surface));
 }
 
+.settings-status.danger {
+  color: var(--app-danger);
+  background: color-mix(in srgb, var(--app-danger) 14%, var(--app-surface));
+}
+
 .settings-row,
 .settings-form label {
   min-height: 44px;

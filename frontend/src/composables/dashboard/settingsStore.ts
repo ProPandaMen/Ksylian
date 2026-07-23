@@ -46,8 +46,12 @@ export function useSettingsDashboardActions(callbacks: { loadAgentStatus: () => 
       settings.value = await settingsRequests.saveSettings(curseForgeApiKey.value);
       curseForgeApiKey.value = "";
       showToast(
-        settings.value.has_curseforge_api_key ? "Ключ CurseForge сохранён" : "Ключ CurseForge очищен",
-        "success",
+        settings.value.curseforge_api_key_status === "invalid"
+          ? "Ключ CurseForge сохранён, но API его отклоняет"
+          : settings.value.has_curseforge_api_key
+            ? "Ключ CurseForge сохранён"
+            : "Ключ CurseForge очищен",
+        settings.value.curseforge_api_key_status === "invalid" ? "error" : "success",
       );
     } catch (error) {
       showToast("Не удалось сохранить ключ CurseForge", "error");

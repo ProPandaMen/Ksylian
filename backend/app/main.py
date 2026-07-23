@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import json
 import re
 import time
@@ -480,7 +481,8 @@ def curseforge_headers() -> dict[str, str]:
 
 def curseforge_get(path: str, params: dict[str, int | str] | None = None) -> dict:
     query = params or {}
-    cache_key = json.dumps([path, sorted(query.items())], ensure_ascii=False)
+    key_hash = hashlib.sha256(curseforge_api_key().encode()).hexdigest()[:16]
+    cache_key = json.dumps([key_hash, path, sorted(query.items())], ensure_ascii=False)
     cached = CURSEFORGE_CACHE.get(cache_key)
     if cached and time.monotonic() - cached[0] < CURSEFORGE_CACHE_SECONDS:
         return cached[1]
@@ -512,6 +514,18 @@ def curseforge_get(path: str, params: dict[str, int | str] | None = None) -> dic
         raise HTTPException(status_code=502, detail="CurseForge API returned an unexpected response")
     CURSEFORGE_CACHE[cache_key] = (time.monotonic(), data)
     return data
+
+
+def curseforge_key_status() -> tuple[str, str]:
+    if not curseforge_api_key():
+        return "missing", "CurseForge API key is not configured"
+    try:
+        data = curseforge_get("/v1/games", {"pageSize": 1})
+    except HTTPException as error:
+        return "invalid", str(error.detail)
+    if data.get("data") is None:
+        return "invalid", "CurseForge API key returned an unexpected response"
+    return "valid", "CurseForge API key is valid"
 
 
 def compact_unique(values: list[str], limit: int = 6) -> list[str]:
@@ -643,6 +657,7 @@ app.include_router(create_settings_router(
     append_log=append_log,
     current_agent_status=current_agent_status,
     curseforge_api_key=curseforge_api_key,
+    curseforge_key_status=curseforge_key_status,
     mask_secret=mask_secret,
     update_status_payload=update_status_payload,
     agent_client=agent_client,

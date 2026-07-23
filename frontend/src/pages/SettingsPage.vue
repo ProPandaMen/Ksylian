@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Download, RefreshCw, ShieldCheck } from "@lucide/vue";
+import { computed } from "vue";
 import type { AuthUser, SettingsPayload, ThemeName, UpdateStatusPayload } from "../types";
 
-defineProps<{
+const props = defineProps<{
   settings: SettingsPayload;
   updateStatus: UpdateStatusPayload;
   curseForgeApiKey: string;
@@ -23,6 +24,19 @@ const emit = defineEmits<{
   save: [];
   clear: [];
 }>();
+
+const curseForgeStatusLabel = computed(() => {
+  if (!props.settings.has_curseforge_api_key) {
+    return "Не подключено";
+  }
+  if (props.settings.curseforge_api_key_status === "valid") {
+    return "Подключено";
+  }
+  if (props.settings.curseforge_api_key_status === "invalid") {
+    return "Неверный ключ";
+  }
+  return "Проверка";
+});
 </script>
 
 <template>
@@ -66,8 +80,15 @@ const emit = defineEmits<{
             <div>
               <h3>CurseForge</h3>
             </div>
-            <span class="settings-status" :class="{ connected: settings.has_curseforge_api_key }">
-              {{ settings.has_curseforge_api_key ? 'Подключено' : 'Не подключено' }}
+            <span
+              class="settings-status"
+              :class="{
+                connected: settings.curseforge_api_key_status === 'valid',
+                warning: settings.curseforge_api_key_status === 'unchecked',
+                danger: settings.curseforge_api_key_status === 'invalid',
+              }"
+            >
+              {{ curseForgeStatusLabel }}
             </span>
           </div>
 
@@ -77,6 +98,13 @@ const emit = defineEmits<{
               {{ settings.has_curseforge_api_key ? settings.curseforge_api_key_mask : 'не задан' }}
             </strong>
           </div>
+
+          <p
+            v-if="settings.has_curseforge_api_key && settings.curseforge_api_key_status === 'invalid'"
+            class="settings-hint danger"
+          >
+            Сохранённый ключ не прошёл проверку CurseForge. Укажи корректный API key и сохрани заново.
+          </p>
 
           <label>
             <span>API key</span>

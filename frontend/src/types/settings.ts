@@ -4,6 +4,8 @@ import type { AgentStatus } from "./server";
 export interface SettingsPayload {
   has_curseforge_api_key: boolean;
   curseforge_api_key_mask: string;
+  curseforge_api_key_status: "missing" | "valid" | "invalid" | "unchecked";
+  curseforge_api_key_message: string;
   agent: AgentStatus;
 }
 

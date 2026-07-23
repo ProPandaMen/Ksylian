@@ -96,6 +96,8 @@ class AgentStatus(BaseModel):
 class SettingsPayload(BaseModel):
     has_curseforge_api_key: bool
     curseforge_api_key_mask: str = ""
+    curseforge_api_key_status: Literal["missing", "valid", "invalid", "unchecked"] = "missing"
+    curseforge_api_key_message: str = ""
     agent: AgentStatus
 
 

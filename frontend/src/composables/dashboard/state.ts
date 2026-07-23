@@ -66,6 +66,8 @@ export const agentStatus = ref<AgentStatus>(defaultAgentStatus);
 export const settings = ref<SettingsPayload>({
   has_curseforge_api_key: false,
   curseforge_api_key_mask: "",
+  curseforge_api_key_status: "missing",
+  curseforge_api_key_message: "",
   agent: defaultAgentStatus,
 });
 export const updateStatus = ref<UpdateStatusPayload>({

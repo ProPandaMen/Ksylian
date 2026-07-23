@@ -21,6 +21,7 @@ def create_settings_router(
     append_log: Callable[[str], None],
     current_agent_status: Callable[[], AgentStatus],
     curseforge_api_key: Callable[[], str],
+    curseforge_key_status: Callable[[], tuple[str, str]],
     mask_secret: Callable[[str], str],
     update_status_payload: Callable[[], UpdateStatusPayload],
     agent_client: Any,
@@ -30,9 +31,12 @@ def create_settings_router(
     @router.get("/api/settings", response_model=SettingsPayload)
     def get_settings() -> SettingsPayload:
         key = curseforge_api_key()
+        key_status, key_message = curseforge_key_status()
         return SettingsPayload(
             has_curseforge_api_key=bool(key),
             curseforge_api_key_mask=mask_secret(key),
+            curseforge_api_key_status=key_status,  # type: ignore[arg-type]
+            curseforge_api_key_message=key_message,
             agent=current_agent_status(),
         )
 
@@ -51,9 +55,12 @@ def create_settings_router(
 
         save_settings(settings)
         key = curseforge_api_key()
+        key_status, key_message = curseforge_key_status()
         return SettingsPayload(
             has_curseforge_api_key=bool(key),
             curseforge_api_key_mask=mask_secret(key),
+            curseforge_api_key_status=key_status,  # type: ignore[arg-type]
+            curseforge_api_key_message=key_message,
             agent=current_agent_status(),
         )
 
