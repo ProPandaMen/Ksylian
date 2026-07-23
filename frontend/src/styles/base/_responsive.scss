@@ -34,6 +34,14 @@
     grid-template-columns: 1fr;
   }
 
+  .monitor-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .monitor-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .catalog-toolbar {
     grid-template-columns: 1fr 1fr;
   }
@@ -257,6 +265,10 @@
   }
 
   .resource-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monitor-summary-grid {
     grid-template-columns: 1fr;
   }
 

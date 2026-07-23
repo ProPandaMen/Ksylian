@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cpu, Gauge, HardDrive, MemoryStick } from "@lucide/vue";
+import { Cpu, Gauge, HardDrive, MemoryStick, Network, ServerCog } from "@lucide/vue";
 import type { DiskUsage, HostMonitoring, MonitoringHistoryPoint, ServerState } from "../types";
 
 defineProps<{
@@ -30,6 +30,47 @@ function diskBarStyle(percent: number) {
   return {
     "--disk-used": `${clampPercent(percent)}%`,
   };
+}
+
+function metricTone(percent: number) {
+  if (percent >= 90) {
+    return "danger";
+  }
+  if (percent >= 75) {
+    return "warning";
+  }
+  return "ok";
+}
+
+function mainDisk(disks: DiskUsage[]) {
+  const rootDisk = disks.find((disk) => disk.mount === "/");
+  if (rootDisk) {
+    return rootDisk;
+  }
+  return disks.reduce<DiskUsage | null>((selected, disk) => {
+    if (!selected) {
+      return disk;
+    }
+    return disk.percent > selected.percent ? disk : selected;
+  }, null);
+}
+
+function runningServices(monitoring: HostMonitoring) {
+  return monitoring.services.filter((service) => service.state === "running").length;
+}
+
+function serviceHealthLabel(monitoring: HostMonitoring) {
+  if (!monitoring.services.length) {
+    return "нет данных";
+  }
+  return `${runningServices(monitoring)} / ${monitoring.services.length}`;
+}
+
+function compactIps(ips: string[]) {
+  if (!ips.length) {
+    return "IP не найден";
+  }
+  return ips.slice(0, 2).join(" · ");
 }
 
 function chartValues(history: MonitoringHistoryPoint[], key: MetricKey) {
@@ -64,33 +105,54 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
 
 <template>
   <section class="monitoring-page">
-    <section class="monitor-section" aria-label="Состояние хоста">
-      <div class="monitor-section-head">
-        <h3>Хост</h3>
+    <section class="monitor-hero" aria-label="Сводка мониторинга">
+      <div class="monitor-hero-main">
         <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
+        <h2>{{ monitoring.hostname }}</h2>
+        <p>
+          Работает {{ monitoring.uptime }} · {{ compactIps(monitoring.ip_addresses) }} · снято
+          {{ monitoring.collected_at || 'только что' }}
+        </p>
       </div>
 
-      <div class="monitor-row">
-        <span>Имя</span>
-        <strong>{{ monitoring.hostname }}</strong>
-      </div>
-      <div class="monitor-row">
-        <span>Работает</span>
-        <strong>{{ monitoring.uptime }}</strong>
-      </div>
-      <div class="monitor-row">
-        <span>Снято</span>
-        <strong>{{ monitoring.collected_at || 'только что' }}</strong>
+      <div class="monitor-summary-grid">
+        <article class="monitor-summary-card" :class="metricTone(monitoring.cpu_percent)">
+          <Cpu :size="18" />
+          <span>CPU</span>
+          <strong>{{ monitoring.cpu_percent }}%</strong>
+          <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
+        </article>
+        <article class="monitor-summary-card" :class="metricTone(monitoring.memory.percent)">
+          <MemoryStick :size="18" />
+          <span>RAM</span>
+          <strong>{{ monitoring.memory.percent }}%</strong>
+          <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
+        </article>
+        <article class="monitor-summary-card" :class="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'">
+          <HardDrive :size="18" />
+          <span>Диск</span>
+          <strong>{{ mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a' }}</strong>
+          <small>{{ mainDisk(monitoring.disks)?.mount || 'mount points не найдены' }}</small>
+        </article>
+        <article class="monitor-summary-card" :class="monitoring.services.length && runningServices(monitoring) === monitoring.services.length ? 'ok' : 'warning'">
+          <ServerCog :size="18" />
+          <span>Сервисы</span>
+          <strong>{{ serviceHealthLabel(monitoring) }}</strong>
+          <small>работают сейчас</small>
+        </article>
       </div>
     </section>
 
     <section class="monitor-section" aria-label="Ресурсы">
       <div class="monitor-section-head">
-        <h3>Ресурсы</h3>
+        <div>
+          <h3>Нагрузка за последнюю минуту</h3>
+          <p>{{ metricHistory.length }} точек · обновление каждые 5 секунд</p>
+        </div>
       </div>
 
       <div class="resource-chart-grid">
-        <article class="resource-chart-card">
+        <article class="resource-chart-card" :class="metricTone(monitoring.cpu_percent)">
           <div class="resource-chart-head">
             <Cpu :size="18" />
             <span>CPU</span>
@@ -103,7 +165,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
           <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
         </article>
 
-        <article class="resource-chart-card">
+        <article class="resource-chart-card" :class="metricTone(monitoring.memory.percent)">
           <div class="resource-chart-head">
             <MemoryStick :size="18" />
             <span>RAM</span>
@@ -116,7 +178,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
           <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
         </article>
 
-        <article class="resource-chart-card">
+        <article class="resource-chart-card" :class="metricTone(monitoring.swap.percent)">
           <div class="resource-chart-head">
             <HardDrive :size="18" />
             <span>Swap</span>
@@ -147,7 +209,10 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
     <section class="monitor-columns">
       <section class="monitor-section" aria-label="Диски">
         <div class="monitor-section-head">
-          <h3>Диски</h3>
+          <div>
+            <h3>Диски</h3>
+            <p>{{ monitoring.disks.length }} mount points</p>
+          </div>
         </div>
 
         <div class="disk-list">
@@ -191,7 +256,10 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
 
       <section class="monitor-section" aria-label="Сервисы">
         <div class="monitor-section-head">
-          <h3>Сервисы</h3>
+          <div>
+            <h3>Сервисы</h3>
+            <p>{{ serviceHealthLabel(monitoring) }} online</p>
+          </div>
         </div>
 
         <div class="service-list">
@@ -221,7 +289,11 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
 
     <section class="monitor-section" aria-label="Топ процессов">
       <div class="monitor-section-head">
-        <h3>Топ процессов</h3>
+        <div>
+          <h3>Топ процессов</h3>
+          <p>по CPU на момент последнего снимка</p>
+        </div>
+        <Network :size="18" />
       </div>
 
       <div class="process-table">
