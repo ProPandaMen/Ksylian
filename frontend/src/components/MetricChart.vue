@@ -18,6 +18,7 @@ const props = defineProps<{
 
 const width = 260;
 const height = 82;
+const verticalPadding = 8;
 const activeIndex = ref<number | null>(null);
 const windowSeconds: Record<MonitoringWindow, number> = {
   "1h": 60 * 60,
@@ -36,7 +37,42 @@ const chartPoints = computed(() =>
 );
 
 const hasHistory = computed(() => chartPoints.value.length >= 2);
-const safeMax = computed(() => Math.max(props.maxValue || 100, ...chartPoints.value.map((item) => item.value), 1));
+const valueDomain = computed(() => {
+  const values = chartPoints.value.map((item) => item.value);
+  if (!values.length) {
+    return { min: 0, max: props.maxValue || 1, span: props.maxValue || 1 };
+  }
+
+  const hardMax = props.maxValue ?? (props.unit === "%" ? 100 : undefined);
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  const rawSpan = dataMax - dataMin;
+  const minVisibleSpan = props.unit === "%" ? 8 : props.unit === "°C" ? 6 : Math.max(1, Math.abs(dataMax) * 0.08);
+  const padding = Math.max(rawSpan * 0.18, minVisibleSpan * 0.22);
+
+  let min = Math.max(0, dataMin - padding);
+  let max = dataMax + padding;
+
+  if (max - min < minVisibleSpan) {
+    const center = dataMax <= 0 ? minVisibleSpan / 2 : (min + max) / 2;
+    min = center - minVisibleSpan / 2;
+    max = center + minVisibleSpan / 2;
+  }
+
+  if (min < 0) {
+    max -= min;
+    min = 0;
+  }
+  if (typeof hardMax === "number" && Number.isFinite(hardMax)) {
+    max = Math.min(hardMax, max);
+    if (max - min < minVisibleSpan) {
+      min = Math.max(0, max - minVisibleSpan);
+    }
+  }
+
+  const span = Math.max(0.001, max - min);
+  return { min, max, span };
+});
 const timeRange = computed(() => {
   const selectedWindow = windowSeconds[props.window] || windowSeconds["1h"];
   const latestTimestamp = chartPoints.value.at(-1)?.point.timestamp ?? Math.floor(Date.now() / 1000);
@@ -51,7 +87,10 @@ const plotted = computed(() =>
   chartPoints.value.map((item) => {
     const progress = (item.point.timestamp - timeRange.value.start) / Math.max(1, timeRange.value.span);
     const x = Math.min(width, Math.max(0, progress * width));
-    const y = height - (Math.min(safeMax.value, Math.max(0, item.value)) / safeMax.value) * height;
+    const domain = valueDomain.value;
+    const plotHeight = height - verticalPadding * 2;
+    const normalized = (Math.min(domain.max, Math.max(domain.min, item.value)) - domain.min) / domain.span;
+    const y = height - verticalPadding - normalized * plotHeight;
     return { ...item, x, y };
   }),
 );
