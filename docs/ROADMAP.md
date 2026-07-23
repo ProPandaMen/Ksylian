@@ -4,6 +4,13 @@
 
 Текущее состояние: этапы 1–7 закрыты, этапы 9–13 частично или полностью реализованы, этап 8 Modrinth осознанно отложен. Ближайший фокус — стабилизация Safe Updates на живом VPS, затем планировщик, уведомления и Minecraft-specific мониторинг.
 
+## Сейчас
+
+- Проверить Safe Updates на живом VPS с реальными CurseForge-модами.
+- Проверить RCON/WebSocket и управление игроками на живом сервере.
+- Подготовить release checklist для панели и host agent.
+- Следующий продуктовый этап: `Ksylian 0.7 — Automation & Notifications`.
+
 ## Цель проекта
 
 Создать self-hosted панель управления Minecraft-серверами, ориентированную не только на Vanilla, Paper и Purpur, но и на Forge, NeoForge, Fabric и модовые сборки.
