@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, Download, ExternalLink, PackagePlus, RefreshCw, Search, Server, X } from "@lucide/vue";
-import { computed, onMounted, ref, watch } from "vue";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, PackagePlus, RefreshCw, Search, Server, X } from "@lucide/vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDashboardStore } from "../composables/useDashboardStore";
 import { requestJson } from "../services/api";
@@ -18,6 +18,8 @@ const router = useRouter();
 const kind = ref<"mods" | "modpacks">("modpacks");
 const query = ref("");
 const minecraftVersion = ref("");
+const isVersionPickerOpen = ref(false);
+const versionPickerRef = ref<HTMLElement | null>(null);
 const loader = ref<"any" | "forge" | "fabric" | "quilt" | "neoforge">("any");
 const sort = ref<"popularity" | "updated" | "name" | "downloads">("popularity");
 const pageSize = 24;
@@ -51,6 +53,7 @@ const selectedVersion = computed(() => {
   return versions.find((value) => /^\d+\.\d+(?:\.\d+)?$/.test(value)) ?? "";
 });
 const releaseVersions = computed(() => minecraftVersions.value.versions.filter((version) => version.type === "release"));
+const minecraftVersionLabel = computed(() => minecraftVersion.value || "Любая версия");
 
 async function loadMinecraftVersions() {
   isVersionsLoading.value = true;
@@ -163,6 +166,11 @@ function selectProject(project: CurseForgeProject) {
   selectedProject.value = project;
 }
 
+function selectMinecraftVersion(version: string) {
+  minecraftVersion.value = version;
+  isVersionPickerOpen.value = false;
+}
+
 function closeProject() {
   selectedProject.value = null;
   files.value = [];
@@ -212,6 +220,12 @@ async function createServerFromModpack() {
   });
 }
 
+function closeVersionPickerOnOutsideClick(event: PointerEvent) {
+  if (!versionPickerRef.value?.contains(event.target as Node)) {
+    isVersionPickerOpen.value = false;
+  }
+}
+
 watch(selectedProject, loadFiles);
 watch(selectedFile, loadDependencies);
 watch(kind, () => {
@@ -222,6 +236,7 @@ watch(kind, () => {
 });
 
 onMounted(async () => {
+  document.addEventListener("pointerdown", closeVersionPickerOnOutsideClick);
   if (!store.isDashboardLoaded.value) {
     await store.loadDashboard();
   }
@@ -230,6 +245,10 @@ onMounted(async () => {
   if (hasApiKey.value) {
     await searchProjects();
   }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", closeVersionPickerOnOutsideClick);
 });
 </script>
 
@@ -244,15 +263,44 @@ onMounted(async () => {
         <Search :size="18" />
         <input v-model="query" type="search" placeholder="Поиск по названию" />
       </label>
-      <label>
-        Версия
-        <select v-model="minecraftVersion" :disabled="isVersionsLoading">
-          <option value="">{{ isVersionsLoading ? 'Загружаю версии...' : 'Любая версия' }}</option>
-          <option v-for="version in releaseVersions" :key="version.id" :value="version.id">
+      <div ref="versionPickerRef" class="catalog-filter catalog-version-picker" @keydown.escape="isVersionPickerOpen = false">
+        <span>Версия</span>
+        <button
+          class="version-picker-button"
+          type="button"
+          :aria-expanded="isVersionPickerOpen"
+          aria-haspopup="listbox"
+          :disabled="isVersionsLoading"
+          @click="isVersionPickerOpen = !isVersionPickerOpen"
+        >
+          <span>{{ isVersionsLoading ? 'Загружаю...' : minecraftVersionLabel }}</span>
+          <ChevronDown :size="17" />
+        </button>
+        <div v-if="isVersionPickerOpen" class="version-picker-menu" role="listbox">
+          <button
+            class="version-picker-option"
+            type="button"
+            role="option"
+            :aria-selected="minecraftVersion === ''"
+            :class="{ active: minecraftVersion === '' }"
+            @click="selectMinecraftVersion('')"
+          >
+            Любая версия
+          </button>
+          <button
+            v-for="version in releaseVersions"
+            :key="version.id"
+            class="version-picker-option"
+            type="button"
+            role="option"
+            :aria-selected="minecraftVersion === version.id"
+            :class="{ active: minecraftVersion === version.id }"
+            @click="selectMinecraftVersion(version.id)"
+          >
             {{ version.id }}
-          </option>
-        </select>
-      </label>
+          </button>
+        </div>
+      </div>
       <label>
         Loader
         <select v-model="loader">

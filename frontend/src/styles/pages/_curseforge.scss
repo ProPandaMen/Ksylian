@@ -23,6 +23,7 @@
 }
 
 .catalog-toolbar label,
+.catalog-filter,
 .catalog-search,
 .project-modal label {
   display: grid;
@@ -31,6 +32,10 @@
   color: var(--app-muted);
   font-size: 0.78rem;
   font-weight: 850;
+}
+
+.catalog-filter {
+  position: relative;
 }
 
 .catalog-search {
@@ -95,6 +100,80 @@
     inset 5px 5px 10px var(--app-inset-dark),
     inset -5px -5px 10px var(--app-inset-light);
   appearance: none;
+}
+
+.version-picker-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--app-text);
+  border: 0;
+  border-radius: 14px;
+  background: var(--app-surface);
+  box-shadow:
+    inset 5px 5px 10px var(--app-inset-dark),
+    inset -5px -5px 10px var(--app-inset-light);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 850;
+  text-align: left;
+}
+
+.version-picker-button span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-picker-button svg {
+  color: var(--app-muted);
+}
+
+.version-picker-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.version-picker-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  width: min(220px, calc(100vw - 32px));
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-surface) 92%, var(--app-surface-raised));
+  box-shadow:
+    12px 16px 30px color-mix(in srgb, var(--app-shadow-dark) 86%, transparent),
+    -6px -6px 14px color-mix(in srgb, var(--app-shadow-light) 56%, transparent),
+    inset 1px 1px 0 var(--app-shadow-light-strong);
+}
+
+.version-picker-option {
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--app-text);
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 850;
+  text-align: left;
+}
+
+.version-picker-option:hover,
+.version-picker-option.active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--app-accent), var(--app-accent-light));
 }
 
 .segmented-control {
