@@ -37,7 +37,7 @@ fi
 
 cd "$APP_DIR"
 log "Fetching release tags"
-git fetch --tags --prune origin
+git fetch --tags --force --prune origin
 
 if [[ -z "$TARGET_VERSION" ]]; then
   TARGET_VERSION="$(git tag --sort=-v:refname | head -n 1)"
