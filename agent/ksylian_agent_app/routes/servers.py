@@ -456,7 +456,10 @@ def create_servers_router(**deps) -> APIRouter:
         x_ksylian_token: str | None = Header(default=None),
     ) -> InstalledModItem:
         require_token(x_ksylian_token)
-        return install_mod(load_server_or_404(server_id), payload)
+        server = load_server_or_404(server_id)
+        item = install_mod(server, payload)
+        save_manifest(server)
+        return item
 
 
     @router.post("/servers/{server_id}/mods/bulk", response_model=list[InstalledModItem])
@@ -466,7 +469,10 @@ def create_servers_router(**deps) -> APIRouter:
         x_ksylian_token: str | None = Header(default=None),
     ) -> list[InstalledModItem]:
         require_token(x_ksylian_token)
-        return bulk_install_mods(load_server_or_404(server_id), payload)
+        server = load_server_or_404(server_id)
+        items = bulk_install_mods(server, payload)
+        save_manifest(server)
+        return items
 
 
     @router.post("/servers/{server_id}/mods/actions")
@@ -476,7 +482,10 @@ def create_servers_router(**deps) -> APIRouter:
         x_ksylian_token: str | None = Header(default=None),
     ) -> dict[str, bool]:
         require_token(x_ksylian_token)
-        return operate_mod(load_server_or_404(server_id), payload)
+        server = load_server_or_404(server_id)
+        result = operate_mod(server, payload)
+        save_manifest(server)
+        return result
 
 
     @router.post("/servers/{server_id}/mods/bulk-actions")
@@ -486,7 +495,10 @@ def create_servers_router(**deps) -> APIRouter:
         x_ksylian_token: str | None = Header(default=None),
     ) -> dict[str, int]:
         require_token(x_ksylian_token)
-        return bulk_operate_mods(load_server_or_404(server_id), payload)
+        server = load_server_or_404(server_id)
+        result = bulk_operate_mods(server, payload)
+        save_manifest(server)
+        return result
 
 
     @router.post("/servers/{server_id}/backups", response_model=BackupItem)
