@@ -392,6 +392,32 @@
     -5px -5px 12px color-mix(in srgb, var(--app-inset-light) 62%, transparent);
 }
 
+.disk-card.ok,
+.service-card.ok,
+.process-row.ok {
+  --row-tone: var(--app-accent);
+}
+
+.disk-card.warning,
+.service-card.warning,
+.process-row.warning {
+  --row-tone: var(--app-warning);
+}
+
+.disk-card.danger,
+.service-card.danger,
+.process-row.danger {
+  --row-tone: var(--app-danger);
+}
+
+.disk-card.warning,
+.disk-card.danger,
+.service-card.warning,
+.service-card.danger {
+  border-color: color-mix(in srgb, var(--row-tone) 26%, transparent);
+  background: color-mix(in srgb, var(--row-tone) 8%, var(--app-surface-soft));
+}
+
 .disk-card-main,
 .service-card-main {
   display: flex;
@@ -433,7 +459,7 @@
 
 .disk-card-percent {
   flex: 0 0 auto;
-  color: var(--app-accent);
+  color: var(--row-tone, var(--app-accent));
   font-size: 1.3rem;
   font-weight: 900;
 }
@@ -455,7 +481,7 @@
   max-width: 100%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-accent) 72%, var(--app-success)));
+  background: linear-gradient(90deg, var(--row-tone, var(--app-accent)), color-mix(in srgb, var(--row-tone, var(--app-accent)) 72%, var(--app-success)));
 }
 
 .disk-card-stats,
@@ -509,6 +535,11 @@
   background: color-mix(in srgb, var(--app-surface-soft) 48%, transparent);
 }
 
+.service-card.warning .service-card-stats div,
+.service-card.danger .service-card-stats div {
+  background: color-mix(in srgb, var(--row-tone) 10%, var(--app-surface));
+}
+
 .service-card-main {
   justify-content: start;
 }
@@ -549,6 +580,23 @@
   min-height: 48px;
   padding: 12px 0;
   border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+}
+
+.process-row.warning,
+.process-row.danger {
+  margin: 0 -8px;
+  padding-right: 8px;
+  padding-left: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--row-tone) 8%, transparent);
+}
+
+.process-row.warning span:nth-child(3),
+.process-row.danger span:nth-child(3),
+.process-row.warning span:nth-child(4),
+.process-row.danger span:nth-child(4) {
+  color: var(--row-tone);
+  font-weight: 900;
 }
 
 .process-row.head {

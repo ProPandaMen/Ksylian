@@ -44,6 +44,17 @@ function metricTone(percent: number) {
   return "ok";
 }
 
+function historyWindowLabel(history: MonitoringHistoryPoint[]) {
+  if (history.length <= 1) {
+    return "нужны ещё снимки";
+  }
+  const seconds = Math.max(0, Math.round((history.at(-1)!.timestamp - history[0].timestamp) / 1000));
+  if (seconds >= 60) {
+    return `${Math.round(seconds / 60)} мин`;
+  }
+  return `${seconds} сек`;
+}
+
 function mainDisk(disks: DiskUsage[]) {
   const rootDisk = disks.find((disk) => disk.mount === "/");
   if (rootDisk) {
@@ -66,6 +77,29 @@ function serviceHealthLabel(monitoring: HostMonitoring) {
     return "нет данных";
   }
   return `${runningServices(monitoring)} / ${monitoring.services.length}`;
+}
+
+function serviceTone(service: HostMonitoring["services"][number]) {
+  if (service.state === "crashed") {
+    return "danger";
+  }
+  if (service.state !== "running") {
+    return "warning";
+  }
+  if (service.cpu >= 75) {
+    return "warning";
+  }
+  return "ok";
+}
+
+function processTone(process: HostMonitoring["top_processes"][number]) {
+  if (process.cpu >= 90 || process.memory >= 50) {
+    return "danger";
+  }
+  if (process.cpu >= 60 || process.memory >= 25) {
+    return "warning";
+  }
+  return "ok";
 }
 
 function compactIps(ips: string[]) {
@@ -244,8 +278,8 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
     <section class="monitor-section" aria-label="Ресурсы">
       <div class="monitor-section-head">
         <div>
-          <h3>Нагрузка за последнюю минуту</h3>
-          <p>{{ metricHistory.length }} точек · обновление каждые 5 секунд</p>
+          <h3>История нагрузки</h3>
+          <p>{{ metricHistory.length }} точек · окно {{ historyWindowLabel(metricHistory) }} · автообновление 5 сек</p>
         </div>
       </div>
 
@@ -334,7 +368,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
         </div>
 
         <div class="disk-list">
-          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card">
+          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card" :class="metricTone(disk.percent)">
             <div class="disk-card-main">
               <div class="disk-card-title">
                 <strong>{{ disk.mount }}</strong>
@@ -381,7 +415,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
         </div>
 
         <div class="service-list">
-          <article v-for="service in monitoring.services" :key="service.id" class="service-card">
+          <article v-for="service in monitoring.services" :key="service.id" class="service-card" :class="serviceTone(service)">
             <div class="service-card-main">
               <span class="server-state" :class="service.state"></span>
               <div class="service-name">
@@ -421,7 +455,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
           <span>CPU</span>
           <span>RAM</span>
         </div>
-        <div v-for="process in monitoring.top_processes" :key="process.pid" class="process-row">
+        <div v-for="process in monitoring.top_processes" :key="process.pid" class="process-row" :class="processTone(process)">
           <span>{{ process.pid }}</span>
           <strong>{{ process.name }}</strong>
           <span>{{ process.cpu }}%</span>
