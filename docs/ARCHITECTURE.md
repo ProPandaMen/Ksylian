@@ -26,8 +26,9 @@ from ksylian_agent_app.main import app
 - `mods.py` — scanner и операции с модами.
 - `activity.py`, `hashing.py`, `runtime.py` — action log, checksum helpers и transient runtime state.
 - `routes/system.py` — health, app update, action logs и host monitoring routes.
+- `routes/servers.py` — server lifecycle, loaders, logs, config/RCON, files, mods и backups routes.
 
-Следующий безопасный шаг — перенести оставшиеся agent server/loaders/files/mods/backups handlers в `routes/` по доменам, оставляя публичные URL и JSON-схемы без изменений.
+Следующий безопасный шаг — уменьшить dependency fan-out в agent route factories, постепенно выделяя service/facade modules для server lifecycle, logs/config и admin actions.
 
 ## Backend
 
