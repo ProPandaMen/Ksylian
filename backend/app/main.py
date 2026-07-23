@@ -22,414 +22,97 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from .agent_client import AgentClient
+from .schemas import (
+    ActionResult,
+    AgentStatus,
+    ApplyUpdateRequest,
+    ApplyUpdateResult,
+    AuthRequest,
+    AuthSessionPayload,
+    AuthStatusPayload,
+    AuthUser,
+    BackupItem,
+    BackupRequest,
+    BootstrapAdminRequest,
+    CreateInviteRequest,
+    CreateServerRequest,
+    CrashReportItem,
+    CurseForgeProject,
+    CurseForgeSearchPayload,
+    DashboardPayload,
+    FileContentPayload,
+    FileEntry,
+    FileItem,
+    FileListPayload,
+    FileOperationRequest,
+    FileSearchResult,
+    FileWriteRequest,
+    GameServer,
+    HostMonitoring,
+    InstalledModItem,
+    InviteRegistrationRequest,
+    MinecraftVersion,
+    MinecraftVersionsPayload,
+    ModBulkActionRequest,
+    ModBulkInstallRequest,
+    ModInstallRequest,
+    ModItem,
+    ModOperationRequest,
+    RconCommandPayload,
+    RconCommandResult,
+    RestoreRequest,
+    ServerAction,
+    ServerConfigPayload,
+    ServerState,
+    SettingsPayload,
+    ThemeName,
+    ThemeUpdateRequest,
+    UpdateSettingsRequest,
+    UpdateStatusPayload,
+    UserInvite,
+    UserRole,
+)
+
+
+from .settings import (
+    AGENT_TOKEN,
+    AGENT_URL,
+    AUTH_SECRET,
+    BUILD_SHA,
+    BUILD_VERSION,
+    CURSEFORGE_BASE_URL,
+    CURSEFORGE_CLASS_IDS,
+    CURSEFORGE_LOADER_LABELS,
+    CURSEFORGE_LOADER_TYPES,
+    CURSEFORGE_SORT_FIELDS,
+    DATABASE_PATH,
+    GITHUB_API_BASE_URL,
+    GITHUB_TOKEN,
+    MINECRAFT_GAME_ID,
+    MINECRAFT_VERSION_CACHE_SECONDS,
+    MINECRAFT_VERSION_MANIFEST_URL,
+    PUBLIC_API_PATHS,
+    RELEASE_REPOSITORY,
+    SESSION_TTL_SECONDS,
+    SETTINGS_PATH,
+    USERS_PATH,
+)
+from .settings import load_settings, save_settings
+from .auth import (
+    create_token,
+    current_user_from_request,
+    hash_password,
+    init_database,
+    normalize_username,
+    require_admin_user,
+    require_current_user,
+    save_user_store,
+    stored_users,
+    user_public,
+    validate_password,
+    verify_password,
+)
 
-
-class ServerState(str, Enum):
-    installing = "installing"
-    stopped = "stopped"
-    starting = "starting"
-    running = "running"
-    stopping = "stopping"
-    crashed = "crashed"
-    updating = "updating"
-    backing_up = "backing_up"
-
-
-class ServerAction(str, Enum):
-    start = "start"
-    restart = "restart"
-    stop = "stop"
-    kill = "kill"
-    update = "update"
-    rollback = "rollback"
-    backup = "backup"
-
-
-class GameServer(BaseModel):
-    id: str
-    name: str
-    pack: str
-    version: str
-    state: ServerState
-    players: str
-    ram: str
-    cpu: int
-    disk: str
-    address: str
-    exit_code: int | None = None
-    last_event: str = ""
-    warnings: list[str] = Field(default_factory=list)
-
-
-class BackupItem(BaseModel):
-    id: str
-    name: str
-    size: str
-    created: str
-    server_id: str
-    checksum: str = ""
-    description: str = ""
-    manifest: str = ""
-
-
-class CreateServerRequest(BaseModel):
-    name: str
-    type: Literal["vanilla", "paper", "purpur", "fabric", "forge", "neoforge"] = "vanilla"
-    pack: str
-    version: str = "1.20.1"
-    address: str = ""
-    min_ram: str = "1G"
-    max_ram: str = "2G"
-    java_runtime: str = "auto"
-    jvm_args: str = ""
-    cpu_limit: int = 100
-    loader_version: str = ""
-    installer_version: str = ""
-    install_fabric_api: bool = False
-
-
-class MinecraftVersion(BaseModel):
-    id: str
-    type: Literal["release", "snapshot", "old_beta", "old_alpha"]
-    label: str
-    released_at: str = ""
-
-
-class MinecraftVersionsPayload(BaseModel):
-    latest_release: str = ""
-    latest_snapshot: str = ""
-    versions: list[MinecraftVersion]
-
-
-class AgentStatus(BaseModel):
-    configured: bool
-    available: bool
-    status: Literal["online", "offline", "not_configured"]
-    message: str = ""
-    public_domain: str = ""
-    proxy_domain: str = ""
-    proxy_port: str = ""
-
-
-class SettingsPayload(BaseModel):
-    has_curseforge_api_key: bool
-    curseforge_api_key_mask: str = ""
-    agent: AgentStatus
-
-
-class UpdateSettingsRequest(BaseModel):
-    curseforge_api_key: str = ""
-
-
-ThemeName = Literal["pink", "black", "white", "green"]
-UserRole = Literal["admin", "member"]
-
-
-class AuthStatusPayload(BaseModel):
-    has_users: bool
-    bootstrap_required: bool
-
-
-class AuthRequest(BaseModel):
-    username: str
-    password: str
-
-
-class BootstrapAdminRequest(AuthRequest):
-    display_name: str = ""
-    theme: ThemeName = "pink"
-
-
-class InviteRegistrationRequest(AuthRequest):
-    token: str
-    display_name: str = ""
-    theme: ThemeName = "pink"
-
-
-class AuthUser(BaseModel):
-    id: str
-    username: str
-    display_name: str
-    role: UserRole
-    theme: ThemeName = "pink"
-    created_at: str
-
-
-class AuthSessionPayload(BaseModel):
-    token: str
-    user: AuthUser
-
-
-class ThemeUpdateRequest(BaseModel):
-    theme: ThemeName
-
-
-class UserInvite(BaseModel):
-    id: str
-    token: str
-    role: UserRole = "member"
-    created_at: str
-    expires_at: str
-    used_at: str = ""
-    invited_by: str = ""
-
-
-class CreateInviteRequest(BaseModel):
-    role: UserRole = "member"
-    ttl_hours: int = 24
-
-
-class UpdateStatusPayload(BaseModel):
-    current_version: str
-    current_sha: str
-    latest_version: str = ""
-    latest_sha: str = ""
-    update_available: bool = False
-    checked_at: str
-    release_url: str = ""
-    notes: str = ""
-    can_update: bool = False
-    updater_status: Literal["ready", "agent_unavailable", "not_configured", "unknown"] = "unknown"
-
-
-class ApplyUpdateRequest(BaseModel):
-    target_version: str = ""
-
-
-class ApplyUpdateResult(BaseModel):
-    ok: bool
-    message: str
-    target_version: str = ""
-
-
-class ModItem(BaseModel):
-    id: str
-    name: str
-    status: str
-    tag: Literal["required", "update", "review"]
-
-
-class CurseForgeProject(BaseModel):
-    id: int
-    name: str
-    slug: str
-    summary: str = ""
-    type: Literal["mods", "modpacks"]
-    downloads: int = 0
-    date_modified: str = ""
-    icon_url: str = ""
-    website_url: str = ""
-    latest_file_id: int | None = None
-    game_versions: list[str] = []
-    loaders: list[str] = []
-
-
-class CurseForgeSearchPayload(BaseModel):
-    items: list[CurseForgeProject]
-    total_count: int = 0
-    has_api_key: bool
-
-
-class FileItem(BaseModel):
-    name: str
-    meta: str
-    kind: Literal["folder", "file"]
-
-
-class BackupRequest(BaseModel):
-    mode: Literal["live", "stopped"] = "live"
-    parts: list[Literal["world", "mods", "config", "root"]] = Field(
-        default_factory=lambda: ["world", "mods", "config", "root"],
-    )
-    description: str = ""
-
-
-class RestoreRequest(BaseModel):
-    backup_id: str
-    target: Literal["all", "world", "mods", "config"] = "all"
-    insurance_backup: bool = True
-
-
-class FileEntry(BaseModel):
-    name: str
-    path: str
-    kind: Literal["folder", "file"]
-    size: str
-    modified: str
-    quick: str = ""
-
-
-class FileListPayload(BaseModel):
-    path: str
-    entries: list[FileEntry]
-
-
-class FileWriteRequest(BaseModel):
-    path: str
-    content: str
-    encoding: Literal["text", "base64"] = "text"
-
-
-class FileOperationRequest(BaseModel):
-    action: Literal["mkdir", "delete", "move", "rename", "extract"]
-    path: str
-    target_path: str = ""
-
-
-class FileContentPayload(BaseModel):
-    path: str
-    name: str
-    content: str
-    encoding: Literal["text", "base64"]
-    syntax: Literal["json", "yaml", "toml", "properties", "text", "binary"] = "text"
-
-
-class FileSearchResult(BaseModel):
-    path: str
-    line: int
-    preview: str
-    syntax: Literal["json", "yaml", "toml", "properties", "text", "binary"] = "text"
-
-
-class ModDependency(BaseModel):
-    id: str
-    version: str = ""
-    required: bool = True
-
-
-class InstalledModItem(BaseModel):
-    id: str
-    name: str
-    version: str = ""
-    loader: Literal["fabric", "forge", "neoforge", "unknown"] = "unknown"
-    side: Literal["client", "server", "both", "unknown"] = "unknown"
-    filename: str
-    path: str
-    size: str
-    enabled: bool = True
-    sha1: str
-    sha256: str
-    sha512: str
-    dependencies: list[ModDependency] = Field(default_factory=list)
-    duplicate: bool = False
-    multiple_versions: bool = False
-    warnings: list[str] = Field(default_factory=list)
-
-
-class ModInstallRequest(BaseModel):
-    filename: str
-    content: str
-    encoding: Literal["base64"] = "base64"
-    pinned: bool = False
-    release_channel: Literal["release", "beta", "alpha"] = "release"
-
-
-class ModOperationRequest(BaseModel):
-    action: Literal["delete", "disable", "enable", "pin", "update"]
-    path: str
-    filename: str = ""
-    content: str = ""
-    release_channel: Literal["release", "beta", "alpha"] = "release"
-
-
-class ModBulkInstallRequest(BaseModel):
-    items: list[ModInstallRequest]
-
-
-class ModBulkActionRequest(BaseModel):
-    action: Literal["update", "delete", "disable", "enable", "pin"]
-    items: list[ModOperationRequest]
-
-
-class ActionResult(BaseModel):
-    ok: bool
-    message: str
-    server: GameServer
-
-
-class ServerConfigPayload(BaseModel):
-    content: str
-
-
-class RconCommandPayload(BaseModel):
-    command: str
-
-
-class RconCommandResult(BaseModel):
-    ok: bool
-    output: str
-
-
-class CrashReportItem(BaseModel):
-    name: str
-    size: str
-    created: str
-    summary: str
-    probable_cause: str = ""
-    conflicting_mod: str = ""
-    missing_dependency: str = ""
-    client_only_mod: str = ""
-    stack_trace: list[str] = Field(default_factory=list)
-    recent_changes: list[str] = Field(default_factory=list)
-
-
-class MetricUsage(BaseModel):
-    used: int
-    total: int
-    percent: int
-    used_label: str
-    total_label: str
-
-
-class DiskUsage(BaseModel):
-    mount: str
-    filesystem: str
-    used: int
-    total: int
-    percent: int
-    used_label: str
-    total_label: str
-
-
-class ProcessUsage(BaseModel):
-    pid: int
-    name: str
-    cpu: float
-    memory: float
-    command: str
-
-
-class ServiceUsage(BaseModel):
-    id: str
-    name: str
-    state: ServerState
-    cpu: int
-    ram: str
-
-
-class HostMonitoring(BaseModel):
-    hostname: str
-    ip_addresses: list[str]
-    uptime: str
-    load_average: list[float]
-    cpu_percent: int
-    cpu_cores: int
-    memory: MetricUsage
-    swap: MetricUsage
-    disks: list[DiskUsage]
-    top_processes: list[ProcessUsage]
-    services: list[ServiceUsage]
-    temperature: str
-    collected_at: str
-
-
-class DashboardPayload(BaseModel):
-    servers: list[GameServer]
-    logs: list[str]
-    backups: list[BackupItem]
-    mods: list[ModItem]
-    files: list[FileItem]
-    agent: AgentStatus
 
 
 app = FastAPI(title="Ksylian API", version="0.1.0")
@@ -442,35 +125,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PUBLIC_API_PATHS = {
-    "/api/auth/status",
-    "/api/auth/bootstrap",
-    "/api/auth/login",
-    "/api/auth/register-invite",
-}
-
-AGENT_URL = os.getenv("KSYLIAN_AGENT_URL", "").rstrip("/")
-AGENT_TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 agent_client = AgentClient(AGENT_URL, AGENT_TOKEN)
-SETTINGS_PATH = Path(os.getenv("KSYLIAN_SETTINGS_PATH", "/data/settings.json"))
-USERS_PATH = Path(os.getenv("KSYLIAN_USERS_PATH", "/data/users.json"))
-DATABASE_PATH = Path(os.getenv("KSYLIAN_DATABASE_PATH", "/data/ksylian.db"))
-AUTH_SECRET = os.getenv("KSYLIAN_AUTH_SECRET", "")
-SESSION_TTL_SECONDS = int(os.getenv("KSYLIAN_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 14)))
-BUILD_VERSION = os.getenv("KSYLIAN_BUILD_VERSION", "dev")
-BUILD_SHA = os.getenv("KSYLIAN_BUILD_SHA", "local")
-RELEASE_REPOSITORY = os.getenv("KSYLIAN_RELEASE_REPOSITORY", "ProPandaMen/Ksylian")
-GITHUB_API_BASE_URL = os.getenv("KSYLIAN_GITHUB_API_URL", "https://api.github.com").rstrip("/")
-GITHUB_TOKEN = os.getenv("KSYLIAN_GITHUB_TOKEN", "")
-CURSEFORGE_BASE_URL = "https://api.curseforge.com"
-MINECRAFT_GAME_ID = 432
-CURSEFORGE_CLASS_IDS = {"mods": 6, "modpacks": 4471}
-CURSEFORGE_SORT_FIELDS = {"popularity": 2, "updated": 3, "name": 4, "downloads": 6}
-CURSEFORGE_LOADER_TYPES = {"any": None, "forge": 1, "fabric": 4, "quilt": 5, "neoforge": 6}
-CURSEFORGE_LOADER_LABELS = {1: "Forge", 4: "Fabric", 5: "Quilt", 6: "NeoForge"}
-MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 MINECRAFT_VERSION_CACHE: dict[str, object] = {"loaded_at": None, "payload": None}
-MINECRAFT_VERSION_CACHE_SECONDS = 60 * 60
 DATABASE_READY = False
 
 servers: dict[str, GameServer] = {
@@ -541,311 +197,9 @@ files: list[FileItem] = [
 ]
 
 
-def utc_now() -> int:
-    return int(time.time())
-
-
-def iso_now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
-
-
-def auth_secret() -> str:
-    if AUTH_SECRET:
-        return AUTH_SECRET
-    fallback = load_settings().get("auth_secret", "")
-    if fallback:
-        return fallback
-    fallback = secrets.token_urlsafe(48)
-    settings = load_settings()
-    settings["auth_secret"] = fallback
-    save_settings(settings)
-    return fallback
-
-
-def load_legacy_user_store() -> dict:
-    if not USERS_PATH.exists():
-        return {"users": [], "invites": []}
-    try:
-        data = json.loads(USERS_PATH.read_text())
-    except (json.JSONDecodeError, OSError):
-        return {"users": [], "invites": []}
-    if not isinstance(data, dict):
-        return {"users": [], "invites": []}
-    users = data.get("users") if isinstance(data.get("users"), list) else []
-    invites = data.get("invites") if isinstance(data.get("invites"), list) else []
-    return {"users": users, "invites": invites}
-
-
-def database() -> sqlite3.Connection:
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
-
-
-def row_to_dict(row: sqlite3.Row) -> dict:
-    return {key: row[key] for key in row.keys()}
-
-
-def init_database() -> None:
-    global DATABASE_READY
-    if DATABASE_READY:
-        return
-    with database() as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
-                display_name TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'member',
-                theme TEXT NOT NULL DEFAULT 'pink',
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS invites (
-                id TEXT PRIMARY KEY,
-                token TEXT NOT NULL UNIQUE,
-                role TEXT NOT NULL DEFAULT 'member',
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                used_at TEXT NOT NULL DEFAULT '',
-                invited_by TEXT NOT NULL DEFAULT ''
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-            CREATE INDEX IF NOT EXISTS idx_invites_token ON invites(token);
-            CREATE INDEX IF NOT EXISTS idx_invites_used_at ON invites(used_at);
-            """
-        )
-        migrate_legacy_user_store(connection)
-    try:
-        DATABASE_PATH.chmod(0o600)
-    except OSError:
-        pass
-    DATABASE_READY = True
-
-
-def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
-    legacy_store = load_legacy_user_store()
-    for item in legacy_store.get("users", []):
-        if not isinstance(item, dict):
-            continue
-        if not item.get("username") or not item.get("password_hash"):
-            continue
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO users
-                (id, username, display_name, role, theme, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                str(item.get("id") or secrets.token_urlsafe(10)),
-                str(item.get("username") or ""),
-                str(item.get("display_name") or item.get("username") or ""),
-                str(item.get("role") or "member"),
-                str(item.get("theme") or "pink"),
-                str(item.get("password_hash") or ""),
-                str(item.get("created_at") or iso_now()),
-            ),
-        )
-    for item in legacy_store.get("invites", []):
-        if not isinstance(item, dict):
-            continue
-        if not item.get("token"):
-            continue
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO invites
-                (id, token, role, created_at, expires_at, used_at, invited_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                str(item.get("id") or secrets.token_urlsafe(8)),
-                str(item.get("token") or ""),
-                str(item.get("role") or "member"),
-                str(item.get("created_at") or iso_now()),
-                str(item.get("expires_at") or iso_now()),
-                str(item.get("used_at") or ""),
-                str(item.get("invited_by") or ""),
-            ),
-        )
-
-
 @app.on_event("startup")
 def startup() -> None:
     init_database()
-
-
-def load_user_store() -> dict:
-    init_database()
-    with database() as connection:
-        users = [
-            row_to_dict(row)
-            for row in connection.execute(
-                """
-                SELECT id, username, display_name, role, theme, password_hash, created_at
-                FROM users
-                ORDER BY created_at ASC
-                """
-            )
-        ]
-        invites = [
-            row_to_dict(row)
-            for row in connection.execute(
-                """
-                SELECT id, token, role, created_at, expires_at, used_at, invited_by
-                FROM invites
-                ORDER BY created_at DESC
-                """
-            )
-        ]
-    return {"users": users, "invites": invites}
-
-
-def save_user_store(data: dict) -> None:
-    init_database()
-    users = [item for item in data.get("users", []) if isinstance(item, dict)]
-    invites = [item for item in data.get("invites", []) if isinstance(item, dict)]
-    with database() as connection:
-        connection.execute("DELETE FROM invites")
-        connection.execute("DELETE FROM users")
-        connection.executemany(
-            """
-            INSERT INTO users
-                (id, username, display_name, role, theme, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    str(item.get("id") or secrets.token_urlsafe(10)),
-                    str(item.get("username") or ""),
-                    str(item.get("display_name") or item.get("username") or ""),
-                    str(item.get("role") or "member"),
-                    str(item.get("theme") or "pink"),
-                    str(item.get("password_hash") or ""),
-                    str(item.get("created_at") or iso_now()),
-                )
-                for item in users
-            ],
-        )
-        connection.executemany(
-            """
-            INSERT INTO invites
-                (id, token, role, created_at, expires_at, used_at, invited_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    str(item.get("id") or secrets.token_urlsafe(8)),
-                    str(item.get("token") or ""),
-                    str(item.get("role") or "member"),
-                    str(item.get("created_at") or iso_now()),
-                    str(item.get("expires_at") or iso_now()),
-                    str(item.get("used_at") or ""),
-                    str(item.get("invited_by") or ""),
-                )
-                for item in invites
-            ],
-        )
-
-
-def stored_users() -> list[dict]:
-    return [item for item in load_user_store().get("users", []) if isinstance(item, dict)]
-
-
-def user_public(user: dict) -> AuthUser:
-    return AuthUser(
-        id=str(user.get("id") or ""),
-        username=str(user.get("username") or ""),
-        display_name=str(user.get("display_name") or user.get("username") or ""),
-        role=str(user.get("role") or "member"),  # type: ignore[arg-type]
-        theme=str(user.get("theme") or "pink"),  # type: ignore[arg-type]
-        created_at=str(user.get("created_at") or ""),
-    )
-
-
-def normalize_username(username: str) -> str:
-    value = username.strip().lower()
-    if not re.fullmatch(r"[a-z0-9_.-]{3,32}", value):
-        raise HTTPException(status_code=400, detail="Username must be 3-32 latin characters")
-    return value
-
-
-def validate_password(password: str) -> None:
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="Password must contain at least 8 characters")
-
-
-def hash_password(password: str, salt: str | None = None) -> str:
-    salt_bytes = base64.urlsafe_b64decode(salt.encode()) if salt else secrets.token_bytes(18)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt_bytes, 210_000)
-    salt_value = base64.urlsafe_b64encode(salt_bytes).decode()
-    digest_value = base64.urlsafe_b64encode(digest).decode()
-    return f"pbkdf2_sha256${salt_value}${digest_value}"
-
-
-def verify_password(password: str, stored_hash: str) -> bool:
-    try:
-        algorithm, salt, digest = stored_hash.split("$", 2)
-    except ValueError:
-        return False
-    if algorithm != "pbkdf2_sha256":
-        return False
-    expected = hash_password(password, salt).split("$", 2)[2]
-    return hmac.compare_digest(expected, digest)
-
-
-def create_token(user_id: str) -> str:
-    expires_at = utc_now() + SESSION_TTL_SECONDS
-    nonce = secrets.token_urlsafe(12)
-    payload = f"{user_id}.{expires_at}.{nonce}"
-    signature = hmac.new(auth_secret().encode(), payload.encode(), hashlib.sha256).digest()
-    return f"{payload}.{base64.urlsafe_b64encode(signature).decode().rstrip('=')}"
-
-
-def user_from_token(token: str) -> dict | None:
-    parts = token.split(".")
-    if len(parts) != 4:
-        return None
-    user_id, expires_at_raw, nonce, signature = parts
-    payload = f"{user_id}.{expires_at_raw}.{nonce}"
-    expected = base64.urlsafe_b64encode(
-        hmac.new(auth_secret().encode(), payload.encode(), hashlib.sha256).digest()
-    ).decode().rstrip("=")
-    if not hmac.compare_digest(expected, signature):
-        return None
-    try:
-        expires_at = int(expires_at_raw)
-    except ValueError:
-        return None
-    if expires_at < utc_now():
-        return None
-    return next((user for user in stored_users() if str(user.get("id")) == user_id), None)
-
-
-def current_user_from_request(request: Request) -> dict | None:
-    auth_header = request.headers.get("authorization", "")
-    scheme, _, token = auth_header.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        return None
-    return user_from_token(token)
-
-
-def require_current_user(request: Request) -> dict:
-    user = getattr(request.state, "user", None) or current_user_from_request(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    return user
-
-
-def require_admin_user(request: Request) -> dict:
-    user = require_current_user(request)
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin permissions required")
-    return user
 
 
 @app.middleware("http")
@@ -865,55 +219,8 @@ async def require_auth_for_api(request: Request, call_next):
     return await call_next(request)
 
 
-def agent_headers() -> dict[str, str]:
-    return agent_client.headers()
-
-
-def agent_get(path: str, params: dict[str, str] | None = None) -> httpx.Response:
-    return agent_client.get(path, params=params)
-
-
-def agent_post(path: str, json: dict | None = None) -> httpx.Response:
-    return agent_client.post(path, json=json)
-
-
-def agent_put(path: str, json: dict | None = None) -> httpx.Response:
-    return agent_client.put(path, json=json)
-
-
-def agent_delete(path: str) -> httpx.Response:
-    return agent_client.delete(path)
-
-
 def current_agent_status() -> AgentStatus:
-    if not AGENT_URL:
-        return AgentStatus(
-            configured=False,
-            available=False,
-            status="not_configured",
-            message="Host agent is not configured",
-        )
-
-    try:
-        response = agent_get("/health")
-        response.raise_for_status()
-        data = response.json()
-        return AgentStatus(
-            configured=True,
-            available=True,
-            status="online",
-            message="Host agent is online",
-            public_domain=str(data.get("public_domain") or "") if isinstance(data, dict) else "",
-            proxy_domain=str(data.get("proxy_domain") or "") if isinstance(data, dict) else "",
-            proxy_port=str(data.get("proxy_port") or "") if isinstance(data, dict) else "",
-        )
-    except Exception as error:
-        return AgentStatus(
-            configured=True,
-            available=False,
-            status="offline",
-            message=str(error),
-        )
+    return agent_client.status()
 
 
 def require_agent_available() -> None:
@@ -924,9 +231,7 @@ def require_agent_available() -> None:
 
 def load_agent_servers() -> list[GameServer] | None:
     try:
-        response = agent_get("/servers")
-        response.raise_for_status()
-        return [GameServer(**item) for item in response.json()]
+        return agent_client.servers()
     except Exception as error:
         append_log(f"agent unavailable: {error}")
         return None
@@ -934,9 +239,7 @@ def load_agent_servers() -> list[GameServer] | None:
 
 def load_agent_logs(server_id: str) -> list[str]:
     try:
-        response = agent_get(f"/servers/{server_id}/logs")
-        response.raise_for_status()
-        return response.json()
+        return agent_client.logs(server_id)
     except Exception as error:
         append_log(f"agent logs unavailable for {server_id}: {error}")
         return []
@@ -944,9 +247,7 @@ def load_agent_logs(server_id: str) -> list[str]:
 
 def load_agent_full_logs(server_id: str) -> list[str]:
     try:
-        response = agent_get(f"/servers/{server_id}/logs/full")
-        response.raise_for_status()
-        return [str(line) for line in response.json()]
+        return agent_client.logs(server_id, full=True)
     except Exception as error:
         append_log(f"agent full logs unavailable for {server_id}: {error}")
         return []
@@ -954,9 +255,7 @@ def load_agent_full_logs(server_id: str) -> list[str]:
 
 def load_agent_crash_reports(server_id: str) -> list[CrashReportItem]:
     try:
-        response = agent_get(f"/servers/{server_id}/crash-reports")
-        response.raise_for_status()
-        return [CrashReportItem(**item) for item in response.json()]
+        return agent_client.crash_reports(server_id)
     except Exception as error:
         append_log(f"agent crash reports unavailable for {server_id}: {error}")
         return []
@@ -964,123 +263,83 @@ def load_agent_crash_reports(server_id: str) -> list[CrashReportItem]:
 
 def agent_rcon_status(server_id: str) -> dict[str, bool]:
     try:
-        response = agent_get(f"/servers/{server_id}/rcon/status")
-        response.raise_for_status()
-        data = response.json()
-        return {"available": bool(data.get("available"))}
+        return agent_client.rcon_status(server_id)
     except Exception as error:
         append_log(f"agent rcon status unavailable for {server_id}: {error}")
         return {"available": False}
 
 
 def agent_rcon_command(server_id: str, command: str) -> RconCommandResult:
-    response = agent_post(f"/servers/{server_id}/rcon/command", json={"command": command})
-    response.raise_for_status()
-    return RconCommandResult(**response.json())
+    return agent_client.rcon_command(server_id, command)
 
 
 def load_agent_backups() -> list[BackupItem] | None:
     try:
-        response = agent_get("/backups")
-        response.raise_for_status()
-        return [BackupItem(**item) for item in response.json()]
+        return agent_client.backups()
     except Exception as error:
         append_log(f"agent backups unavailable: {error}")
         return None
 
 
 def agent_create_backup(server_id: str, payload: BackupRequest) -> BackupItem:
-    response = agent_post(f"/servers/{server_id}/backups", json=payload.model_dump())
-    response.raise_for_status()
-    return BackupItem(**response.json())
+    return agent_client.create_backup(server_id, payload)
 
 
 def agent_restore_backup(server_id: str, payload: RestoreRequest) -> ActionResult:
-    response = agent_post(f"/servers/{server_id}/restore", json=payload.model_dump())
-    response.raise_for_status()
-    return ActionResult(**response.json())
+    return agent_client.restore_backup(server_id, payload)
 
 
 def agent_list_files(server_id: str, path: str = "") -> FileListPayload:
-    response = agent_get(f"/servers/{server_id}/files", params={"path": path})
-    response.raise_for_status()
-    return FileListPayload(**response.json())
+    return agent_client.files(server_id, path)
 
 
 def agent_read_file(server_id: str, path: str) -> FileContentPayload:
-    response = agent_get(f"/servers/{server_id}/files/content", params={"path": path})
-    response.raise_for_status()
-    return FileContentPayload(**response.json())
+    return agent_client.read_file(server_id, path)
 
 
 def agent_search_files(server_id: str, query: str, path: str = "") -> list[FileSearchResult]:
-    response = agent_get(f"/servers/{server_id}/files/search", params={"query": query, "path": path})
-    response.raise_for_status()
-    return [FileSearchResult(**item) for item in response.json()]
+    return agent_client.search_files(server_id, query, path)
 
 
 def agent_write_file(server_id: str, payload: FileWriteRequest) -> FileEntry:
-    response = agent_put(f"/servers/{server_id}/files", json=payload.model_dump())
-    response.raise_for_status()
-    return FileEntry(**response.json())
+    return agent_client.write_file(server_id, payload)
 
 
 def agent_file_action(server_id: str, payload: FileOperationRequest) -> FileEntry | dict[str, bool]:
-    response = agent_post(f"/servers/{server_id}/files/actions", json=payload.model_dump())
-    response.raise_for_status()
-    data = response.json()
-    if isinstance(data, dict) and data.get("name"):
-        return FileEntry(**data)
-    return {"ok": True}
+    return agent_client.file_action(server_id, payload)
 
 
 def agent_list_mods(server_id: str) -> list[InstalledModItem]:
-    response = agent_get(f"/servers/{server_id}/mods")
-    response.raise_for_status()
-    return [InstalledModItem(**item) for item in response.json()]
+    return agent_client.mods(server_id)
 
 
 def agent_install_mod(server_id: str, payload: ModInstallRequest) -> InstalledModItem:
-    response = agent_post(f"/servers/{server_id}/mods", json=payload.model_dump())
-    response.raise_for_status()
-    return InstalledModItem(**response.json())
+    return agent_client.install_mod(server_id, payload)
 
 
 def agent_bulk_install_mods(server_id: str, payload: ModBulkInstallRequest) -> list[InstalledModItem]:
-    response = agent_post(f"/servers/{server_id}/mods/bulk", json=payload.model_dump())
-    response.raise_for_status()
-    return [InstalledModItem(**item) for item in response.json()]
+    return agent_client.bulk_install_mods(server_id, payload)
 
 
 def agent_mod_action(server_id: str, payload: ModOperationRequest) -> dict[str, bool]:
-    response = agent_post(f"/servers/{server_id}/mods/actions", json=payload.model_dump())
-    response.raise_for_status()
-    return {"ok": True}
+    return agent_client.mod_action(server_id, payload)
 
 
 def agent_bulk_mod_action(server_id: str, payload: ModBulkActionRequest) -> dict[str, int]:
-    response = agent_post(f"/servers/{server_id}/mods/bulk-actions", json=payload.model_dump())
-    response.raise_for_status()
-    return {"completed": int(response.json().get("completed", 0))}
+    return agent_client.bulk_mod_action(server_id, payload)
 
 
 def agent_loader_versions(loader_type: str) -> list[str]:
-    response = agent_get(f"/loaders/{loader_type}/versions")
-    response.raise_for_status()
-    return [str(item) for item in response.json()]
+    return agent_client.loader_versions(loader_type)
 
 
 def agent_fabric_installer_versions() -> list[str]:
-    response = agent_get("/loaders/fabric/installers")
-    response.raise_for_status()
-    return [str(item) for item in response.json()]
+    return agent_client.fabric_installer_versions()
 
 
 def load_agent_monitoring() -> HostMonitoring | None:
     try:
-        response = agent_get("/monitoring")
-        response.raise_for_status()
-        return HostMonitoring(**response.json())
+        return agent_client.monitoring()
     except Exception as error:
         append_log(f"agent monitoring unavailable: {error}")
         return None
@@ -1138,26 +397,6 @@ def append_log(message: str) -> None:
     timestamp = datetime.now().strftime("%H:%M:%S")
     logs.append(f"[{timestamp}] Ksylian/API {message}")
     del logs[:-80]
-
-
-def load_settings() -> dict[str, str]:
-    if not SETTINGS_PATH.exists():
-        return {}
-
-    try:
-        data = json.loads(SETTINGS_PATH.read_text())
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-    if not isinstance(data, dict):
-        return {}
-    return {str(key): str(value) for key, value in data.items() if isinstance(value, str)}
-
-
-def save_settings(data: dict[str, str]) -> None:
-    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-    SETTINGS_PATH.chmod(0o600)
 
 
 def curseforge_api_key() -> str:
@@ -1600,8 +839,7 @@ def restart_agent() -> AgentStatus:
         )
 
     try:
-        response = agent_post("/agent/actions/restart")
-        response.raise_for_status()
+        agent_client.restart()
     except Exception as error:
         append_log(f"agent restart failed: {error}")
         raise HTTPException(status_code=502, detail="Host agent restart failed") from error
@@ -1613,21 +851,7 @@ def restart_agent() -> AgentStatus:
 def create_server(payload: CreateServerRequest) -> GameServer:
     if AGENT_URL:
         try:
-            response = agent_post("/servers", json={
-                "name": payload.name,
-                "type": payload.type,
-                "version": payload.version,
-                "min_ram": payload.min_ram,
-                "max_ram": payload.max_ram,
-                "java_runtime": payload.java_runtime,
-                "jvm_args": payload.jvm_args,
-                "cpu_limit": payload.cpu_limit,
-                "loader_version": payload.loader_version,
-                "installer_version": payload.installer_version,
-                "install_fabric_api": payload.install_fabric_api,
-            })
-            response.raise_for_status()
-            server = GameServer(**response.json())
+            server = agent_client.create_server(payload)
             append_log(f"{server.name}: server provisioned by agent")
             return server
         except Exception as error:
@@ -1661,10 +885,9 @@ def create_server(payload: CreateServerRequest) -> GameServer:
 def delete_server(server_id: str) -> dict[str, bool]:
     if AGENT_URL:
         try:
-            response = agent_delete(f"/servers/{server_id}")
-            response.raise_for_status()
+            result = agent_client.delete_server(server_id)
             append_log(f"{server_id}: server stopped, disabled and hidden from panel")
-            return response.json()
+            return result
         except Exception as error:
             append_log(f"agent delete failed for {server_id}: {error}")
             raise HTTPException(status_code=502, detail="Host agent delete failed") from error
@@ -1680,12 +903,9 @@ def delete_server(server_id: str) -> dict[str, bool]:
 def run_server_action(server_id: str, action: ServerAction) -> ActionResult:
     if AGENT_URL:
         try:
-            response = agent_post(f"/servers/{server_id}/actions/{action.value}")
-            response.raise_for_status()
-            data = response.json()
-            server = GameServer(**data["server"])
-            append_log(data["message"])
-            return ActionResult(ok=True, message=data["message"], server=server)
+            result = agent_client.server_action(server_id, action)
+            append_log(result.message)
+            return result
         except Exception as error:
             append_log(f"agent action failed for {server_id}: {error}")
             raise HTTPException(status_code=502, detail="Host agent action failed") from error
@@ -1822,9 +1042,7 @@ def list_server_crash_reports(server_id: str) -> list[CrashReportItem]:
 def get_server_config(server_id: str) -> ServerConfigPayload:
     if AGENT_URL:
         try:
-            response = agent_get(f"/servers/{server_id}/config")
-            response.raise_for_status()
-            return ServerConfigPayload(**response.json())
+            return agent_client.server_config(server_id)
         except Exception as error:
             append_log(f"agent config read failed for {server_id}: {error}")
             raise HTTPException(status_code=502, detail="Host agent config read failed") from error
@@ -1848,10 +1066,9 @@ def get_server_config(server_id: str) -> ServerConfigPayload:
 def update_server_config(server_id: str, payload: ServerConfigPayload) -> ServerConfigPayload:
     if AGENT_URL:
         try:
-            response = agent_put(f"/servers/{server_id}/config", json=payload.model_dump())
-            response.raise_for_status()
+            updated = agent_client.update_server_config(server_id, payload)
             append_log(f"{server_id}: server.properties updated")
-            return ServerConfigPayload(**response.json())
+            return updated
         except Exception as error:
             append_log(f"agent config save failed for {server_id}: {error}")
             raise HTTPException(status_code=502, detail="Host agent config save failed") from error
@@ -2110,9 +1327,7 @@ def apply_update(payload: ApplyUpdateRequest) -> ApplyUpdateResult:
         raise HTTPException(status_code=503, detail="Updater is not ready")
 
     try:
-        response = agent_post("/app/update", json={"target_version": target_version})
-        response.raise_for_status()
-        data = response.json()
+        data = agent_client.apply_update(target_version)
     except Exception as error:
         append_log(f"app update failed: {error}")
         raise HTTPException(status_code=502, detail="Host agent update failed") from error

@@ -30,14 +30,14 @@ from ksylian_agent_app.main import app
 
 ## Backend
 
-Backend пока сохраняет совместимый `backend/app/main.py`, но низкоуровневый HTTP-доступ к agent вынесен в `backend/app/agent_client.py`.
+Backend пока сохраняет совместимый `backend/app/main.py`, но ключевые домены уже отделены:
 
-Следующие границы для декомпозиции:
+- `schemas.py` — Pydantic-модели и enum-ы публичного API.
+- `settings.py` — env-конфиг, константы и JSON settings helpers.
+- `auth.py` — пользователи, invite, SQLite init/migration и token auth helpers.
+- `agent_client.py` — единая typed-точка для всех запросов к host agent.
 
-- `schemas.py` для Pydantic-моделей.
-- `auth.py` и `db.py` для пользователей, invite и SQLite.
-- `settings.py` для настроек и секретов.
-- `routes/` для групп API.
+Следующий безопасный шаг — перенести handlers из `main.py` в `routes/` по группам: auth/users, dashboard/monitoring, servers, files/mods/backups, settings/update.
 
 ## Frontend
 
