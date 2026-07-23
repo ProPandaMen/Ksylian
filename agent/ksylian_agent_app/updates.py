@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import re
-import shlex
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
 
-from .config import APP_COMPOSE_FILE, APP_DIR, APP_ENV_FILE, DATA_DIR, UPDATE_LOG
+from .config import APP_COMPOSE_FILE, APP_DIR, APP_ENV_FILE, APP_UPDATE_SCRIPT, DATA_DIR, UPDATE_LOG
 
 
 def append_update_log(message: str) -> None:
@@ -32,38 +31,10 @@ def ensure_updater_configured() -> None:
         )
     if not APP_COMPOSE_FILE.exists():
         raise HTTPException(status_code=409, detail=f"Docker compose file was not found: {APP_COMPOSE_FILE}")
+    if not APP_UPDATE_SCRIPT.exists():
+        raise HTTPException(status_code=409, detail=f"Update script was not found: {APP_UPDATE_SCRIPT}")
 
 
 def update_script_path() -> Path:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    script_path = DATA_DIR / "apply-update.sh"
-    script_path.write_text(
-        "\n".join(
-            [
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                'TARGET_VERSION="$1"',
-                f"APP_DIR={shlex.quote(str(APP_DIR))}",
-                f"ENV_FILE={shlex.quote(str(APP_ENV_FILE))}",
-                f"COMPOSE_FILE={shlex.quote(str(APP_COMPOSE_FILE))}",
-                f"LOG_FILE={shlex.quote(str(UPDATE_LOG))}",
-                'log() { printf "[%s] %s\\n" "$(date +%F\\ %T)" "$*" >> "$LOG_FILE"; }',
-                'log "Starting update to ${TARGET_VERSION}"',
-                'cd "$APP_DIR"',
-                "git fetch --tags origin",
-                'git checkout --force "$TARGET_VERSION"',
-                'SHA="$(git rev-parse --short HEAD)"',
-                'test -f "$ENV_FILE" || cp deploy/.env.example "$ENV_FILE"',
-                'sed -i "s/^KSYLIAN_BUILD_VERSION=.*/KSYLIAN_BUILD_VERSION=${TARGET_VERSION}/" "$ENV_FILE"',
-                'sed -i "s/^KSYLIAN_BUILD_SHA=.*/KSYLIAN_BUILD_SHA=${SHA}/" "$ENV_FILE"',
-                'docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build',
-                "docker image prune -f >/dev/null || true",
-                'log "Update to ${TARGET_VERSION} completed (${SHA})"',
-                "",
-            ]
-        )
-    )
-    script_path.chmod(0o700)
-    return script_path
-
+    return APP_UPDATE_SCRIPT
 

@@ -133,6 +133,32 @@ cp .env.example .env
 - сбор метрик хоста;
 - подготовку бэкапов.
 
+## Обновление панели
+
+Ksylian обновляется через release tags вида `v0.6.6`. Текущая версия хранится в [VERSION](./VERSION), а `deploy/.env` получает `KSYLIAN_BUILD_VERSION` и `KSYLIAN_BUILD_SHA` во время обновления.
+
+Основной способ обновления — из админки:
+
+1. Открой `Настройки`.
+2. Нажми проверку обновлений.
+3. Если доступен новый release tag, запусти обновление.
+
+Backend отправит команду Host Agent, а Host Agent выполнит [deploy/scripts/update-ksylian.sh](./deploy/scripts/update-ksylian.sh). Этот же скрипт можно запускать вручную на сервере:
+
+```bash
+cd /opt/ksylian
+sudo deploy/scripts/update-ksylian.sh v0.6.6
+```
+
+Если версию не передать, скрипт возьмёт последний локально доступный git tag после `git fetch --tags`:
+
+```bash
+cd /opt/ksylian
+sudo deploy/scripts/update-ksylian.sh
+```
+
+Старый деплой через self-hosted GitHub Runner удалён: первоначальная разработка больше не привязана к автодеплою из GitHub Actions. Для production-обновлений используются только админка или терминальный скрипт.
+
 ## Локальная разработка
 
 Backend:

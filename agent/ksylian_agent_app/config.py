@@ -39,6 +39,7 @@ SERVER_ROOT = Path(os.getenv("KSYLIAN_SERVER_ROOT", "/opt/ksylian/servers"))
 APP_DIR = Path(os.getenv("KSYLIAN_APP_DIR", "/opt/ksylian"))
 APP_ENV_FILE = Path(os.getenv("KSYLIAN_ENV_FILE", str(APP_DIR / "deploy/.env")))
 APP_COMPOSE_FILE = Path(os.getenv("KSYLIAN_COMPOSE_FILE", str(APP_DIR / "deploy/docker-compose.yml")))
+APP_UPDATE_SCRIPT = Path(os.getenv("KSYLIAN_UPDATE_SCRIPT", str(APP_DIR / "deploy/scripts/update-ksylian.sh")))
 UPDATE_LOG = DATA_DIR / "update.log"
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
 ACTION_LOG = DATA_DIR / "actions.log"

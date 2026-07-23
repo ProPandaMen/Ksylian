@@ -57,6 +57,7 @@ Environment=KSYLIAN_JAVA_21=${KSYLIAN_JAVA_21:-}
 Environment=KSYLIAN_APP_DIR=${KSYLIAN_APP_DIR:-/opt/ksylian}
 Environment=KSYLIAN_ENV_FILE=${KSYLIAN_ENV_FILE:-/opt/ksylian/deploy/.env}
 Environment=KSYLIAN_COMPOSE_FILE=${KSYLIAN_COMPOSE_FILE:-/opt/ksylian/deploy/docker-compose.yml}
+Environment=KSYLIAN_UPDATE_SCRIPT=${KSYLIAN_UPDATE_SCRIPT:-/opt/ksylian/deploy/scripts/update-ksylian.sh}
 ExecStart=$APP_DIR/.venv/bin/uvicorn ksylian_agent:app --host $AGENT_HOST --port 8765
 Restart=always
 RestartSec=3
