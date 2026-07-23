@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Cpu, Gauge, HardDrive, MemoryStick, Network, ServerCog } from "@lucide/vue";
+import { computed } from "vue";
+import { AlertTriangle, CheckCircle2, Cpu, Gauge, HardDrive, MemoryStick, Network, ServerCog } from "@lucide/vue";
 import type { DiskUsage, HostMonitoring, MonitoringHistoryPoint, ServerState } from "../types";
 
-defineProps<{
+const props = defineProps<{
   monitoring: HostMonitoring;
   metricHistory: MonitoringHistoryPoint[];
   monitoringStatus: { label: string; tone: string };
@@ -10,6 +11,7 @@ defineProps<{
 }>();
 
 type MetricKey = "cpu" | "memory" | "swap" | "temperature";
+type InsightTone = "ok" | "warning" | "danger";
 
 function clampPercent(percent: number) {
   return Math.min(100, Math.max(0, Math.round(percent)));
@@ -72,6 +74,102 @@ function compactIps(ips: string[]) {
   }
   return ips.slice(0, 2).join(" · ");
 }
+
+function trendLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
+  const values = chartValues(history, key);
+  if (values.length < 4) {
+    return "тренд появится после нескольких снимков";
+  }
+  const start = values.slice(0, Math.max(1, Math.floor(values.length / 3)));
+  const end = values.slice(-Math.max(1, Math.floor(values.length / 3)));
+  const startAverage = start.reduce((sum, value) => sum + value, 0) / start.length;
+  const endAverage = end.reduce((sum, value) => sum + value, 0) / end.length;
+  const delta = Math.round(endAverage - startAverage);
+  if (Math.abs(delta) < 4) {
+    return "стабильно";
+  }
+  return delta > 0 ? `растёт на ${delta}%` : `снижается на ${Math.abs(delta)}%`;
+}
+
+const monitoringInsights = computed(() => {
+  const monitoring = props.monitoring;
+  const insights: Array<{ tone: InsightTone; title: string; detail: string }> = [];
+
+  if (monitoring.cpu_percent >= 90) {
+    insights.push({
+      tone: "danger",
+      title: "CPU близко к пределу",
+      detail: `${monitoring.cpu_percent}% сейчас · ${trendLabel(props.metricHistory, "cpu")}`,
+    });
+  } else if (monitoring.cpu_percent >= 75) {
+    insights.push({
+      tone: "warning",
+      title: "CPU требует внимания",
+      detail: `${monitoring.cpu_percent}% сейчас · ${trendLabel(props.metricHistory, "cpu")}`,
+    });
+  }
+
+  if (monitoring.memory.percent >= 90) {
+    insights.push({
+      tone: "danger",
+      title: "RAM почти исчерпана",
+      detail: `${monitoring.memory.used_label} из ${monitoring.memory.total_label} · ${trendLabel(props.metricHistory, "memory")}`,
+    });
+  } else if (monitoring.memory.percent >= 75) {
+    insights.push({
+      tone: "warning",
+      title: "RAM растёт",
+      detail: `${monitoring.memory.percent}% занято · ${trendLabel(props.metricHistory, "memory")}`,
+    });
+  }
+
+  if (monitoring.swap.percent >= 50) {
+    insights.push({
+      tone: monitoring.swap.percent >= 75 ? "danger" : "warning",
+      title: "Активно используется Swap",
+      detail: `${monitoring.swap.used_label} из ${monitoring.swap.total_label}`,
+    });
+  }
+
+  monitoring.disks
+    .filter((disk) => disk.percent >= 75)
+    .slice(0, 3)
+    .forEach((disk) => {
+      insights.push({
+        tone: disk.percent >= 90 ? "danger" : "warning",
+        title: `Диск ${disk.mount} заполнен`,
+        detail: `${clampPercent(disk.percent)}% занято · свободно ${freeLabel(disk)}`,
+      });
+    });
+
+  const unhealthyServices = monitoring.services.filter((service) => service.state !== "running");
+  if (unhealthyServices.length) {
+    insights.push({
+      tone: "warning",
+      title: "Есть неработающие сервисы",
+      detail: unhealthyServices.map((service) => service.name).slice(0, 3).join(", "),
+    });
+  }
+
+  const hotProcess = monitoring.top_processes.find((process) => process.cpu >= 75);
+  if (hotProcess) {
+    insights.push({
+      tone: hotProcess.cpu >= 90 ? "danger" : "warning",
+      title: "Процесс забирает CPU",
+      detail: `${hotProcess.name} · ${hotProcess.cpu}% CPU · PID ${hotProcess.pid}`,
+    });
+  }
+
+  if (!insights.length) {
+    insights.push({
+      tone: "ok",
+      title: "Критичных признаков нет",
+      detail: "CPU, RAM, диски и сервисы выглядят штатно на последнем снимке.",
+    });
+  }
+
+  return insights.slice(0, 5);
+});
 
 function chartValues(history: MonitoringHistoryPoint[], key: MetricKey) {
   const values = history
@@ -202,6 +300,26 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
             <path class="resource-chart-line" :d="chartPath(metricHistory, 'temperature')" />
           </svg>
           <small>{{ monitoring.collected_at || 'только что' }}</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="monitor-section" aria-label="Что требует внимания">
+      <div class="monitor-section-head">
+        <div>
+          <h3>Требует внимания</h3>
+          <p>Автоматическая интерпретация последнего снимка</p>
+        </div>
+      </div>
+
+      <div class="monitor-insight-list">
+        <article v-for="insight in monitoringInsights" :key="`${insight.title}-${insight.detail}`" class="monitor-insight-card" :class="insight.tone">
+          <CheckCircle2 v-if="insight.tone === 'ok'" :size="18" />
+          <AlertTriangle v-else :size="18" />
+          <div>
+            <strong>{{ insight.title }}</strong>
+            <span>{{ insight.detail }}</span>
+          </div>
         </article>
       </div>
     </section>

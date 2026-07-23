@@ -303,6 +303,69 @@
   text-align: right;
 }
 
+.monitor-insight-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.monitor-insight-card {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 96px;
+  padding: 14px;
+  border: 1px solid rgba(107, 114, 128, 0.1);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-surface-soft) 52%, transparent);
+  box-shadow:
+    4px 4px 10px color-mix(in srgb, var(--app-inset-dark) 58%, transparent),
+    -4px -4px 10px color-mix(in srgb, var(--app-inset-light) 54%, transparent);
+}
+
+.monitor-insight-card svg {
+  color: var(--insight-tone, var(--app-accent));
+}
+
+.monitor-insight-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.monitor-insight-card strong,
+.monitor-insight-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monitor-insight-card strong {
+  color: var(--app-text);
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.monitor-insight-card span {
+  color: var(--app-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.monitor-insight-card.ok {
+  --insight-tone: #237069;
+}
+
+.monitor-insight-card.warning {
+  --insight-tone: #8c611d;
+}
+
+.monitor-insight-card.danger {
+  --insight-tone: var(--app-danger);
+}
+
 .monitor-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(380px, 0.75fr);
