@@ -30,6 +30,9 @@ from ..schemas import (
     ModBulkInstallRequest,
     ModInstallRequest,
     ModOperationRequest,
+    PlayerActionRequest,
+    PlayerActionResult,
+    PlayerListPayload,
     RconCommandPayload,
     RconCommandResult,
     RestoreRequest,
@@ -62,6 +65,7 @@ def create_servers_router(**deps) -> APIRouter:
     import_build = deps["import_build"]
     import_existing_server = deps["import_existing_server"]
     list_server_files = deps["list_server_files"]
+    list_players = deps["list_players"]
     load_server_or_404 = deps["load_server_or_404"]
     load_server_store = deps["load_server_store"]
     managed_server_path = deps["managed_server_path"]
@@ -82,6 +86,7 @@ def create_servers_router(**deps) -> APIRouter:
     manifest_history_dir = deps["manifest_history_dir"]
     preview_existing_server = deps["preview_existing_server"]
     read_manifest = deps["read_manifest"]
+    run_player_action = deps["run_player_action"]
     safe_update_modpack = deps["safe_update_modpack"]
     save_manifest = deps["save_manifest"]
     run = deps["run"]
@@ -290,6 +295,27 @@ def create_servers_router(**deps) -> APIRouter:
         output = execute_rcon(config, command)
         append_action_log("server_rcon_command", server_id, command)
         return RconCommandResult(ok=True, output=output)
+
+
+    @router.get("/servers/{server_id}/players", response_model=PlayerListPayload)
+    def server_players(
+        server_id: str,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> PlayerListPayload:
+        require_token(x_ksylian_token)
+        return list_players(load_server_or_404(server_id))
+
+
+    @router.post("/servers/{server_id}/players/actions", response_model=PlayerActionResult)
+    def server_player_action(
+        server_id: str,
+        payload: PlayerActionRequest,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> PlayerActionResult:
+        require_token(x_ksylian_token)
+        result = run_player_action(load_server_or_404(server_id), payload)
+        append_action_log(f"server_player_{payload.action}", server_id, payload.player)
+        return result
 
 
     @router.put("/servers/{server_id}/config", response_model=ServerConfigPayload)

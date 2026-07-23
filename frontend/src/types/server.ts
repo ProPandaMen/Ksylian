@@ -99,6 +99,57 @@ export interface RconCommandResult {
   output: string;
 }
 
+export interface GamePlayer {
+  name: string;
+  uuid: string;
+  online: boolean;
+  ping: string;
+  game_time: string;
+  last_seen: string;
+  whitelisted: boolean;
+  operator: boolean;
+  banned: boolean;
+  ip_banned: boolean;
+  luckperms_groups: string[];
+}
+
+export interface PlayerHistoryItem {
+  at: string;
+  player: string;
+  action: string;
+  detail: string;
+  actor: string;
+}
+
+export interface PlayerListPayload {
+  online: GamePlayer[];
+  known: GamePlayer[];
+  history: PlayerHistoryItem[];
+  rcon_available: boolean;
+  game_time: string;
+}
+
+export interface PlayerActionRequest {
+  action:
+    | "whitelist_add"
+    | "whitelist_remove"
+    | "op"
+    | "deop"
+    | "ban"
+    | "pardon"
+    | "ban_ip"
+    | "pardon_ip"
+    | "kick"
+    | "message"
+    | "luckperms_group_add"
+    | "luckperms_group_remove"
+    | "luckperms_permission_set"
+    | "luckperms_permission_unset";
+  player: string;
+  value: string;
+  reason: string;
+}
+
 export interface ImportServerRequest {
   name: string;
   path: string;

@@ -25,6 +25,9 @@ from .schemas import (
     ModBulkInstallRequest,
     ModInstallRequest,
     ModOperationRequest,
+    PlayerActionRequest,
+    PlayerActionResult,
+    PlayerListPayload,
     RconCommandResult,
     RestoreRequest,
     ImportServerPreview,
@@ -126,6 +129,16 @@ class AgentClient:
         response = self.post(f"/servers/{server_id}/rcon/command", json={"command": command})
         response.raise_for_status()
         return RconCommandResult(**response.json())
+
+    def players(self, server_id: str) -> PlayerListPayload:
+        response = self.get(f"/servers/{server_id}/players")
+        response.raise_for_status()
+        return PlayerListPayload(**response.json())
+
+    def player_action(self, server_id: str, payload: PlayerActionRequest) -> PlayerActionResult:
+        response = self.post(f"/servers/{server_id}/players/actions", json=payload.model_dump())
+        response.raise_for_status()
+        return PlayerActionResult(**response.json())
 
     def backups(self) -> list[BackupItem]:
         response = self.get("/backups")

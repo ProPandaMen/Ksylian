@@ -30,6 +30,9 @@ from ..schemas import (
     ModBulkInstallRequest,
     ModInstallRequest,
     ModOperationRequest,
+    PlayerActionRequest,
+    PlayerActionResult,
+    PlayerListPayload,
     RconCommandPayload,
     RconCommandResult,
     RestoreRequest,
@@ -355,6 +358,31 @@ def create_servers_router(
                 raise HTTPException(status_code=502, detail="Host agent RCON command failed") from error
         get_server(server_id)
         return RconCommandResult(ok=False, output="RCON is unavailable in local demo mode")
+
+
+    @router.get("/api/servers/{server_id}/players", response_model=PlayerListPayload)
+    def list_game_players(server_id: str) -> PlayerListPayload:
+        if not AGENT_URL:
+            get_server(server_id)
+            return PlayerListPayload(online=[], known=[], history=[], rcon_available=False)
+        try:
+            return agent_client.players(server_id)
+        except Exception as error:
+            append_log(f"agent players unavailable for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent player manager failed") from error
+
+
+    @router.post("/api/servers/{server_id}/players/actions", response_model=PlayerActionResult)
+    def run_player_action(server_id: str, payload: PlayerActionRequest) -> PlayerActionResult:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for player actions")
+        try:
+            result = agent_client.player_action(server_id, payload)
+            append_log(f"{server_id}: player action {payload.action} for {payload.player}")
+            return result
+        except Exception as error:
+            append_log(f"agent player action failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent player action failed") from error
 
 
     @router.get("/api/backups", response_model=list[BackupItem])

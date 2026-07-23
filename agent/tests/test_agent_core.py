@@ -19,7 +19,9 @@ from ksylian_agent_app.manifest import save_manifest
 from ksylian_agent_app.minecraft import normalize_cpu_limit, normalize_ram, ram_to_bytes
 from ksylian_agent_app.mods import mod_metadata_from_fabric, mod_metadata_from_toml, parse_mod_toml_fallback
 from ksylian_agent_app.mod_sources import write_mod_source
+from ksylian_agent_app.players import normalize_player_name, parse_online_players, player_action_command
 from ksylian_agent_app.schemas import StoredServer
+from ksylian_agent_app.schemas import PlayerActionRequest
 from ksylian_agent_app.security import ensure_child_path, is_relative_path
 from ksylian_agent_app.storage import slugify
 
@@ -164,6 +166,21 @@ class ImportPreviewTests(unittest.TestCase):
             self.assertEqual(preview.version, "1.20.1")
             self.assertEqual(preview.java_runtime, "17")
             self.assertEqual(preview.port, 25570)
+
+
+class PlayerHelperTests(unittest.TestCase):
+    def test_parse_online_players_from_rcon_list(self) -> None:
+        self.assertEqual(
+            parse_online_players("There are 2 of a max of 20 players online: Steve, Alex"),
+            ["Steve", "Alex"],
+        )
+
+    def test_player_name_validation_and_command(self) -> None:
+        self.assertEqual(normalize_player_name("Steve_123"), "Steve_123")
+        with self.assertRaises(Exception):
+            normalize_player_name("../bad")
+        command = player_action_command(PlayerActionRequest(action="kick", player="Steve", reason="AFK"))
+        self.assertEqual(command, "kick Steve AFK")
 
 
 if __name__ == "__main__":

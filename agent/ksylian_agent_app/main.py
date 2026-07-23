@@ -217,6 +217,7 @@ from .manifest import (
 )
 from .imports import import_existing_server, preview_existing_server
 from .safe_updates import safe_update_modpack
+from .players import list_players, run_player_action
 
 
 from .loaders import (
@@ -452,6 +453,7 @@ app.include_router(create_servers_router(
     import_build=import_build,
     import_existing_server=import_existing_server,
     list_server_files=list_server_files,
+    list_players=list_players,
     load_server_or_404=load_server_or_404,
     load_server_store=load_server_store,
     managed_server_path=managed_server_path,
@@ -472,6 +474,7 @@ app.include_router(create_servers_router(
     manifest_history_dir=manifest_history_dir,
     preview_existing_server=preview_existing_server,
     read_manifest=read_manifest,
+    run_player_action=run_player_action,
     safe_update_modpack=safe_update_modpack,
     save_manifest=save_manifest,
     run=run,

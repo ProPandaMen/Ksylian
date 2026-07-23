@@ -80,6 +80,65 @@ class RconCommandResult(BaseModel):
     output: str
 
 
+class GamePlayer(BaseModel):
+    name: str
+    uuid: str = ""
+    online: bool = False
+    ping: str = ""
+    game_time: str = ""
+    last_seen: str = ""
+    whitelisted: bool = False
+    operator: bool = False
+    banned: bool = False
+    ip_banned: bool = False
+    luckperms_groups: list[str] = Field(default_factory=list)
+
+
+class PlayerHistoryItem(BaseModel):
+    at: str
+    player: str
+    action: str
+    detail: str = ""
+    actor: str = "ksylian"
+
+
+class PlayerListPayload(BaseModel):
+    online: list[GamePlayer]
+    known: list[GamePlayer]
+    history: list[PlayerHistoryItem]
+    rcon_available: bool
+    game_time: str = ""
+
+
+class PlayerActionRequest(BaseModel):
+    action: Literal[
+        "whitelist_add",
+        "whitelist_remove",
+        "op",
+        "deop",
+        "ban",
+        "pardon",
+        "ban_ip",
+        "pardon_ip",
+        "kick",
+        "message",
+        "luckperms_group_add",
+        "luckperms_group_remove",
+        "luckperms_permission_set",
+        "luckperms_permission_unset",
+    ]
+    player: str
+    value: str = ""
+    reason: str = ""
+
+
+class PlayerActionResult(BaseModel):
+    ok: bool
+    message: str
+    output: str = ""
+    players: PlayerListPayload
+
+
 class BackupRequest(BaseModel):
     mode: Literal["live", "stopped"] = "live"
     parts: list[Literal["world", "mods", "config", "root"]] = Field(
