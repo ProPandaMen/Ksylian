@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import os
 import json
+import hashlib
 import re
+import secrets
 import shutil
 import shlex
 import socket
 import subprocess
 import tarfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -25,18 +28,21 @@ class AgentServer(BaseModel):
     name: str
     pack: str
     version: str
-    state: Literal["online", "deploying", "offline"]
+    state: Literal["installing", "stopped", "starting", "running", "stopping", "crashed", "updating", "backing_up"]
     players: str
     ram: str
     cpu: int
     disk: str
     address: str
+    exit_code: int | None = None
+    last_event: str = ""
+    warnings: list[str] = Field(default_factory=list)
 
 
 class StoredServer(BaseModel):
     id: str
     name: str
-    type: Literal["legacy", "vanilla", "fabric", "forge"]
+    type: Literal["legacy", "vanilla", "paper", "purpur", "fabric", "forge"]
     pack: str
     version: str
     port: int
@@ -47,12 +53,24 @@ class StoredServer(BaseModel):
     created_at: str
     managed: bool = False
     start_command: list[str] = Field(default_factory=list)
+    min_ram: str = "1G"
+    max_ram: str = "2G"
+    java_runtime: str = "auto"
+    jvm_args: list[str] = Field(default_factory=list)
+    cpu_limit: int = 100
+    rcon_port: int = 0
+    rcon_password: str = ""
 
 
 class CreateAgentServerRequest(BaseModel):
     name: str
-    type: Literal["vanilla", "fabric", "forge"]
+    type: Literal["vanilla", "paper", "purpur", "fabric", "forge"]
     version: str = "1.20.1"
+    min_ram: str = "1G"
+    max_ram: str = "2G"
+    java_runtime: str = "auto"
+    jvm_args: str = ""
+    cpu_limit: int = 100
 
 
 class AgentActionResult(BaseModel):
@@ -63,6 +81,28 @@ class AgentActionResult(BaseModel):
 
 class ServerConfigPayload(BaseModel):
     content: str
+
+
+class RconCommandPayload(BaseModel):
+    command: str
+
+
+class RconCommandResult(BaseModel):
+    ok: bool
+    output: str
+
+
+class CrashReportItem(BaseModel):
+    name: str
+    size: str
+    created: str
+    summary: str
+    probable_cause: str = ""
+    conflicting_mod: str = ""
+    missing_dependency: str = ""
+    client_only_mod: str = ""
+    stack_trace: list[str] = Field(default_factory=list)
+    recent_changes: list[str] = Field(default_factory=list)
 
 
 class AppUpdateRequest(BaseModel):
@@ -104,7 +144,7 @@ class ProcessUsage(BaseModel):
 class ServiceUsage(BaseModel):
     id: str
     name: str
-    state: Literal["online", "deploying", "offline"]
+    state: Literal["installing", "stopped", "starting", "running", "stopping", "crashed", "updating", "backing_up"]
     cpu: int
     ram: str
 
@@ -156,20 +196,49 @@ APP_ENV_FILE = Path(os.getenv("KSYLIAN_ENV_FILE", str(APP_DIR / "deploy/.env")))
 APP_COMPOSE_FILE = Path(os.getenv("KSYLIAN_COMPOSE_FILE", str(APP_DIR / "deploy/docker-compose.yml")))
 UPDATE_LOG = DATA_DIR / "update.log"
 TOKEN = os.getenv("KSYLIAN_AGENT_TOKEN", "")
+ACTION_LOG = DATA_DIR / "actions.log"
 PUBLIC_DOMAIN = os.getenv("KSYLIAN_PUBLIC_DOMAIN", os.getenv("KSYLIAN_PROXY_DOMAIN", "")).strip().lower().strip(".")
 PROXY_DOMAIN = os.getenv("KSYLIAN_PROXY_DOMAIN", PUBLIC_DOMAIN).strip().lower().strip(".")
 PROXY_PORT = os.getenv("KSYLIAN_PROXY_PORT", "25565")
+MINECRAFT_USER = os.getenv("KSYLIAN_MINECRAFT_USER", "ksylian-minecraft")
+RATE_LIMIT_REQUESTS = int(os.getenv("KSYLIAN_AGENT_RATE_LIMIT_REQUESTS", "240"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("KSYLIAN_AGENT_RATE_LIMIT_WINDOW_SECONDS", "60"))
 MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 FABRIC_META_API_URL = "https://meta.fabricmc.net/v2"
 FORGE_MAVEN_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge"
+PAPER_API_URL = "https://fill.papermc.io/v3/projects/paper"
+PURPUR_API_URL = "https://api.purpurmc.org/v2/purpur"
+AGENT_USER_AGENT = "Ksylian/0.1 (https://github.com/ProPandaMen/Ksylian)"
 SYSTEMD_DIR = Path("/etc/systemd/system")
 
 app = FastAPI(title="Ksylian Host Agent", version="0.1.0")
+rate_limit_buckets: dict[str, list[float]] = {}
+server_runtime_states: dict[str, str] = {}
+
+
+@app.on_event("startup")
+def ensure_agent_token_configured() -> None:
+    if not TOKEN:
+        raise RuntimeError("KSYLIAN_AGENT_TOKEN is required")
 
 
 def require_token(x_ksylian_token: str | None = Header(default=None)) -> None:
-    if TOKEN and x_ksylian_token != TOKEN:
+    if not TOKEN:
+        raise HTTPException(status_code=503, detail="Agent token is not configured")
+    if not x_ksylian_token or not secrets.compare_digest(x_ksylian_token, TOKEN):
         raise HTTPException(status_code=401, detail="Invalid agent token")
+    enforce_rate_limit("agent-api")
+
+
+def enforce_rate_limit(key: str) -> None:
+    now = time.monotonic()
+    window_start = now - RATE_LIMIT_WINDOW_SECONDS
+    bucket = [timestamp for timestamp in rate_limit_buckets.get(key, []) if timestamp >= window_start]
+    if len(bucket) >= RATE_LIMIT_REQUESTS:
+        rate_limit_buckets[key] = bucket
+        raise HTTPException(status_code=429, detail="Too many requests")
+    bucket.append(now)
+    rate_limit_buckets[key] = bucket
 
 
 def run(command: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str]:
@@ -207,6 +276,28 @@ def minecraft_packet(packet_id: int, payload: bytes = b"") -> bytes:
     return encode_varint(len(body)) + body
 
 
+def rcon_packet(request_id: int, packet_type: int, payload: str) -> bytes:
+    body = (
+        request_id.to_bytes(4, "little", signed=True)
+        + packet_type.to_bytes(4, "little", signed=True)
+        + payload.encode("utf-8")
+        + b"\x00\x00"
+    )
+    return len(body).to_bytes(4, "little", signed=True) + body
+
+
+def read_rcon_packet(sock: socket.socket) -> tuple[int, int, str]:
+    length_bytes = read_exact(sock, 4)
+    length = int.from_bytes(length_bytes, "little", signed=True)
+    if length < 10 or length > 4 * 1024 * 1024:
+        raise OSError("Invalid RCON packet length")
+    body = read_exact(sock, length)
+    request_id = int.from_bytes(body[0:4], "little", signed=True)
+    packet_type = int.from_bytes(body[4:8], "little", signed=True)
+    payload = body[8:-2].decode("utf-8", errors="replace")
+    return request_id, packet_type, payload
+
+
 def minecraft_utf(value: str) -> bytes:
     encoded = value.encode("utf-8")
     return encode_varint(len(encoded)) + encoded
@@ -217,6 +308,44 @@ def append_update_log(message: str) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with UPDATE_LOG.open("a") as file:
         file.write(f"[{timestamp}] {message}\n")
+
+
+def append_action_log(action: str, server_id: str = "-", detail: str = "") -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "at": datetime.now().isoformat(timespec="seconds"),
+        "action": action,
+        "server_id": server_id,
+        "detail": detail,
+    }
+    with ACTION_LOG.open("a") as file:
+        file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def is_relative_path(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def ensure_child_path(root: Path, *parts: str) -> Path:
+    candidate = root.joinpath(*parts).resolve()
+    if candidate != root.resolve() and is_relative_path(candidate, root):
+        return candidate
+    raise HTTPException(status_code=400, detail="Path is outside allowed directory")
+
+
+def managed_server_path(server_id: str) -> Path:
+    return ensure_child_path(SERVER_ROOT, server_id)
+
+
+def server_base_path(server: StoredServer) -> Path:
+    path = Path(server.path).resolve()
+    if server.managed and not is_relative_path(path, SERVER_ROOT):
+        raise HTTPException(status_code=409, detail="Managed server path is outside allowed directory")
+    return path
 
 
 def validate_update_target(target_version: str) -> str:
@@ -327,6 +456,8 @@ def load_server_store() -> dict[str, StoredServer]:
             server = StoredServer(**item)
         except Exception:
             continue
+        if server.managed and not is_relative_path(Path(server.path), SERVER_ROOT):
+            continue
         result[server.id] = server
     return result
 
@@ -335,6 +466,7 @@ def save_server_store(servers: dict[str, StoredServer]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     payload = [server.model_dump() for server in sorted(servers.values(), key=lambda item: item.created_at)]
     SERVERS_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+    SERVERS_FILE.chmod(0o600)
 
 
 def slugify(value: str) -> str:
@@ -371,6 +503,10 @@ def allocate_port(servers: dict[str, StoredServer], start: int = 25565) -> int:
 def server_type_label(server_type: str) -> str:
     if server_type == "vanilla":
         return "Vanilla"
+    if server_type == "paper":
+        return "Paper"
+    if server_type == "purpur":
+        return "Purpur"
     if server_type == "fabric":
         return "Fabric"
     if server_type == "forge":
@@ -378,8 +514,70 @@ def server_type_label(server_type: str) -> str:
     return server_type
 
 
+def normalize_ram(value: str, fallback: str) -> str:
+    candidate = value.strip().upper().replace(" ", "")
+    if re.fullmatch(r"[1-9][0-9]*(M|G)", candidate):
+        return candidate
+    return fallback
+
+
+def ram_to_bytes(value: str) -> int:
+    normalized = normalize_ram(value, "0M")
+    amount = int(normalized[:-1])
+    return amount * (1024**3 if normalized.endswith("G") else 1024**2)
+
+
+def normalize_cpu_limit(value: int) -> int:
+    return max(10, min(int(value or 100), 400))
+
+
+def normalize_jvm_args(value: str) -> list[str]:
+    try:
+        args = shlex.split(value)
+    except ValueError:
+        return []
+    forbidden_prefixes = ("-jar", "-cp", "-classpath", "@")
+    return [arg for arg in args if not arg.startswith(forbidden_prefixes) and "\x00" not in arg][:24]
+
+
+def ensure_disk_space_for_server(server: StoredServer) -> None:
+    SERVER_ROOT.mkdir(parents=True, exist_ok=True)
+    usage = shutil.disk_usage(SERVER_ROOT)
+    required = max(2 * 1024**3, ram_to_bytes(server.max_ram))
+    if usage.free < required:
+        raise HTTPException(
+            status_code=507,
+            detail=f"Not enough free disk space. Need at least {format_bytes(required)}, available {format_bytes(usage.free)}",
+        )
+
+
+def server_warnings(server: StoredServer) -> list[str]:
+    warnings: list[str] = []
+    try:
+        usage = shutil.disk_usage(server_base_path(server) if Path(server.path).exists() else SERVER_ROOT)
+        if usage.free < max(2 * 1024**3, ram_to_bytes(server.max_ram)):
+            warnings.append("Мало свободного места на диске")
+    except OSError:
+        warnings.append("Не удалось проверить свободное место")
+    if ram_to_bytes(server.max_ram) > shutil.disk_usage(SERVER_ROOT).free:
+        warnings.append("Лимит RAM больше текущего свободного места на диске")
+    if service_state(server.service) == "running" and minecraft_player_status(server.port) == "-":
+        warnings.append("Процесс запущен, но Minecraft status ping не отвечает")
+    return warnings
+
+
+def start_command_for_server(server: StoredServer, java: str) -> list[str]:
+    min_ram = normalize_ram(server.min_ram, "1G")
+    max_ram = normalize_ram(server.max_ram, "2G")
+    return [java, f"-Xms{min_ram}", f"-Xmx{max_ram}", *server.jvm_args, "-jar", "server.jar", "nogui"]
+
+
 def write_server_scaffold(server: StoredServer) -> None:
-    server_path = Path(server.path)
+    server_path = server_base_path(server)
+    if not server.rcon_password:
+        server.rcon_password = secrets.token_urlsafe(24)
+    if not server.rcon_port:
+        server.rcon_port = min(server.port + 10000, 65535)
     server_path.mkdir(parents=True, exist_ok=True)
     (server_path / "mods").mkdir(exist_ok=True)
     (server_path / "logs").mkdir(exist_ok=True)
@@ -397,6 +595,9 @@ def write_server_scaffold(server: StoredServer) -> None:
                     f"motd={server.name}",
                     "enable-query=false",
                     "online-mode=true",
+                    "enable-rcon=true",
+                    f"rcon.port={server.rcon_port}",
+                    f"rcon.password={server.rcon_password}",
                     "max-players=20",
                     "view-distance=10",
                     "simulation-distance=10",
@@ -408,7 +609,7 @@ def write_server_scaffold(server: StoredServer) -> None:
 
 
 def request_json(url: str, timeout: int = 30) -> Any:
-    request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
+    request = urllib.request.Request(url, headers={"User-Agent": AGENT_USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -419,7 +620,7 @@ def request_json(url: str, timeout: int = 30) -> Any:
 
 
 def request_text(url: str, timeout: int = 30) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
+    request = urllib.request.Request(url, headers={"User-Agent": AGENT_USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read().decode("utf-8")
@@ -429,20 +630,58 @@ def request_text(url: str, timeout: int = 30) -> str:
         raise HTTPException(status_code=502, detail=f"Download metadata request failed: {error}") from error
 
 
-def download_file(url: str, destination: Path) -> None:
+def file_digest(path: Path, algorithm: str) -> str:
+    digest = hashlib.new(algorithm)
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download_file(
+    url: str,
+    destination: Path,
+    *,
+    md5: str = "",
+    sha1: str = "",
+    sha256: str = "",
+    minimum_size: int = 1024,
+) -> None:
+    if not is_relative_path(destination, SERVER_ROOT):
+        raise HTTPException(status_code=400, detail="Download destination is outside allowed directory")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(f"{destination.suffix}.tmp")
-    request = urllib.request.Request(url, headers={"User-Agent": "Ksylian-Agent/0.1"})
-    try:
-        with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as file:
-            shutil.copyfileobj(response, file)
-        temporary.replace(destination)
-    except urllib.error.HTTPError as error:
-        temporary.unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail=f"Server jar download failed: HTTP {error.code}") from error
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
-        temporary.unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail=f"Server jar download failed: {error}") from error
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        request = urllib.request.Request(url, headers={"User-Agent": AGENT_USER_AGENT})
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as file:
+                shutil.copyfileobj(response, file)
+            if temporary.stat().st_size < minimum_size:
+                raise OSError("downloaded file is unexpectedly small")
+            if md5 and file_digest(temporary, "md5").lower() != md5.lower():
+                raise OSError("downloaded file md5 checksum mismatch")
+            if sha1 and file_digest(temporary, "sha1").lower() != sha1.lower():
+                raise OSError("downloaded file sha1 checksum mismatch")
+            if sha256 and file_digest(temporary, "sha256").lower() != sha256.lower():
+                raise OSError("downloaded file sha256 checksum mismatch")
+            temporary.replace(destination)
+            return
+        except urllib.error.HTTPError as error:
+            temporary.unlink(missing_ok=True)
+            last_error = error
+            if error.code < 500:
+                break
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            temporary.unlink(missing_ok=True)
+            last_error = error
+        if attempt < 2:
+            time.sleep(1 + attempt)
+
+    if isinstance(last_error, urllib.error.HTTPError):
+        raise HTTPException(status_code=502, detail=f"Server jar download failed: HTTP {last_error.code}") from last_error
+    raise HTTPException(status_code=502, detail=f"Server jar download failed: {last_error}") from last_error
 
 
 def download_vanilla_server_jar(version: str, destination: Path) -> None:
@@ -462,10 +701,43 @@ def download_vanilla_server_jar(version: str, destination: Path) -> None:
     metadata = request_json(version_url)
     server_download = metadata.get("downloads", {}).get("server", {})
     server_url = str(server_download.get("url") or "")
+    server_sha1 = str(server_download.get("sha1") or "")
     if not server_url:
         raise HTTPException(status_code=404, detail=f"Server jar for Minecraft {version} was not found")
 
-    download_file(server_url, destination)
+    download_file(server_url, destination, sha1=server_sha1)
+
+
+def download_paper_server_jar(version: str, destination: Path) -> None:
+    builds = request_json(f"{PAPER_API_URL}/versions/{version}/builds")
+    if not isinstance(builds, list) or not builds:
+        raise HTTPException(status_code=404, detail=f"Paper build for Minecraft {version} was not found")
+
+    selected = next((item for item in builds if isinstance(item, dict) and item.get("channel") == "STABLE"), None)
+    if selected is None:
+        selected = next((item for item in builds if isinstance(item, dict)), None)
+    if selected is None:
+        raise HTTPException(status_code=404, detail=f"Paper build for Minecraft {version} was not found")
+
+    download = selected.get("downloads", {}).get("server:default", {})
+    download_url = str(download.get("url") or "")
+    checksum = str(download.get("checksums", {}).get("sha256") or "")
+    if not download_url:
+        raise HTTPException(status_code=404, detail=f"Paper server jar for Minecraft {version} was not found")
+
+    download_file(download_url, destination, sha256=checksum)
+
+
+def download_purpur_server_jar(version: str, destination: Path) -> None:
+    metadata = request_json(f"{PURPUR_API_URL}/{version}")
+    builds = metadata.get("builds") if isinstance(metadata, dict) else None
+    latest = str(builds.get("latest") or "") if isinstance(builds, dict) else ""
+    if not latest:
+        raise HTTPException(status_code=404, detail=f"Purpur build for Minecraft {version} was not found")
+
+    build_metadata = request_json(f"{PURPUR_API_URL}/{version}/{latest}")
+    checksum = str(build_metadata.get("md5") or "") if isinstance(build_metadata, dict) else ""
+    download_file(f"{PURPUR_API_URL}/{version}/{latest}/download", destination, md5=checksum)
 
 
 def latest_fabric_component(path: str, label: str) -> str:
@@ -522,13 +794,83 @@ def latest_forge_version(minecraft_version: str) -> str:
     return matches[-1]
 
 
+def minecraft_version_key(version: str) -> tuple[int, int, int]:
+    match = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?", version)
+    if not match:
+        return (0, 0, 0)
+    return tuple(int(part or 0) for part in match.groups())
+
+
+def required_java_major(minecraft_version: str) -> int:
+    version = minecraft_version_key(minecraft_version)
+    if version >= (1, 20, 5):
+        return 21
+    if version >= (1, 18, 0):
+        return 17
+    return 8
+
+
+def java_major_version(binary: str) -> int | None:
+    result = run([binary, "-version"], timeout=10)
+    output = f"{result.stdout}\n{result.stderr}"
+    match = re.search(r'version "([^"]+)"', output)
+    if not match:
+        return None
+    version = match.group(1)
+    if version.startswith("1."):
+        parts = version.split(".")
+        return int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+    major = version.split(".", 1)[0]
+    return int(major) if major.isdigit() else None
+
+
+def java_candidates(required_major: int, selected_runtime: str = "auto") -> list[str]:
+    candidates: list[str] = []
+    if selected_runtime in {"8", "17", "21"}:
+        selected_value = os.getenv(f"KSYLIAN_JAVA_{selected_runtime}", "")
+        if selected_value:
+            candidates.append(selected_value)
+    env_value = os.getenv(f"KSYLIAN_JAVA_{required_major}", "")
+    if env_value:
+        candidates.append(env_value)
+    for major in (21, 17, 8):
+        env_candidate = os.getenv(f"KSYLIAN_JAVA_{major}", "")
+        if env_candidate:
+            candidates.append(env_candidate)
+    default = shutil.which("java")
+    if default:
+        candidates.append(default)
+    return list(dict.fromkeys(candidates))
+
+
+def java_binary(minecraft_version: str = "", selected_runtime: str = "auto") -> str:
+    required_major = required_java_major(minecraft_version) if minecraft_version else 8
+    if selected_runtime in {"8", "17", "21"}:
+        required_major = max(required_major, int(selected_runtime))
+    checked: list[str] = []
+    for candidate in java_candidates(required_major, selected_runtime):
+        major = java_major_version(candidate)
+        checked.append(f"{candidate} ({major or 'unknown'})")
+        if major and major >= required_major:
+            return candidate
+    if not checked:
+        raise HTTPException(status_code=500, detail="Java is not installed on this host")
+    raise HTTPException(
+        status_code=409,
+        detail=f"Minecraft {minecraft_version} requires Java {required_major}+. Checked: {', '.join(checked)}",
+    )
+
+
 def install_forge_server(server: StoredServer) -> list[str]:
-    server_path = Path(server.path)
+    server_path = server_base_path(server)
     forge_version = latest_forge_version(server.version)
     installer = server_path / f"forge-{forge_version}-installer.jar"
     download_file(f"{FORGE_MAVEN_URL}/{forge_version}/forge-{forge_version}-installer.jar", installer)
 
-    result = run_in([java_binary(), "-jar", str(installer), "--installServer"], cwd=server_path, timeout=600)
+    java = java_binary(server.version, server.java_runtime)
+    min_ram = normalize_ram(server.min_ram, "1G")
+    max_ram = normalize_ram(server.max_ram, "2G")
+    result = run_in([java, "-jar", str(installer), "--installServer"], cwd=server_path, timeout=600)
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "Forge installer failed"
         raise HTTPException(status_code=502, detail=detail)
@@ -536,30 +878,38 @@ def install_forge_server(server: StoredServer) -> list[str]:
     unix_args = server_path / "libraries" / "net" / "minecraftforge" / "forge" / forge_version / "unix_args.txt"
     if unix_args.exists():
         return [
-            java_binary(),
-            "-Xms1G",
-            "-Xmx2G",
+            java,
+            f"-Xms{min_ram}",
+            f"-Xmx{max_ram}",
+            *server.jvm_args,
             "@libraries/net/minecraftforge/forge/{forge_version}/unix_args.txt".format(forge_version=forge_version),
             "nogui",
         ]
 
     forge_jar = next(server_path.glob(f"forge-{forge_version}*.jar"), None)
     if forge_jar:
-        return [java_binary(), "-Xms1G", "-Xmx2G", "-jar", forge_jar.name, "nogui"]
+        return [java, f"-Xms{min_ram}", f"-Xmx{max_ram}", *server.jvm_args, "-jar", forge_jar.name, "nogui"]
 
     raise HTTPException(status_code=502, detail="Forge installer did not produce a runnable server")
 
 
-def default_start_command() -> list[str]:
-    return [java_binary(), "-Xms1G", "-Xmx2G", "-jar", "server.jar", "nogui"]
-
-
 def provision_server_files(server: StoredServer) -> StoredServer:
-    destination = Path(server.path) / "server.jar"
+    java = java_binary(server.version, server.java_runtime)
+    destination = server_base_path(server) / "server.jar"
     if server.type == "vanilla":
         if not destination.exists():
             download_vanilla_server_jar(server.version, destination)
-        server.start_command = default_start_command()
+        server.start_command = start_command_for_server(server, java)
+        return server
+    if server.type == "paper":
+        if not destination.exists():
+            download_paper_server_jar(server.version, destination)
+        server.start_command = start_command_for_server(server, java)
+        return server
+    if server.type == "purpur":
+        if not destination.exists():
+            download_purpur_server_jar(server.version, destination)
+        server.start_command = start_command_for_server(server, java)
         return server
     if server.type == "fabric":
         if not destination.exists():
@@ -573,16 +923,23 @@ def provision_server_files(server: StoredServer) -> StoredServer:
     raise HTTPException(status_code=400, detail=f"Server type {server.type} cannot be provisioned")
 
 
-def java_binary() -> str:
-    binary = shutil.which("java")
-    if not binary:
-        raise HTTPException(status_code=500, detail="Java is not installed on this host")
-    return binary
+def update_server_files(server: StoredServer) -> StoredServer:
+    if not server.managed:
+        raise HTTPException(status_code=409, detail="Legacy servers cannot be updated by Ksylian")
+    server_path = server_base_path(server)
+    if server.type in {"vanilla", "paper", "purpur", "fabric"}:
+        (server_path / "server.jar").unlink(missing_ok=True)
+    if server.type == "forge":
+        server.start_command = []
+    return ensure_server_provisioned(server)
 
 
 def write_systemd_unit(server: StoredServer) -> None:
     unit_path = SYSTEMD_DIR / server.service
-    start_command = server.start_command or default_start_command()
+    start_command = server.start_command or start_command_for_server(server, java_binary(server.version, server.java_runtime))
+    server_path = server_base_path(server)
+    max_ram = normalize_ram(server.max_ram, "2G")
+    cpu_quota = f"{normalize_cpu_limit(server.cpu_limit)}%"
     content = "\n".join(
         [
             "[Unit]",
@@ -591,12 +948,20 @@ def write_systemd_unit(server: StoredServer) -> None:
             "",
             "[Service]",
             "Type=simple",
-            "User=root",
-            f"WorkingDirectory={server.path}",
+            f"User={MINECRAFT_USER}",
+            f"Group={MINECRAFT_USER}",
+            f"WorkingDirectory={server_path}",
             f"ExecStart={shlex.join(start_command)}",
             "Restart=on-failure",
             "RestartSec=10",
             "SuccessExitStatus=0 143",
+            f"MemoryMax={max_ram}",
+            f"CPUQuota={cpu_quota}",
+            "NoNewPrivileges=true",
+            "PrivateTmp=true",
+            "ProtectSystem=full",
+            "ProtectHome=true",
+            f"ReadWritePaths={server_path}",
             "",
             "[Install]",
             "WantedBy=multi-user.target",
@@ -614,16 +979,44 @@ def write_systemd_unit(server: StoredServer) -> None:
         raise HTTPException(status_code=500, detail=enable.stderr.strip() or "systemctl enable failed")
 
 
+def ensure_minecraft_user_exists() -> None:
+    result = run(["id", "-u", MINECRAFT_USER], timeout=10)
+    if result.returncode == 0:
+        return
+
+    create = run(
+        [
+            "useradd",
+            "--system",
+            "--home-dir",
+            str(SERVER_ROOT),
+            "--shell",
+            "/usr/sbin/nologin",
+            MINECRAFT_USER,
+        ],
+        timeout=30,
+    )
+    if create.returncode != 0:
+        raise HTTPException(status_code=500, detail=create.stderr.strip() or "Failed to create Minecraft user")
+
+
+def apply_server_permissions(server: StoredServer) -> None:
+    server_path = server_base_path(server)
+    ensure_minecraft_user_exists()
+    result = run(["chown", "-R", f"{MINECRAFT_USER}:{MINECRAFT_USER}", str(server_path)], timeout=120)
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=result.stderr.strip() or "Failed to set server directory owner")
+
+
 def ensure_server_provisioned(server: StoredServer) -> StoredServer:
     if not server.managed:
         return server
 
     write_server_scaffold(server)
     server = provision_server_files(server)
+    apply_server_permissions(server)
 
-    unit_path = SYSTEMD_DIR / server.service
-    if not unit_path.exists():
-        write_systemd_unit(server)
+    write_systemd_unit(server)
     return server
 
 
@@ -637,13 +1030,19 @@ def active_server_ids() -> list[str]:
     return [server_id for server_id in load_server_store() if server_id not in disabled]
 
 
-def service_state(service: str) -> Literal["online", "deploying", "offline"]:
+def service_state(
+    service: str,
+) -> Literal["installing", "stopped", "starting", "running", "stopping", "crashed", "updating", "backing_up"]:
     result = run(["systemctl", "is-active", service])
     if result.stdout.strip() == "active":
-        return "online"
+        return "running"
     if result.stdout.strip() in {"activating", "reloading"}:
-        return "deploying"
-    return "offline"
+        return "starting"
+    if result.stdout.strip() == "deactivating":
+        return "stopping"
+    if result.stdout.strip() == "failed":
+        return "crashed"
+    return "stopped"
 
 
 def read_exact(sock: socket.socket, size: int) -> bytes:
@@ -690,6 +1089,36 @@ def minecraft_player_status(port: int, host: str = "127.0.0.1") -> str:
         return "-"
 
 
+def execute_rcon(server: StoredServer, command: str) -> str:
+    if not server.rcon_port or not server.rcon_password:
+        raise HTTPException(status_code=409, detail="RCON is not configured for this server")
+    if len(command.encode("utf-8")) > 4096:
+        raise HTTPException(status_code=413, detail="RCON command is too large")
+
+    try:
+        with socket.create_connection(("127.0.0.1", server.rcon_port), timeout=4) as sock:
+            sock.settimeout(4)
+            sock.sendall(rcon_packet(1, 3, server.rcon_password))
+            request_id, _, _ = read_rcon_packet(sock)
+            if request_id == -1:
+                raise HTTPException(status_code=401, detail="RCON authentication failed")
+            sock.sendall(rcon_packet(2, 2, command))
+            _, _, output = read_rcon_packet(sock)
+            return output
+    except HTTPException:
+        raise
+    except OSError as error:
+        raise HTTPException(status_code=502, detail=f"RCON is unavailable: {error}") from error
+
+
+def rcon_available(server: StoredServer) -> bool:
+    try:
+        execute_rcon(server, "list")
+        return True
+    except HTTPException:
+        return False
+
+
 def configured_max_players(server_path: Path) -> int:
     properties_path = server_path / "server.properties"
     if not properties_path.exists():
@@ -705,9 +1134,9 @@ def configured_max_players(server_path: Path) -> int:
 
 
 def server_players_label(config: StoredServer, state: str) -> str:
-    server_path = Path(config.path)
+    server_path = server_base_path(config) if config.managed else Path(config.path)
     maximum = configured_max_players(server_path)
-    if state != "online":
+    if state != "running":
         return f"0 / {maximum}"
 
     status = minecraft_player_status(config.port)
@@ -913,6 +1342,104 @@ def service_usage(service: str) -> tuple[int, str]:
     return cpu, format_bytes(memory) if memory else "0 MB"
 
 
+def service_exit_code(service: str) -> int | None:
+    result = run(["systemctl", "show", service, "-p", "ExecMainStatus", "--value"], timeout=10)
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return None
+
+
+def last_server_event(server_id: str) -> str:
+    if not ACTION_LOG.exists():
+        return ""
+    try:
+        lines = ACTION_LOG.read_text().splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if item.get("server_id") == server_id:
+            action = str(item.get("action") or "")
+            at = str(item.get("at") or "")
+            return f"{at} · {action}" if at and action else action
+    return ""
+
+
+def crash_report_summary(path: Path) -> str:
+    try:
+        for line in path.read_text(errors="replace").splitlines()[:80]:
+            stripped = line.strip()
+            if stripped.startswith("Description:"):
+                return stripped
+            if "Exception" in stripped or "Error" in stripped:
+                return stripped[:180]
+    except OSError:
+        return ""
+    return ""
+
+
+def recent_server_changes(server_id: str, limit: int = 5) -> list[str]:
+    if not ACTION_LOG.exists():
+        return []
+    try:
+        lines = ACTION_LOG.read_text().splitlines()
+    except OSError:
+        return []
+    changes: list[str] = []
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if item.get("server_id") == server_id:
+            at = str(item.get("at") or "")
+            action = str(item.get("action") or "")
+            detail = str(item.get("detail") or "")
+            changes.append(" · ".join(part for part in (at, action, detail) if part))
+        if len(changes) >= limit:
+            break
+    return changes
+
+
+def analyze_crash_report(path: Path, server_id: str) -> dict[str, Any]:
+    try:
+        lines = path.read_text(errors="replace").splitlines()
+    except OSError:
+        lines = []
+    joined = "\n".join(lines)
+    stack_trace = [line for line in lines if line.lstrip().startswith("at ") or "Caused by:" in line][:30]
+    probable = next((line.strip() for line in lines if line.strip().startswith("Description:")), "")
+    if not probable:
+        probable = next((line.strip() for line in lines if "Caused by:" in line), "")
+
+    missing_dependency = ""
+    missing_match = re.search(r"(requires [^\n]+|Missing [^\n]+|depends on [^\n]+)", joined, re.IGNORECASE)
+    if missing_match:
+        missing_dependency = missing_match.group(1).strip()[:180]
+
+    client_only_mod = ""
+    if re.search(r"client[- ]only|net\.minecraft\.client|DistExecutor|FMLEnvironment\.dist", joined, re.IGNORECASE):
+        client_only_mod = "В отчёте есть признаки client-only кода на сервере"
+
+    conflicting_mod = ""
+    mod_match = re.search(r"(Suspected Mod[s]?:[^\n]+|Mod File:[^\n]+|Mod [A-Za-z0-9_.-]+)", joined, re.IGNORECASE)
+    if mod_match:
+        conflicting_mod = mod_match.group(1).strip()[:180]
+
+    return {
+        "probable_cause": probable[:220],
+        "conflicting_mod": conflicting_mod,
+        "missing_dependency": missing_dependency,
+        "client_only_mod": client_only_mod,
+        "stack_trace": stack_trace,
+        "recent_changes": recent_server_changes(server_id),
+    }
+
+
 def folder_size(path: Path) -> str:
     if not path.exists():
         return "0 MB"
@@ -929,10 +1456,51 @@ def public_server_address(config: StoredServer) -> str:
     return config.address
 
 
+def cleanup_managed_server(server: StoredServer) -> None:
+    if not server.managed:
+        return
+    run(["systemctl", "stop", server.service], timeout=60)
+    run(["systemctl", "disable", server.service], timeout=60)
+    unit_path = SYSTEMD_DIR / server.service
+    unit_path.unlink(missing_ok=True)
+    run(["systemctl", "daemon-reload"], timeout=30)
+    try:
+        shutil.rmtree(server_base_path(server), ignore_errors=True)
+    except HTTPException:
+        pass
+
+
+def server_is_installing(server: StoredServer) -> bool:
+    return server.managed and not (SYSTEMD_DIR / server.service).exists()
+
+
+def provision_server_in_background(server_id: str) -> None:
+    try:
+        store = load_server_store()
+        server = store.get(server_id)
+        if server is None:
+            return
+        server = ensure_server_provisioned(server)
+        store = load_server_store()
+        store[server.id] = server
+        save_server_store(store)
+        append_action_log("server_install_complete", server.id, f"{server.type} {server.version}")
+    except Exception as error:
+        store = load_server_store()
+        server = store.get(server_id)
+        if server is not None:
+            cleanup_managed_server(server)
+            store.pop(server_id, None)
+            save_server_store(store)
+        append_action_log("server_install_failed", server_id, str(error))
+
+
 def to_agent_server(server_id: str) -> AgentServer:
     config = load_server_store()[server_id]
     cpu, ram = service_usage(config.service)
-    state = service_state(config.service)
+    state = server_runtime_states.get(server_id) or service_state(config.service)
+    if server_is_installing(config):
+        state = "installing"
 
     return AgentServer(
         id=server_id,
@@ -945,6 +1513,9 @@ def to_agent_server(server_id: str) -> AgentServer:
         cpu=cpu,
         disk=folder_size(Path(config.path)),
         address=public_server_address(config),
+        exit_code=service_exit_code(config.service),
+        last_event=last_server_event(server_id),
+        warnings=server_warnings(config),
     )
 
 
@@ -974,6 +1545,14 @@ def app_update_log(x_ksylian_token: str | None = Header(default=None)) -> list[s
     return UPDATE_LOG.read_text().splitlines()[-120:]
 
 
+@app.get("/agent/actions/log", response_model=list[str])
+def agent_action_log(x_ksylian_token: str | None = Header(default=None)) -> list[str]:
+    require_token(x_ksylian_token)
+    if not ACTION_LOG.exists():
+        return []
+    return ACTION_LOG.read_text().splitlines()[-200:]
+
+
 @app.post("/app/update", response_model=AppUpdateResult)
 def update_app(payload: AppUpdateRequest, x_ksylian_token: str | None = Header(default=None)) -> AppUpdateResult:
     require_token(x_ksylian_token)
@@ -981,6 +1560,7 @@ def update_app(payload: AppUpdateRequest, x_ksylian_token: str | None = Header(d
     ensure_updater_configured()
     script_path = update_script_path()
     append_update_log(f"Queued update to {target_version}")
+    append_action_log("app_update", detail=target_version)
     subprocess.Popen(
         ["bash", str(script_path), target_version],
         stdout=subprocess.DEVNULL,
@@ -1013,7 +1593,7 @@ def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None
 
     port = allocate_port(store)
     service = f"ksylian-{server_id}.service"
-    server_path = SERVER_ROOT / server_id
+    server_path = managed_server_path(server_id)
     server = StoredServer(
         id=server_id,
         name=payload.name.strip(),
@@ -1027,10 +1607,17 @@ def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None
         address=f"{host_primary_ip()}:{port}",
         created_at=datetime.now().isoformat(timespec="seconds"),
         managed=True,
+        min_ram=normalize_ram(payload.min_ram, "1G"),
+        max_ram=normalize_ram(payload.max_ram, "2G"),
+        java_runtime=payload.java_runtime if payload.java_runtime in {"auto", "8", "17", "21"} else "auto",
+        jvm_args=normalize_jvm_args(payload.jvm_args),
+        cpu_limit=normalize_cpu_limit(payload.cpu_limit),
     )
-    server = ensure_server_provisioned(server)
+    ensure_disk_space_for_server(server)
     store[server.id] = server
     save_server_store(store)
+    append_action_log("server_create_queued", server.id, f"{server.type} {server.version}")
+    threading.Thread(target=provision_server_in_background, args=(server.id,), daemon=True).start()
     return to_agent_server(server.id)
 
 
@@ -1100,6 +1687,45 @@ def logs(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> 
     return [line for line in result.stdout.splitlines() if line]
 
 
+@app.get("/servers/{server_id}/logs/full", response_model=list[str])
+def full_logs(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> list[str]:
+    require_token(x_ksylian_token)
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    result = run(["journalctl", "-u", config.service, "-n", "5000", "--no-pager", "-o", "short-iso"], timeout=60)
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=result.stderr.strip() or "Failed to read full logs")
+    return [line for line in result.stdout.splitlines() if line]
+
+
+@app.get("/servers/{server_id}/crash-reports", response_model=list[CrashReportItem])
+def crash_reports(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> list[CrashReportItem]:
+    require_token(x_ksylian_token)
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    reports_dir = server_base_path(config) / "crash-reports" if config.managed else Path(config.path) / "crash-reports"
+    if not reports_dir.exists():
+        return []
+
+    reports = []
+    for path in sorted(reports_dir.glob("*.txt"), key=lambda item: item.stat().st_mtime, reverse=True)[:20]:
+        analysis = analyze_crash_report(path, server_id)
+        reports.append(
+            CrashReportItem(
+                name=path.name,
+                size=folder_size(path),
+                created=datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                summary=crash_report_summary(path),
+                **analysis,
+            )
+        )
+    return reports
+
+
 @app.get("/servers/{server_id}/config", response_model=ServerConfigPayload)
 def server_config(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> ServerConfigPayload:
     require_token(x_ksylian_token)
@@ -1107,7 +1733,7 @@ def server_config(server_id: str, x_ksylian_token: str | None = Header(default=N
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
 
-    properties_path = Path(config.path) / "server.properties"
+    properties_path = server_base_path(config) / "server.properties"
     if not properties_path.exists():
         ensure_server_provisioned(config)
     if not properties_path.exists():
@@ -1119,6 +1745,33 @@ def server_config(server_id: str, x_ksylian_token: str | None = Header(default=N
         raise HTTPException(status_code=500, detail="Failed to read server.properties") from error
 
     return ServerConfigPayload(content=content)
+
+
+@app.get("/servers/{server_id}/rcon/status")
+def rcon_status(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> dict[str, bool]:
+    require_token(x_ksylian_token)
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"available": rcon_available(config)}
+
+
+@app.post("/servers/{server_id}/rcon/command", response_model=RconCommandResult)
+def rcon_command(
+    server_id: str,
+    payload: RconCommandPayload,
+    x_ksylian_token: str | None = Header(default=None),
+) -> RconCommandResult:
+    require_token(x_ksylian_token)
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    command = payload.command.strip()
+    if not command:
+        raise HTTPException(status_code=400, detail="RCON command is required")
+    output = execute_rcon(config, command)
+    append_action_log("server_rcon_command", server_id, command)
+    return RconCommandResult(ok=True, output=output)
 
 
 @app.put("/servers/{server_id}/config", response_model=ServerConfigPayload)
@@ -1134,7 +1787,7 @@ def update_server_config(
     if len(payload.content.encode("utf-8")) > 256 * 1024:
         raise HTTPException(status_code=413, detail="server.properties is too large")
 
-    server_path = Path(config.path)
+    server_path = server_base_path(config)
     server_path.mkdir(parents=True, exist_ok=True)
     properties_path = server_path / "server.properties"
     content = payload.content.replace("\r\n", "\n").replace("\r", "\n")
@@ -1146,13 +1799,16 @@ def update_server_config(
     except OSError as error:
         raise HTTPException(status_code=500, detail="Failed to write server.properties") from error
 
+    if config.managed:
+        apply_server_permissions(config)
+    append_action_log("server_config_update", server_id, "server.properties")
     return ServerConfigPayload(content=content)
 
 
 @app.post("/servers/{server_id}/actions/{action}", response_model=AgentActionResult)
 def action(
     server_id: str,
-    action: Literal["start", "restart", "stop", "backup"],
+    action: Literal["start", "restart", "stop", "kill", "update", "backup"],
     x_ksylian_token: str | None = Header(default=None),
 ) -> AgentActionResult:
     require_token(x_ksylian_token)
@@ -1160,27 +1816,60 @@ def action(
     if config is None:
         raise HTTPException(status_code=404, detail="Server not found")
 
-    if action in {"start", "restart"}:
-        ensure_server_provisioned(config)
+    if action in {"start", "restart", "update"}:
+        if server_is_installing(config):
+            raise HTTPException(status_code=409, detail="Server is still installing")
+        if action != "update":
+            ensure_server_provisioned(config)
 
-    if action in {"start", "restart", "stop"}:
-        result = run(["systemctl", action, config.service], timeout=60)
+    if action == "update":
+        server_runtime_states[server_id] = "updating"
+        was_running = service_state(config.service) == "running"
+        try:
+            if was_running:
+                stop_result = run(["systemctl", "stop", config.service], timeout=60)
+                if stop_result.returncode != 0:
+                    raise HTTPException(status_code=500, detail=stop_result.stderr.strip() or "systemctl stop failed")
+            updated = update_server_files(config)
+            store = load_server_store()
+            store[server_id] = updated
+            save_server_store(store)
+            if was_running:
+                start_result = run(["systemctl", "start", updated.service], timeout=60)
+                if start_result.returncode != 0:
+                    raise HTTPException(status_code=500, detail=start_result.stderr.strip() or "systemctl start failed")
+            message = f"{config.name}: update completed"
+            append_action_log("server_update", server_id, message)
+        finally:
+            server_runtime_states.pop(server_id, None)
+    elif action in {"start", "restart", "stop", "kill"}:
+        command = ["systemctl", "kill", config.service] if action == "kill" else ["systemctl", action, config.service]
+        result = run(command, timeout=60)
         if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=result.stderr.strip() or f"systemctl {action} failed")
+            append_action_log(f"server_{action}_failed", server_id, result.stderr.strip())
+            raise HTTPException(status_code=500, detail=result.stderr.strip() or f"{' '.join(command)} failed")
+        if action == "kill":
+            run(["systemctl", "stop", config.service], timeout=60)
         message = f"{config.name}: {action} completed"
+        append_action_log(f"server_{action}", server_id, message)
     else:
-        source = Path(config.backup_path)
-        if not source.exists():
-            raise HTTPException(status_code=404, detail=f"Backup source not found: {source}")
+        server_runtime_states[server_id] = "backing_up"
+        source = server_base_path(config) / "world" if config.managed else Path(config.backup_path)
+        try:
+            if not source.exists():
+                raise HTTPException(status_code=404, detail=f"Backup source not found: {source}")
 
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        archive = BACKUP_DIR / f"{server_id}-{stamp}.tar.gz"
+            BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            archive = BACKUP_DIR / f"{server_id}-{stamp}.tar.gz"
 
-        with tarfile.open(archive, "w:gz") as tar:
-            tar.add(source, arcname=source.name)
+            with tarfile.open(archive, "w:gz") as tar:
+                tar.add(source, arcname=source.name)
 
-        message = f"{config.name}: backup created at {archive}"
+            message = f"{config.name}: backup created at {archive}"
+            append_action_log("server_backup", server_id, str(archive))
+        finally:
+            server_runtime_states.pop(server_id, None)
 
     return AgentActionResult(ok=True, message=message, server=to_agent_server(server_id))
 
@@ -1206,13 +1895,14 @@ def delete_server(server_id: str, x_ksylian_token: str | None = Header(default=N
         unit_path = SYSTEMD_DIR / config.service
         unit_path.unlink(missing_ok=True)
         run(["systemctl", "daemon-reload"], timeout=30)
-        shutil.rmtree(config.path, ignore_errors=True)
+        shutil.rmtree(server_base_path(config), ignore_errors=True)
         store.pop(server_id, None)
         disabled.discard(server_id)
         save_server_store(store)
     else:
         disabled.add(server_id)
     save_disabled_server_ids(disabled)
+    append_action_log("server_delete", server_id, config.name)
     return {"ok": True}
 
 

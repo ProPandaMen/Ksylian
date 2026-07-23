@@ -11,6 +11,11 @@ const newServer = ref<NewServerDraft>({
   name: "",
   type: "vanilla",
   version: "",
+  min_ram: "1G",
+  max_ram: "2G",
+  java_runtime: "auto",
+  jvm_args: "",
+  cpu_limit: 100,
 });
 
 async function createServer() {
@@ -19,7 +24,16 @@ async function createServer() {
     return;
   }
 
-  newServer.value = { name: "", type: "vanilla", version: "" };
+  newServer.value = {
+    name: "",
+    type: "vanilla",
+    version: "",
+    min_ram: "1G",
+    max_ram: "2G",
+    java_runtime: "auto",
+    jvm_args: "",
+    cpu_limit: 100,
+  };
   await router.push("/servers");
 }
 </script>

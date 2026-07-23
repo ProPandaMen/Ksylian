@@ -17,7 +17,6 @@
 .monitor-section-head,
 .monitor-row,
 .monitor-metric-row,
-.service-row,
 .monitor-empty-row {
   display: flex;
   align-items: center;
@@ -41,7 +40,6 @@
 
 .monitor-row,
 .monitor-metric-row,
-.service-row,
 .monitor-empty-row {
   min-height: 54px;
   padding: 14px 0;
@@ -57,14 +55,12 @@
 .monitor-row span,
 .monitor-metric-row span,
 .monitor-metric-row small,
-.service-row span,
 .monitor-empty-row span {
   color: var(--app-muted);
 }
 
 .monitor-row strong,
 .monitor-metric-row strong,
-.service-row strong,
 .monitor-empty-row strong {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -118,6 +114,83 @@
   white-space: nowrap;
 }
 
+.resource-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.resource-chart-card {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(107, 114, 128, 0.1);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-surface-soft) 50%, transparent);
+  box-shadow:
+    4px 4px 10px color-mix(in srgb, var(--app-inset-dark) 62%, transparent),
+    -4px -4px 10px color-mix(in srgb, var(--app-inset-light) 58%, transparent);
+}
+
+.resource-chart-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.resource-chart-head svg {
+  color: var(--app-accent);
+}
+
+.resource-chart-head span,
+.resource-chart-card small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-chart-head span {
+  font-weight: 800;
+}
+
+.resource-chart-head strong {
+  color: var(--app-accent);
+  font-size: 1.15rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.resource-chart {
+  width: 100%;
+  height: 58px;
+  overflow: visible;
+}
+
+.resource-chart-area {
+  fill: color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.resource-chart-line {
+  fill: none;
+  stroke: var(--app-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 4px 8px rgba(255, 47, 163, 0.16));
+}
+
+.resource-chart-card small {
+  font-size: 0.82rem;
+  text-align: right;
+}
+
 .monitor-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(380px, 0.75fr);
@@ -128,87 +201,110 @@
 .disk-list,
 .service-list {
   display: grid;
-  gap: 0;
-}
-
-.disk-row {
-  display: grid;
-  grid-template-columns: 72px minmax(120px, 0.78fr) repeat(3, minmax(86px, 0.5fr));
   gap: 12px;
-  align-items: center;
-  min-height: 96px;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(107, 114, 128, 0.14);
+  padding-top: 14px;
 }
 
-.disk-chart {
-  position: relative;
+.disk-card {
   display: grid;
-  place-items: center;
-  width: 62px;
-  aspect-ratio: 1;
-}
-
-.disk-chart svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-  filter: drop-shadow(0 10px 14px rgba(178, 55, 126, 0.12));
-}
-
-.disk-ring {
-  fill: none;
-  stroke-width: 16;
-  stroke-linecap: round;
-}
-
-.disk-ring.free {
-  stroke: var(--app-surface-soft);
-}
-
-.disk-ring.used {
-  stroke: var(--app-accent);
-  stroke-dasharray: var(--disk-dash);
-  filter: drop-shadow(0 0 8px rgba(255, 47, 163, 0.22));
-}
-
-.disk-chart-label {
-  position: absolute;
-  display: grid;
-  place-items: center;
-  gap: 1px;
-  width: 42px;
-  height: 42px;
-  color: var(--app-text);
-  border-radius: 50%;
-  background: var(--app-surface);
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(107, 114, 128, 0.1);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-surface-soft) 54%, transparent);
   box-shadow:
-    inset 4px 4px 8px var(--app-inset-dark),
-    inset -4px -4px 8px var(--app-inset-light);
+    5px 5px 12px color-mix(in srgb, var(--app-inset-dark) 70%, transparent),
+    -5px -5px 12px color-mix(in srgb, var(--app-inset-light) 62%, transparent);
 }
 
-.disk-chart-label strong {
-  color: var(--app-accent);
-  font-size: 0.76rem;
-  line-height: 1;
+.disk-card-main,
+.service-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
 }
 
-.disk-chart-label span {
-  color: var(--app-muted);
-  font-size: 0.46rem;
-  font-weight: 800;
-}
-
-.disk-row > div:not(.disk-chart) {
+.disk-card-title,
+.service-name {
   display: grid;
   min-width: 0;
   gap: 4px;
 }
 
-.disk-row strong,
-.disk-row span,
-.disk-row dt,
-.disk-row dd {
+.disk-card-title strong,
+.disk-card-title span,
+.service-name strong,
+.service-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-card-title strong,
+.service-name strong {
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.disk-card-title span,
+.service-name span {
+  color: var(--app-muted);
+  font-size: 0.92rem;
+}
+
+.disk-card-percent {
+  flex: 0 0 auto;
+  color: var(--app-accent);
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.disk-bar {
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--app-surface);
+  box-shadow:
+    inset 3px 3px 7px var(--app-inset-dark),
+    inset -3px -3px 7px var(--app-inset-light);
+}
+
+.disk-bar span {
+  display: block;
+  width: var(--disk-used);
+  min-width: 6px;
+  max-width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-accent) 72%, var(--app-success)));
+}
+
+.disk-card-stats,
+.service-card-stats {
+  display: grid;
+  margin: 0;
+}
+
+.disk-card-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.disk-card-stats div,
+.service-card-stats div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.disk-card-stats dt,
+.disk-card-stats dd,
+.service-card-stats dt,
+.service-card-stats dd {
   min-width: 0;
   overflow: hidden;
   margin: 0;
@@ -216,63 +312,53 @@
   white-space: nowrap;
 }
 
-.disk-row strong,
-.disk-row dd {
-  color: var(--app-text);
-  font-weight: 800;
-}
-
-.disk-row span,
-.disk-row dt {
+.disk-card-stats dt,
+.service-card-stats dt {
   color: var(--app-muted);
-}
-
-.disk-row dl {
-  display: contents;
-  margin: 0;
-}
-
-.disk-row dt {
   font-size: 0.76rem;
   font-weight: 800;
 }
 
-.disk-row dd {
-  margin-top: 4px;
+.disk-card-stats dd,
+.service-card-stats dd {
+  color: var(--app-text);
+  font-weight: 800;
 }
 
-.service-row {
+.service-card {
   display: grid;
-  grid-template-columns: 24px minmax(120px, 1fr) minmax(86px, 0.65fr) minmax(64px, 0.45fr) minmax(72px, 0.55fr);
-  gap: 12px;
-  min-height: 70px;
-  padding: 12px 0;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(107, 114, 128, 0.1);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-surface-soft) 48%, transparent);
 }
 
-.service-row .server-state {
+.service-card-main {
+  justify-content: start;
+}
+
+.service-card .server-state {
   flex: 0 0 auto;
 }
 
-.service-row > div,
-.monitor-empty-row div {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
+.service-card-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.service-row strong,
-.service-row span,
+.service-card-stats div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-surface) 72%, transparent);
+}
+
 .monitor-empty-row strong,
 .monitor-empty-row span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.service-row > div:not(.service-name) span {
-  font-size: 0.76rem;
-  font-weight: 800;
 }
 
 .process-table {

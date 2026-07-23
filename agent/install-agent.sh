@@ -13,6 +13,9 @@ if [[ -f ".env" ]]; then
 fi
 
 TOKEN="${KSYLIAN_AGENT_TOKEN:-}"
+AGENT_HOST="${KSYLIAN_AGENT_HOST:-172.17.0.1}"
+MINECRAFT_USER="${KSYLIAN_MINECRAFT_USER:-ksylian-minecraft}"
+SERVER_ROOT="${KSYLIAN_SERVER_ROOT:-/opt/ksylian/servers}"
 
 if [[ -z "$TOKEN" ]]; then
   echo "KSYLIAN_AGENT_TOKEN is required"
@@ -24,6 +27,11 @@ sudo cp ksylian_agent.py ksylian_proxy.py requirements.txt "$APP_DIR/"
 sudo python3 -m venv "$APP_DIR/.venv"
 sudo "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+if ! id -u "$MINECRAFT_USER" >/dev/null 2>&1; then
+  sudo useradd --system --home-dir "$SERVER_ROOT" --shell /usr/sbin/nologin "$MINECRAFT_USER"
+fi
+sudo mkdir -p "$SERVER_ROOT"
+sudo chown "$MINECRAFT_USER:$MINECRAFT_USER" "$SERVER_ROOT"
 
 sudo tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
@@ -35,12 +43,19 @@ Type=simple
 User=root
 WorkingDirectory=$APP_DIR
 Environment=KSYLIAN_AGENT_TOKEN=$TOKEN
+Environment=KSYLIAN_SERVER_ROOT=$SERVER_ROOT
 Environment=KSYLIAN_BACKUP_DIR=/mnt/hdd/ksylian-backups
+Environment=KSYLIAN_MINECRAFT_USER=$MINECRAFT_USER
+Environment=KSYLIAN_AGENT_RATE_LIMIT_REQUESTS=${KSYLIAN_AGENT_RATE_LIMIT_REQUESTS:-240}
+Environment=KSYLIAN_AGENT_RATE_LIMIT_WINDOW_SECONDS=${KSYLIAN_AGENT_RATE_LIMIT_WINDOW_SECONDS:-60}
 Environment=KSYLIAN_PUBLIC_DOMAIN=${KSYLIAN_PUBLIC_DOMAIN:-}
+Environment=KSYLIAN_JAVA_8=${KSYLIAN_JAVA_8:-}
+Environment=KSYLIAN_JAVA_17=${KSYLIAN_JAVA_17:-}
+Environment=KSYLIAN_JAVA_21=${KSYLIAN_JAVA_21:-}
 Environment=KSYLIAN_APP_DIR=${KSYLIAN_APP_DIR:-/opt/ksylian}
 Environment=KSYLIAN_ENV_FILE=${KSYLIAN_ENV_FILE:-/opt/ksylian/deploy/.env}
 Environment=KSYLIAN_COMPOSE_FILE=${KSYLIAN_COMPOSE_FILE:-/opt/ksylian/deploy/docker-compose.yml}
-ExecStart=$APP_DIR/.venv/bin/uvicorn ksylian_agent:app --host 0.0.0.0 --port 8765
+ExecStart=$APP_DIR/.venv/bin/uvicorn ksylian_agent:app --host $AGENT_HOST --port 8765
 Restart=always
 RestartSec=3
 

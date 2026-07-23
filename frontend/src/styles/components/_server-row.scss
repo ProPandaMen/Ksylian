@@ -93,18 +93,27 @@
   box-shadow: 0 0 0 5px rgba(56, 189, 142, 0.16);
 }
 
-.server-state.online {
+.server-state.running {
   background: #25bf7a;
 }
 
-.server-state.deploying {
+.server-state.installing,
+.server-state.starting,
+.server-state.stopping,
+.server-state.updating,
+.server-state.backing_up {
   background: #f0a43a;
   box-shadow: 0 0 0 5px rgba(240, 164, 58, 0.18);
 }
 
-.server-state.offline {
+.server-state.stopped {
   background: #a4a7b0;
   box-shadow: 0 0 0 5px rgba(164, 167, 176, 0.18);
+}
+
+.server-state.crashed {
+  background: #e2567b;
+  box-shadow: 0 0 0 5px rgba(226, 86, 123, 0.18);
 }
 
 .server-metrics {
@@ -142,16 +151,24 @@
   white-space: nowrap;
 }
 
-.state-label.online {
+.state-label.running {
   color: #16825b;
 }
 
-.state-label.deploying {
+.state-label.installing,
+.state-label.starting,
+.state-label.stopping,
+.state-label.updating,
+.state-label.backing_up {
   color: #a56512;
 }
 
-.state-label.offline {
+.state-label.stopped {
   color: #69707d;
+}
+
+.state-label.crashed {
+  color: #b72655;
 }
 
 .server-empty-state {

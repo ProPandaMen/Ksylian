@@ -44,7 +44,7 @@ function openNewServerPage() {
           <strong>{{ store.stableServersCount.value }}</strong>
         </article>
         <article v-if="store.deployingServersCount.value" class="server-summary-row">
-          <span>Перезагрузка</span>
+          <span>В процессе</span>
           <strong>{{ store.deployingServersCount.value }}</strong>
         </article>
         <article v-if="store.offlineServersCount.value" class="server-summary-row">
@@ -131,10 +131,10 @@ function openNewServerPage() {
             <button
               class="icon-button"
               type="button"
-              :title="server.state === 'offline' ? 'Запустить' : 'Остановить'"
-              @click.stop="store.runServerAction(server.id, server.state === 'offline' ? 'start' : 'stop')"
+              :title="['stopped', 'crashed'].includes(server.state) ? 'Запустить' : 'Остановить'"
+              @click.stop="store.runServerAction(server.id, ['stopped', 'crashed'].includes(server.state) ? 'start' : 'stop')"
             >
-              <Play v-if="server.state === 'offline'" :size="17" />
+              <Play v-if="['stopped', 'crashed'].includes(server.state)" :size="17" />
               <CircleStop v-else :size="17" />
             </button>
             <button

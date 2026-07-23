@@ -14,6 +14,8 @@ import type { Component } from "vue";
 import { requestJson } from "../services/api";
 import type { MinecraftServerType, MinecraftVersionType, MinecraftVersionsPayload, NewServerDraft } from "../types";
 
+type NewServerStringField = Exclude<keyof NewServerDraft, "cpu_limit">;
+
 const modelValue = defineModel<NewServerDraft>({ required: true });
 
 defineProps<{
@@ -56,6 +58,22 @@ const serverTypes: Array<{
     available: true,
   },
   {
+    id: "paper",
+    label: "Paper",
+    note: "готово",
+    description: "Быстрый сервер с поддержкой Bukkit, Spigot и Paper плагинов.",
+    icon: Sparkles,
+    available: true,
+  },
+  {
+    id: "purpur",
+    label: "Purpur",
+    note: "готово",
+    description: "Гибкая сборка на базе Paper с расширенными настройками поведения сервера.",
+    icon: Sparkles,
+    available: true,
+  },
+  {
     id: "fabric",
     label: "Fabric",
     note: "готово",
@@ -85,10 +103,24 @@ const selectedVersion = computed(() =>
 
 const canContinue = computed(() => Boolean(selectedType.value.available));
 const canSubmit = computed(() =>
-  Boolean(modelValue.value.name.trim() && modelValue.value.version && selectedType.value.available),
+  Boolean(
+    modelValue.value.name.trim()
+      && modelValue.value.version
+      && modelValue.value.min_ram.trim()
+      && modelValue.value.max_ram.trim()
+      && modelValue.value.cpu_limit >= 10
+      && selectedType.value.available,
+  ),
 );
 
-function updateField(field: keyof NewServerDraft, value: string) {
+function updateField(field: NewServerStringField, value: string) {
+  modelValue.value = {
+    ...modelValue.value,
+    [field]: value,
+  };
+}
+
+function updateNumberField(field: "cpu_limit", value: number) {
   modelValue.value = {
     ...modelValue.value,
     [field]: value,
@@ -256,6 +288,64 @@ onMounted(loadMinecraftVersions);
                 Minecraft {{ version.id }} — {{ formatVersionOption(version.type) }}
               </option>
             </select>
+          </label>
+          <label>
+            <span>Минимум RAM</span>
+            <input
+              :value="modelValue.min_ram"
+              required
+              type="text"
+              placeholder="1G"
+              :disabled="isSubmitting"
+              @input="updateField('min_ram', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+          <label>
+            <span>Максимум RAM</span>
+            <input
+              :value="modelValue.max_ram"
+              required
+              type="text"
+              placeholder="2G"
+              :disabled="isSubmitting"
+              @input="updateField('max_ram', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+          <label>
+            <span>Java</span>
+            <select
+              :value="modelValue.java_runtime"
+              :disabled="isSubmitting"
+              @change="updateField('java_runtime', ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="auto">Авто</option>
+              <option value="8">Java 8</option>
+              <option value="17">Java 17</option>
+              <option value="21">Java 21</option>
+            </select>
+          </label>
+          <label>
+            <span>CPU limit</span>
+            <input
+              :value="modelValue.cpu_limit"
+              required
+              min="10"
+              max="400"
+              step="10"
+              type="number"
+              :disabled="isSubmitting"
+              @input="updateNumberField('cpu_limit', Number(($event.target as HTMLInputElement).value))"
+            />
+          </label>
+          <label class="new-server-field-wide">
+            <span>JVM-аргументы</span>
+            <input
+              :value="modelValue.jvm_args"
+              type="text"
+              placeholder="-XX:+UseG1GC"
+              :disabled="isSubmitting"
+              @input="updateField('jvm_args', ($event.target as HTMLInputElement).value)"
+            />
           </label>
         </div>
 

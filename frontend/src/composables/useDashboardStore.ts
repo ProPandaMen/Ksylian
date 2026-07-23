@@ -3,10 +3,12 @@ import { requestJson } from "../services/api";
 import type {
   AgentStatus,
   BackupItem,
+  CrashReportItem,
   DashboardPayload,
   FileItem,
   GameServer,
   HostMonitoring,
+  MonitoringHistoryPoint,
   ModItem,
   NewServerDraft,
   ServerConfigPayload,
@@ -19,17 +21,25 @@ import { useToasts } from "./useToasts";
 const emptyServers: GameServer[] = [];
 const emptyLogs: string[] = [];
 const emptyBackups: BackupItem[] = [];
+const emptyCrashReports: CrashReportItem[] = [];
 const emptyMods: ModItem[] = [];
 const emptyFiles: FileItem[] = [];
 
 export const stateLabels: Record<ServerState, string> = {
-  online: "Онлайн",
-  deploying: "Разворачивается",
-  offline: "Выключен",
+  installing: "Устанавливается",
+  stopped: "Выключен",
+  starting: "Запускается",
+  running: "Работает",
+  stopping: "Останавливается",
+  crashed: "Упал",
+  updating: "Обновляется",
+  backing_up: "Бэкап",
 };
 
 export const serverTypeLabels: Record<NewServerDraft["type"], string> = {
   vanilla: "Vanilla",
+  paper: "Paper",
+  purpur: "Purpur",
   fabric: "Fabric",
   forge: "Forge",
 };
@@ -58,8 +68,10 @@ const isApplyingUpdate = ref(false);
 const isCreatingServer = ref(false);
 const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
+const selectedServerCrashReports = ref<CrashReportItem[]>(emptyCrashReports);
 const selectedServerConfig = ref("");
 const isLogLoading = ref(false);
+const isCrashReportLoading = ref(false);
 const isConfigLoading = ref(false);
 const isConfigSaving = ref(false);
 const curseForgeApiKey = ref("");
@@ -96,18 +108,19 @@ const monitoring = ref<HostMonitoring>({
   temperature: "n/a",
   collected_at: "",
 });
+const monitoringHistory = ref<MonitoringHistoryPoint[]>([]);
 
 const onlineServersCount = computed(
-  () => servers.value.filter((server) => server.state !== "offline").length,
+  () => servers.value.filter((server) => server.state === "running").length,
 );
 const offlineServersCount = computed(
-  () => servers.value.filter((server) => server.state === "offline").length,
+  () => servers.value.filter((server) => ["stopped", "crashed"].includes(server.state)).length,
 );
 const deployingServersCount = computed(
-  () => servers.value.filter((server) => server.state === "deploying").length,
+  () => servers.value.filter((server) => ["installing", "starting", "stopping", "updating", "backing_up"].includes(server.state)).length,
 );
 const stableServersCount = computed(
-  () => servers.value.filter((server) => server.state === "online").length,
+  () => servers.value.filter((server) => server.state === "running").length,
 );
 const selectedServer = computed(
   () => servers.value.find((server) => server.id === selectedServerId.value) ?? servers.value[0],
@@ -128,6 +141,25 @@ const monitoringStatus = computed(() => {
   }
   return { label: "Нагрузка в норме", tone: "ok" };
 });
+
+function parseTemperature(value: string) {
+  const match = value.match(/-?\d+(?:[.,]\d+)?/);
+  if (!match) {
+    return null;
+  }
+  return Number(match[0].replace(",", "."));
+}
+
+function recordMonitoringSnapshot(snapshot: HostMonitoring) {
+  const point: MonitoringHistoryPoint = {
+    timestamp: Date.now(),
+    cpu: snapshot.cpu_percent,
+    memory: snapshot.memory.percent,
+    swap: snapshot.swap.percent,
+    temperature: parseTemperature(snapshot.temperature),
+  };
+  monitoringHistory.value = [...monitoringHistory.value.slice(-47), point];
+}
 
 async function loadDashboard(preferredServerId = "") {
   const { showToast } = useToasts();
@@ -195,7 +227,9 @@ async function loadMonitoring() {
   isMonitoringLoading.value = true;
 
   try {
-    monitoring.value = await requestJson<HostMonitoring>("/api/monitoring");
+    const data = await requestJson<HostMonitoring>("/api/monitoring");
+    monitoring.value = data;
+    recordMonitoringSnapshot(data);
     await loadAgentStatus();
   } catch (error) {
     await loadAgentStatus();
@@ -236,6 +270,25 @@ async function refreshServerLogs(serverId = selectedServerId.value) {
     selectedServerLogs.value = await requestJson<string[]>(`/api/servers/${serverId}/logs`);
   } catch (error) {
     console.error(error);
+  }
+}
+
+async function loadServerCrashReports(serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    selectedServerCrashReports.value = [];
+    return;
+  }
+
+  isCrashReportLoading.value = true;
+  try {
+    selectedServerCrashReports.value = await requestJson<CrashReportItem[]>(`/api/servers/${serverId}/crash-reports`);
+  } catch (error) {
+    showToast("Не удалось загрузить crash reports", "error");
+    selectedServerCrashReports.value = [];
+    console.error(error);
+  } finally {
+    isCrashReportLoading.value = false;
   }
 }
 
@@ -281,7 +334,7 @@ async function saveServerConfig() {
   }
 }
 
-async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "backup") {
+async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "backup") {
   const { showToast } = useToasts();
   try {
     await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
@@ -303,6 +356,11 @@ async function createServer(newServer: NewServerDraft) {
         type: newServer.type,
         pack: serverTypeLabels[newServer.type],
         version: newServer.version,
+        min_ram: newServer.min_ram,
+        max_ram: newServer.max_ram,
+        java_runtime: newServer.java_runtime,
+        jvm_args: newServer.jvm_args,
+        cpu_limit: newServer.cpu_limit,
         address: "",
       }),
     });
@@ -425,8 +483,10 @@ export function useDashboardStore() {
     selectedServerId,
     selectedServer,
     selectedServerLogs,
+    selectedServerCrashReports,
     selectedServerConfig,
     isLogLoading,
+    isCrashReportLoading,
     isConfigLoading,
     isConfigSaving,
     curseForgeApiKey,
@@ -434,6 +494,7 @@ export function useDashboardStore() {
     settings,
     updateStatus,
     monitoring,
+    monitoringHistory,
     onlineServersCount,
     offlineServersCount,
     deployingServersCount,
@@ -447,6 +508,7 @@ export function useDashboardStore() {
     loadMonitoring,
     loadServerLogs,
     refreshServerLogs,
+    loadServerCrashReports,
     loadServerConfig,
     saveServerConfig,
     runServerAction,

@@ -1,12 +1,25 @@
-export type ServerState = "online" | "deploying" | "offline";
+export type ServerState =
+  | "installing"
+  | "stopped"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "crashed"
+  | "updating"
+  | "backing_up";
 export type TabId = "servers" | "monitoring" | "modpacks" | "users" | "settings";
-export type MinecraftServerType = "vanilla" | "fabric" | "forge";
+export type MinecraftServerType = "vanilla" | "paper" | "purpur" | "fabric" | "forge";
 export type ThemeName = "pink" | "black" | "white" | "green";
 
 export interface NewServerDraft {
   name: string;
   type: MinecraftServerType;
   version: string;
+  min_ram: string;
+  max_ram: string;
+  java_runtime: "auto" | "8" | "17" | "21";
+  jvm_args: string;
+  cpu_limit: number;
 }
 
 export type MinecraftVersionType = "release" | "snapshot" | "old_beta" | "old_alpha";
@@ -35,6 +48,9 @@ export interface GameServer {
   cpu: number;
   disk: string;
   address: string;
+  exit_code?: number | null;
+  last_event?: string;
+  warnings?: string[];
 }
 
 export interface BackupItem {
@@ -43,6 +59,19 @@ export interface BackupItem {
   size: string;
   created: string;
   server_id: string;
+}
+
+export interface CrashReportItem {
+  name: string;
+  size: string;
+  created: string;
+  summary: string;
+  probable_cause?: string;
+  conflicting_mod?: string;
+  missing_dependency?: string;
+  client_only_mod?: string;
+  stack_trace?: string[];
+  recent_changes?: string[];
 }
 
 export interface ModItem {
@@ -135,6 +164,11 @@ export interface ServerConfigPayload {
   content: string;
 }
 
+export interface RconCommandResult {
+  ok: boolean;
+  output: string;
+}
+
 export interface MetricUsage {
   used: number;
   total: number;
@@ -183,4 +217,12 @@ export interface HostMonitoring {
   services: ServiceUsage[];
   temperature: string;
   collected_at: string;
+}
+
+export interface MonitoringHistoryPoint {
+  timestamp: number;
+  cpu: number;
+  memory: number;
+  swap: number;
+  temperature: number | null;
 }

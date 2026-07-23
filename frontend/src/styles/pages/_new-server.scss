@@ -182,6 +182,10 @@
   font-weight: 700;
 }
 
+.new-server-fields .new-server-field-wide {
+  grid-template-columns: minmax(160px, 0.24fr) minmax(0, 1fr);
+}
+
 .new-server-fields input,
 .new-server-fields select {
   width: 100%;

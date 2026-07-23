@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import asyncio
 import json
 import re
 import base64
@@ -15,22 +16,29 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel, Field
 
 
 class ServerState(str, Enum):
-    online = "online"
-    deploying = "deploying"
-    offline = "offline"
+    installing = "installing"
+    stopped = "stopped"
+    starting = "starting"
+    running = "running"
+    stopping = "stopping"
+    crashed = "crashed"
+    updating = "updating"
+    backing_up = "backing_up"
 
 
 class ServerAction(str, Enum):
     start = "start"
     restart = "restart"
     stop = "stop"
+    kill = "kill"
+    update = "update"
     backup = "backup"
 
 
@@ -45,6 +53,9 @@ class GameServer(BaseModel):
     cpu: int
     disk: str
     address: str
+    exit_code: int | None = None
+    last_event: str = ""
+    warnings: list[str] = Field(default_factory=list)
 
 
 class BackupItem(BaseModel):
@@ -57,10 +68,15 @@ class BackupItem(BaseModel):
 
 class CreateServerRequest(BaseModel):
     name: str
-    type: Literal["vanilla", "fabric", "forge"] = "vanilla"
+    type: Literal["vanilla", "paper", "purpur", "fabric", "forge"] = "vanilla"
     pack: str
     version: str = "1.20.1"
     address: str = ""
+    min_ram: str = "1G"
+    max_ram: str = "2G"
+    java_runtime: str = "auto"
+    jvm_args: str = ""
+    cpu_limit: int = 100
 
 
 class MinecraftVersion(BaseModel):
@@ -221,6 +237,28 @@ class ServerConfigPayload(BaseModel):
     content: str
 
 
+class RconCommandPayload(BaseModel):
+    command: str
+
+
+class RconCommandResult(BaseModel):
+    ok: bool
+    output: str
+
+
+class CrashReportItem(BaseModel):
+    name: str
+    size: str
+    created: str
+    summary: str
+    probable_cause: str = ""
+    conflicting_mod: str = ""
+    missing_dependency: str = ""
+    client_only_mod: str = ""
+    stack_trace: list[str] = Field(default_factory=list)
+    recent_changes: list[str] = Field(default_factory=list)
+
+
 class MetricUsage(BaseModel):
     used: int
     total: int
@@ -326,7 +364,7 @@ servers: dict[str, GameServer] = {
         name="Ksy Vanilla+",
         pack="Better MC Fabric",
         version="1.20.1",
-        state=ServerState.online,
+        state=ServerState.running,
         players="12 / 48",
         ram="8.2 / 16 GB",
         cpu=34,
@@ -338,7 +376,7 @@ servers: dict[str, GameServer] = {
         name="Pink Nether",
         pack="Prominence II",
         version="1.20.1",
-        state=ServerState.deploying,
+        state=ServerState.starting,
         players="0 / 32",
         ram="2.1 / 12 GB",
         cpu=18,
@@ -350,7 +388,7 @@ servers: dict[str, GameServer] = {
         name="Archive Realm",
         pack="Create: Perfect World",
         version="1.19.2",
-        state=ServerState.offline,
+        state=ServerState.stopped,
         players="0 / 24",
         ram="0 / 10 GB",
         cpu=0,
@@ -797,6 +835,43 @@ def load_agent_logs(server_id: str) -> list[str]:
     except Exception as error:
         append_log(f"agent logs unavailable for {server_id}: {error}")
         return []
+
+
+def load_agent_full_logs(server_id: str) -> list[str]:
+    try:
+        response = agent_get(f"/servers/{server_id}/logs/full")
+        response.raise_for_status()
+        return [str(line) for line in response.json()]
+    except Exception as error:
+        append_log(f"agent full logs unavailable for {server_id}: {error}")
+        return []
+
+
+def load_agent_crash_reports(server_id: str) -> list[CrashReportItem]:
+    try:
+        response = agent_get(f"/servers/{server_id}/crash-reports")
+        response.raise_for_status()
+        return [CrashReportItem(**item) for item in response.json()]
+    except Exception as error:
+        append_log(f"agent crash reports unavailable for {server_id}: {error}")
+        return []
+
+
+def agent_rcon_status(server_id: str) -> dict[str, bool]:
+    try:
+        response = agent_get(f"/servers/{server_id}/rcon/status")
+        response.raise_for_status()
+        data = response.json()
+        return {"available": bool(data.get("available"))}
+    except Exception as error:
+        append_log(f"agent rcon status unavailable for {server_id}: {error}")
+        return {"available": False}
+
+
+def agent_rcon_command(server_id: str, command: str) -> RconCommandResult:
+    response = agent_post(f"/servers/{server_id}/rcon/command", json={"command": command})
+    response.raise_for_status()
+    return RconCommandResult(**response.json())
 
 
 def load_agent_backups() -> list[BackupItem] | None:
@@ -1350,6 +1425,11 @@ def create_server(payload: CreateServerRequest) -> GameServer:
                 "name": payload.name,
                 "type": payload.type,
                 "version": payload.version,
+                "min_ram": payload.min_ram,
+                "max_ram": payload.max_ram,
+                "java_runtime": payload.java_runtime,
+                "jvm_args": payload.jvm_args,
+                "cpu_limit": payload.cpu_limit,
             })
             response.raise_for_status()
             server = GameServer(**response.json())
@@ -1370,7 +1450,7 @@ def create_server(payload: CreateServerRequest) -> GameServer:
         name=payload.name,
         pack=payload.pack,
         version=payload.version,
-        state=ServerState.offline,
+        state=ServerState.stopped,
         players="0 / 24",
         ram="0 MB",
         cpu=0,
@@ -1418,19 +1498,27 @@ def run_server_action(server_id: str, action: ServerAction) -> ActionResult:
     server = get_server(server_id)
 
     if action == ServerAction.start:
-        server.state = ServerState.online
+        server.state = ServerState.running
         server.cpu = max(server.cpu, 12)
         server.ram = server.ram if not server.ram.startswith("0 /") else "1.4 / 10 GB"
         message = f"{server.name}: start requested"
     elif action == ServerAction.restart:
-        server.state = ServerState.deploying
+        server.state = ServerState.starting
         server.cpu = max(server.cpu, 22)
         message = f"{server.name}: restart requested"
     elif action == ServerAction.stop:
-        server.state = ServerState.offline
+        server.state = ServerState.stopped
         server.players = "0 / 48" if server.id == "ksy-vanilla" else "0 / 32"
         server.cpu = 0
         message = f"{server.name}: stop requested"
+    elif action == ServerAction.kill:
+        server.state = ServerState.stopped
+        server.players = "0 / 48" if server.id == "ksy-vanilla" else "0 / 32"
+        server.cpu = 0
+        message = f"{server.name}: force stop requested"
+    elif action == ServerAction.update:
+        server.state = ServerState.updating
+        message = f"{server.name}: update requested"
     else:
         backup = BackupItem(
             id=f"backup-{len(backups) + 1}",
@@ -1475,6 +1563,66 @@ def list_server_logs(server_id: str) -> list[str]:
     return [line for line in logs[-80:] if server_id in line or "Server thread" in line]
 
 
+@app.get("/api/servers/{server_id}/logs/download")
+def download_server_logs(server_id: str) -> PlainTextResponse:
+    if AGENT_URL:
+        full_logs = load_agent_full_logs(server_id)
+        if full_logs:
+            return PlainTextResponse(
+                "\n".join(full_logs) + "\n",
+                headers={"Content-Disposition": f'attachment; filename="{server_id}-logs.txt"'},
+            )
+        agent_servers = load_agent_servers()
+        if agent_servers is not None and all(server.id != server_id for server in agent_servers):
+            raise HTTPException(status_code=404, detail="Server not found")
+        require_agent_available()
+        return PlainTextResponse("", headers={"Content-Disposition": f'attachment; filename="{server_id}-logs.txt"'})
+
+    get_server(server_id)
+    content = "\n".join(line for line in logs if server_id in line or "Server thread" in line)
+    return PlainTextResponse(
+        content + ("\n" if content else ""),
+        headers={"Content-Disposition": f'attachment; filename="{server_id}-logs.txt"'},
+    )
+
+
+@app.websocket("/api/servers/{server_id}/logs/ws")
+async def stream_server_logs(websocket: WebSocket, server_id: str, token: str = "") -> None:
+    if not user_from_token(token):
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    sent: list[str] = []
+    try:
+        while True:
+            current_logs = load_agent_logs(server_id) if AGENT_URL else [
+                line for line in logs[-120:] if server_id in line or "Server thread" in line
+            ]
+            if current_logs != sent:
+                await websocket.send_json({"lines": current_logs[-240:]})
+                sent = current_logs
+            await asyncio.sleep(2)
+    except WebSocketDisconnect:
+        return
+
+
+@app.get("/api/servers/{server_id}/crash-reports", response_model=list[CrashReportItem])
+def list_server_crash_reports(server_id: str) -> list[CrashReportItem]:
+    if AGENT_URL:
+        agent_reports = load_agent_crash_reports(server_id)
+        if agent_reports:
+            return agent_reports
+        agent_servers = load_agent_servers()
+        if agent_servers is not None and all(server.id != server_id for server in agent_servers):
+            raise HTTPException(status_code=404, detail="Server not found")
+        require_agent_available()
+        return []
+
+    get_server(server_id)
+    return []
+
+
 @app.get("/api/servers/{server_id}/config", response_model=ServerConfigPayload)
 def get_server_config(server_id: str) -> ServerConfigPayload:
     if AGENT_URL:
@@ -1516,6 +1664,31 @@ def update_server_config(server_id: str, payload: ServerConfigPayload) -> Server
     get_server(server_id)
     append_log(f"{server_id}: server.properties draft updated")
     return payload
+
+
+@app.get("/api/servers/{server_id}/rcon/status")
+def get_server_rcon_status(server_id: str) -> dict[str, bool]:
+    if AGENT_URL:
+        return agent_rcon_status(server_id)
+    get_server(server_id)
+    return {"available": False}
+
+
+@app.post("/api/servers/{server_id}/rcon/command", response_model=RconCommandResult)
+def send_server_rcon_command(server_id: str, payload: RconCommandPayload) -> RconCommandResult:
+    command = payload.command.strip()
+    if not command:
+        raise HTTPException(status_code=400, detail="RCON command is required")
+    if AGENT_URL:
+        try:
+            result = agent_rcon_command(server_id, command)
+            append_log(f"{server_id}: rcon command executed")
+            return result
+        except Exception as error:
+            append_log(f"agent rcon command failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent RCON command failed") from error
+    get_server(server_id)
+    return RconCommandResult(ok=False, output="RCON is unavailable in local demo mode")
 
 
 @app.get("/api/backups", response_model=list[BackupItem])
