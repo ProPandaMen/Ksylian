@@ -467,3 +467,4 @@ class MonitoringHistoryPayload(BaseModel):
     sample_seconds: int
     retention_hours: int
     points: list[MonitoringHistoryPoint]
+    error: str | None = None

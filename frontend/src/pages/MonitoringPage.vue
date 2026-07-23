@@ -244,6 +244,25 @@ function metricTone(percent: number) {
   return "ok";
 }
 
+function temperatureValue() {
+  const match = String(props.monitoring.temperature || "").match(/-?\d+(?:[.,]\d+)?/);
+  return match ? Number(match[0].replace(",", ".")) : null;
+}
+
+function temperatureTone() {
+  const value = temperatureValue();
+  if (value === null) {
+    return "ok";
+  }
+  if (value >= 85) {
+    return "danger";
+  }
+  if (value >= 75) {
+    return "warning";
+  }
+  return "ok";
+}
+
 function hasAttention() {
   return props.monitoringStatus.tone !== "ok" || monitoringAlerts.value.length > 0;
 }
@@ -412,6 +431,10 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
       </div>
       <div class="monitor-toolbar-actions">
         <span>{{ historyMeta.points.length }} точек · шаг {{ historyMeta.sample_seconds }} сек</span>
+        <span v-if="historyMeta.error" class="monitor-history-warning">
+          <AlertTriangle :size="14" />
+          {{ historyMeta.error }}
+        </span>
         <button v-if="!isEditingLayout" class="ghost-button compact" type="button" @click="startLayoutEdit">
           <SlidersHorizontal :size="16" />
           Настроить
@@ -487,12 +510,12 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
             <strong>{{ monitoring.memory.percent }}%</strong>
             <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
           </article>
-          <article class="monitor-summary-card" :class="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'">
-            <HardDrive :size="18" />
-            <span>Диск</span>
-            <AlertTriangle v-if="mainDisk(monitoring.disks) && metricTone(mainDisk(monitoring.disks)!.percent) !== 'ok'" class="summary-alert-icon" :size="16" />
-            <strong>{{ mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a' }}</strong>
-            <small>{{ mainDisk(monitoring.disks)?.mount || 'mount points не найдены' }}</small>
+          <article class="monitor-summary-card" :class="temperatureTone()">
+            <Gauge :size="18" />
+            <span>Температура</span>
+            <AlertTriangle v-if="temperatureTone() !== 'ok'" class="summary-alert-icon" :size="16" />
+            <strong>{{ monitoring.temperature }}</strong>
+            <small>{{ metricSummary((point) => point.temperature, '°C') }}</small>
           </article>
           <article class="monitor-summary-card" :class="monitoring.services.length && runningServices(monitoring) === monitoring.services.length ? 'ok' : 'warning'">
             <ServerCog :size="18" />

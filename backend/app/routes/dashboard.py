@@ -105,7 +105,13 @@ def create_dashboard_router(
         except Exception as error:
             append_log(f"agent monitoring history failed: {error}")
             require_agent_available()
-            return MonitoringHistoryPayload(window=window, sample_seconds=30, retention_hours=24, points=[])
+            return MonitoringHistoryPayload(
+                window=window,
+                sample_seconds=30,
+                retention_hours=24,
+                points=[],
+                error="Host Agent не поддерживает историю мониторинга. Обновите ksylian-agent.service.",
+            )
 
 
     @router.get("/api/minecraft/versions", response_model=MinecraftVersionsPayload)

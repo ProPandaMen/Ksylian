@@ -31,6 +31,22 @@
   font-weight: 800;
 }
 
+.monitor-toolbar-actions .monitor-history-warning {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(520px, 100%);
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--app-warning) 28%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-warning) 10%, var(--app-surface-soft));
+  color: var(--app-warning);
+}
+
+.monitor-history-warning svg {
+  flex: 0 0 auto;
+}
+
 .monitor-periods {
   width: auto;
 }

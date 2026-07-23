@@ -90,4 +90,5 @@ export interface MonitoringHistoryPayload {
   sample_seconds: number;
   retention_hours: number;
   points: MonitoringHistoryPoint[];
+  error?: string | null;
 }
