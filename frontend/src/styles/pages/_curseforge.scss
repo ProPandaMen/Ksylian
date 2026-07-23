@@ -59,6 +59,16 @@
   background: transparent;
 }
 
+.catalog-search input {
+  min-height: 100%;
+  padding: 0;
+  box-shadow: none;
+}
+
+.catalog-search input:focus {
+  box-shadow: none;
+}
+
 .catalog-toolbar select,
 .project-modal select {
   padding: 0 34px 0 12px;

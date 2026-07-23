@@ -10,6 +10,7 @@ import type {
   CurseForgeInstallResult,
   CurseForgeProject,
   CurseForgeSearchPayload,
+  MinecraftVersionsPayload,
 } from "../types";
 
 const store = useDashboardStore();
@@ -27,8 +28,14 @@ const selectedFile = ref<CurseForgeFile | null>(null);
 const projects = ref<CurseForgeProject[]>([]);
 const files = ref<CurseForgeFile[]>([]);
 const dependencies = ref<CurseForgeFile[]>([]);
+const minecraftVersions = ref<MinecraftVersionsPayload>({
+  latest_release: "",
+  latest_snapshot: "",
+  versions: [],
+});
 const selectedServerId = ref("");
 const isSearching = ref(false);
+const isVersionsLoading = ref(false);
 const isFilesLoading = ref(false);
 const isInstalling = ref(false);
 const errorMessage = ref("");
@@ -43,6 +50,18 @@ const selectedVersion = computed(() => {
   const versions = selectedFile.value?.game_versions.length ? selectedFile.value.game_versions : selectedProject.value?.game_versions ?? [];
   return versions.find((value) => /^\d+\.\d+(?:\.\d+)?$/.test(value)) ?? "";
 });
+const releaseVersions = computed(() => minecraftVersions.value.versions.filter((version) => version.type === "release"));
+
+async function loadMinecraftVersions() {
+  isVersionsLoading.value = true;
+  try {
+    minecraftVersions.value = await requestJson<MinecraftVersionsPayload>("/api/minecraft/versions");
+  } catch (error) {
+    console.error(error);
+  } finally {
+    isVersionsLoading.value = false;
+  }
+}
 
 async function searchProjects(resetPage = true) {
   if (resetPage) {
@@ -207,7 +226,7 @@ onMounted(async () => {
     await store.loadDashboard();
   }
   selectedServerId.value = store.selectedServerId.value || store.servers.value[0]?.id || "";
-  await store.loadSettings();
+  await Promise.all([store.loadSettings(), loadMinecraftVersions()]);
   if (hasApiKey.value) {
     await searchProjects();
   }
@@ -227,7 +246,12 @@ onMounted(async () => {
       </label>
       <label>
         Версия
-        <input v-model="minecraftVersion" type="text" placeholder="1.20.1" />
+        <select v-model="minecraftVersion" :disabled="isVersionsLoading">
+          <option value="">{{ isVersionsLoading ? 'Загружаю версии...' : 'Любая версия' }}</option>
+          <option v-for="version in releaseVersions" :key="version.id" :value="version.id">
+            {{ version.id }}
+          </option>
+        </select>
       </label>
       <label>
         Loader
