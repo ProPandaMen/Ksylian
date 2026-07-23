@@ -38,10 +38,11 @@ Backend пока сохраняет совместимый `backend/app/main.py`
 - `agent_client.py` — единая typed-точка для всех запросов к host agent.
 - `routes/auth.py` — auth/users handlers без изменения публичных URL.
 - `routes/dashboard.py` — dashboard, monitoring, Minecraft versions и agent status/restart handlers.
+- `routes/marketplace.py` — marketplace/demo handlers: `/api/mods`, CurseForge search и `/api/files`.
 - `routes/servers.py` — server lifecycle, logs, config, RCON, backups, files, mods и loaders handlers.
 - `routes/settings.py` — settings/update handlers без изменения публичных URL.
 
-Следующий безопасный шаг — перенести оставшиеся marketplace/demo handlers (`/api/mods`, `/api/curseforge/search`, `/api/files`) в отдельный router.
+Следующий безопасный шаг — уменьшить dependency fan-out между route factories и helper-функциями, выделив backend service modules для logs, CurseForge/GitHub и demo fallback data.
 
 ## Frontend
 
