@@ -259,7 +259,8 @@
 }
 
 .resource-chart-head span,
-.resource-chart-card small {
+.resource-chart-meta small,
+.resource-chart-meta span {
   min-width: 0;
   overflow: hidden;
   color: var(--app-muted);
@@ -298,9 +299,21 @@
   filter: drop-shadow(0 4px 8px rgba(255, 47, 163, 0.16));
 }
 
-.resource-chart-card small {
+.resource-chart-meta {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.resource-chart-meta small,
+.resource-chart-meta span {
   font-size: 0.82rem;
   text-align: right;
+}
+
+.resource-chart-meta span {
+  color: color-mix(in srgb, var(--chart-tone, var(--app-accent)) 72%, var(--app-muted));
+  font-weight: 800;
 }
 
 .monitor-insight-list {

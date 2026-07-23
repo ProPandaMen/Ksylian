@@ -125,6 +125,16 @@ function trendLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
   return delta > 0 ? `растёт на ${delta}%` : `снижается на ${Math.abs(delta)}%`;
 }
 
+function metricWindowLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
+  const values = chartValues(history, key);
+  const min = Math.round(Math.min(...values));
+  const max = Math.round(Math.max(...values));
+  if (values.length <= 1) {
+    return "min/max появятся после следующих снимков";
+  }
+  return `окно ${min}-${max}% · ${trendLabel(history, key)}`;
+}
+
 const monitoringInsights = computed(() => {
   const monitoring = props.monitoring;
   const insights: Array<{ tone: InsightTone; title: string; detail: string }> = [];
@@ -294,7 +304,10 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
             <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'cpu')" />
             <path class="resource-chart-line" :d="chartPath(metricHistory, 'cpu')" />
           </svg>
-          <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
+          <div class="resource-chart-meta">
+            <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
+            <span>{{ metricWindowLabel(metricHistory, 'cpu') }}</span>
+          </div>
         </article>
 
         <article class="resource-chart-card" :class="metricTone(monitoring.memory.percent)">
@@ -307,7 +320,10 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
             <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'memory')" />
             <path class="resource-chart-line" :d="chartPath(metricHistory, 'memory')" />
           </svg>
-          <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
+          <div class="resource-chart-meta">
+            <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
+            <span>{{ metricWindowLabel(metricHistory, 'memory') }}</span>
+          </div>
         </article>
 
         <article class="resource-chart-card" :class="metricTone(monitoring.swap.percent)">
@@ -320,7 +336,10 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
             <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'swap')" />
             <path class="resource-chart-line" :d="chartPath(metricHistory, 'swap')" />
           </svg>
-          <small>{{ monitoring.swap.used_label }} / {{ monitoring.swap.total_label }}</small>
+          <div class="resource-chart-meta">
+            <small>{{ monitoring.swap.used_label }} / {{ monitoring.swap.total_label }}</small>
+            <span>{{ metricWindowLabel(metricHistory, 'swap') }}</span>
+          </div>
         </article>
 
         <article class="resource-chart-card">
@@ -333,7 +352,10 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
             <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'temperature')" />
             <path class="resource-chart-line" :d="chartPath(metricHistory, 'temperature')" />
           </svg>
-          <small>{{ monitoring.collected_at || 'только что' }}</small>
+          <div class="resource-chart-meta">
+            <small>{{ monitoring.collected_at || 'только что' }}</small>
+            <span>{{ metricWindowLabel(metricHistory, 'temperature') }}</span>
+          </div>
         </article>
       </div>
     </section>
