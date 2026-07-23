@@ -76,3 +76,11 @@ h3 {
   gap: 10px;
   justify-content: flex-end;
 }
+
+.topbar-refresh-meta {
+  align-self: center;
+  color: var(--app-muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}

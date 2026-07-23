@@ -459,7 +459,6 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
         </button>
       </div>
       <div class="monitor-toolbar-actions">
-        <span>Автообновление: {{ historyMeta.sample_seconds }} сек</span>
         <button v-if="!isEditingLayout" class="ghost-button compact" type="button" @click="startLayoutEdit">
           <SlidersHorizontal :size="16" />
           Настроить

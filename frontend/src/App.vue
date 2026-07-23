@@ -159,6 +159,9 @@ watch(
             <RefreshCw :class="{ spinning: store.isMonitoringLoading.value }" :size="16" />
             <span>Обновить</span>
           </button>
+          <span v-if="isMonitoringPage" class="topbar-refresh-meta">
+            Автообновление: {{ store.monitoringHistoryMeta.value.sample_seconds }} сек
+          </span>
           <button
             v-else
             class="ghost-button compact"
