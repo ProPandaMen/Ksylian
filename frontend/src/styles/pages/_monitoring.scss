@@ -318,7 +318,7 @@
 
 .monitor-insight-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
   padding-top: 14px;
 }
@@ -328,7 +328,7 @@
   grid-template-columns: 22px minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
-  min-height: 96px;
+  min-height: 86px;
   padding: 14px;
   border: 1px solid rgba(107, 114, 128, 0.1);
   border-radius: 16px;
@@ -336,6 +336,10 @@
   box-shadow:
     4px 4px 10px color-mix(in srgb, var(--app-inset-dark) 58%, transparent),
     -4px -4px 10px color-mix(in srgb, var(--app-inset-light) 54%, transparent);
+}
+
+.monitor-insight-card:only-child {
+  min-height: 72px;
 }
 
 .monitor-insight-card svg {
@@ -351,8 +355,7 @@
 .monitor-insight-card strong,
 .monitor-insight-card span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .monitor-insight-card strong {
@@ -639,4 +642,8 @@
 
 .process-row small {
   grid-column: 2 / -1;
+}
+
+.process-metric {
+  text-align: right;
 }

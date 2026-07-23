@@ -90,6 +90,9 @@
     flex: 0 0 auto;
     align-items: center;
     gap: 12px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     height: auto;
     min-height: auto;
     margin-bottom: 0;
@@ -332,6 +335,24 @@
 
   .process-row small {
     grid-column: 1 / -1;
+  }
+
+  .process-metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 32px;
+    padding: 7px 9px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-surface-soft) 72%, transparent);
+    text-align: right;
+  }
+
+  .process-metric::before {
+    content: attr(data-label);
+    color: var(--app-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
   }
 
   .primary-button,

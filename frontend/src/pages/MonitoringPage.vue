@@ -109,10 +109,14 @@ function compactIps(ips: string[]) {
   return ips.slice(0, 2).join(" · ");
 }
 
+function metricUnit(key: MetricKey) {
+  return key === "temperature" ? "°C" : "%";
+}
+
 function trendLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
   const values = chartValues(history, key);
   if (values.length < 4) {
-    return "тренд появится после нескольких снимков";
+    return "тренд появится позже";
   }
   const start = values.slice(0, Math.max(1, Math.floor(values.length / 3)));
   const end = values.slice(-Math.max(1, Math.floor(values.length / 3)));
@@ -122,7 +126,8 @@ function trendLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
   if (Math.abs(delta) < 4) {
     return "стабильно";
   }
-  return delta > 0 ? `растёт на ${delta}%` : `снижается на ${Math.abs(delta)}%`;
+  const unit = metricUnit(key);
+  return delta > 0 ? `растёт на ${delta}${unit}` : `снижается на ${Math.abs(delta)}${unit}`;
 }
 
 function metricWindowLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
@@ -130,9 +135,10 @@ function metricWindowLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
   const min = Math.round(Math.min(...values));
   const max = Math.round(Math.max(...values));
   if (values.length <= 1) {
-    return "min/max появятся после следующих снимков";
+    return "ждём историю";
   }
-  return `окно ${min}-${max}% · ${trendLabel(history, key)}`;
+  const unit = metricUnit(key);
+  return `${min}-${max}${unit} · ${trendLabel(history, key)}`;
 }
 
 const monitoringInsights = computed(() => {
@@ -289,7 +295,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
       <div class="monitor-section-head">
         <div>
           <h3>История нагрузки</h3>
-          <p>{{ metricHistory.length }} точек · окно {{ historyWindowLabel(metricHistory) }} · автообновление 5 сек</p>
+          <p>{{ metricHistory.length }} точек · окно {{ historyWindowLabel(metricHistory) }} · обновление каждые 5 сек</p>
         </div>
       </div>
 
@@ -385,7 +391,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
         <div class="monitor-section-head">
           <div>
             <h3>Диски</h3>
-            <p>{{ monitoring.disks.length }} mount points</p>
+            <p>{{ monitoring.disks.length }} точек монтирования</p>
           </div>
         </div>
 
@@ -432,7 +438,7 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
         <div class="monitor-section-head">
           <div>
             <h3>Сервисы</h3>
-            <p>{{ serviceHealthLabel(monitoring) }} online</p>
+            <p>{{ serviceHealthLabel(monitoring) }} работают</p>
           </div>
         </div>
 
@@ -480,8 +486,8 @@ function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxVal
         <div v-for="process in monitoring.top_processes" :key="process.pid" class="process-row" :class="processTone(process)">
           <span>{{ process.pid }}</span>
           <strong>{{ process.name }}</strong>
-          <span>{{ process.cpu }}%</span>
-          <span>{{ process.memory }}%</span>
+          <span class="process-metric" data-label="CPU">{{ process.cpu }}%</span>
+          <span class="process-metric" data-label="RAM">{{ process.memory }}%</span>
           <small>{{ process.command }}</small>
         </div>
         <div v-if="!monitoring.top_processes.length" class="process-row">
