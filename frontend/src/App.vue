@@ -35,7 +35,15 @@ const isServerNestedPage = computed(() => route.name === "server-detail" || rout
 
 const activeTabCopy = computed(() => tabCopy[activeTab.value]);
 const visibleNavItems = computed(() =>
-  navItems.filter((item) => item.id !== "users" || auth.isAdmin.value),
+  navItems.filter((item) => {
+    if (item.id === "users") {
+      return auth.isAdmin.value;
+    }
+    if (item.id === "modpacks") {
+      return store.settings.value.curseforge_api_key_status === "valid";
+    }
+    return true;
+  }),
 );
 const pageTitle = computed(() => {
   if (route.name === "server-detail" && store.selectedServer.value) {
@@ -78,6 +86,12 @@ function loadAppData() {
   store.loadSettings();
 }
 
+function redirectUnavailableRoutes() {
+  if (route.name === "modpacks" && store.settings.value.curseforge_api_key_status !== "valid") {
+    router.replace("/settings");
+  }
+}
+
 onMounted(async () => {
   await auth.initializeAuth();
   loadAppData();
@@ -87,6 +101,7 @@ watch(
   () => route.name,
   () => {
     loadAppData();
+    redirectUnavailableRoutes();
   },
 );
 
@@ -94,6 +109,13 @@ watch(
   () => auth.user.value?.id,
   () => {
     loadAppData();
+  },
+);
+
+watch(
+  () => store.settings.value.curseforge_api_key_status,
+  () => {
+    redirectUnavailableRoutes();
   },
 );
 </script>
