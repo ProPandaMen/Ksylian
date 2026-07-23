@@ -1,11 +1,12 @@
 import { computed, ref } from "vue";
 import { requestJson } from "../services/api";
-import type { AuthSessionPayload, AuthStatusPayload, AuthUser, ThemeName } from "../types";
+import type { AuthSessionPayload, AuthStatusPayload, AuthUser, ThemeName, UserPreferences } from "../types";
 import { useToasts } from "./useToasts";
 
 const TOKEN_KEY = "ksylian_auth_token";
 
 const user = ref<AuthUser | null>(null);
+const preferences = ref<UserPreferences>({ monitoring_layout: null });
 const authStatus = ref<AuthStatusPayload>({
   has_users: true,
   bootstrap_required: false,
@@ -36,6 +37,7 @@ function setSession(payload: AuthSessionPayload) {
 function clearSession() {
   window.localStorage.removeItem(TOKEN_KEY);
   user.value = null;
+  preferences.value = { monitoring_layout: null };
   applyTheme("pink");
 }
 
@@ -61,12 +63,30 @@ async function loadMe() {
   }
 }
 
+async function loadPreferences() {
+  if (!token()) {
+    preferences.value = { monitoring_layout: null };
+    return preferences.value;
+  }
+  preferences.value = await requestJson<UserPreferences>("/api/auth/me/preferences");
+  return preferences.value;
+}
+
+async function updatePreferences(payload: UserPreferences) {
+  preferences.value = await requestJson<UserPreferences>("/api/auth/me/preferences", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return preferences.value;
+}
+
 async function bootstrapAdmin(payload: { username: string; password: string; display_name: string; theme: ThemeName }) {
   const session = await requestJson<AuthSessionPayload>("/api/auth/bootstrap", {
     method: "POST",
     body: JSON.stringify(payload),
   });
   setSession(session);
+  await loadPreferences();
   return session.user;
 }
 
@@ -76,6 +96,7 @@ async function login(payload: { username: string; password: string }) {
     body: JSON.stringify(payload),
   });
   setSession(session);
+  await loadPreferences();
   return session.user;
 }
 
@@ -91,6 +112,7 @@ async function registerInvite(payload: {
     body: JSON.stringify(payload),
   });
   setSession(session);
+  await loadPreferences();
   return session.user;
 }
 
@@ -114,6 +136,9 @@ async function initializeAuth() {
   try {
     await loadAuthStatus();
     await loadMe();
+    if (user.value) {
+      await loadPreferences();
+    }
   } finally {
     isAuthLoading.value = false;
   }
@@ -122,6 +147,7 @@ async function initializeAuth() {
 export function useAuthStore() {
   return {
     user,
+    preferences,
     authStatus,
     isAuthLoading,
     isAuthenticated: computed(() => Boolean(user.value)),
@@ -131,10 +157,12 @@ export function useAuthStore() {
     initializeAuth,
     loadAuthStatus,
     loadMe,
+    loadPreferences,
     bootstrapAdmin,
     login,
     registerInvite,
     updateTheme,
+    updatePreferences,
     clearSession,
   };
 }

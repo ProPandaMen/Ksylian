@@ -9,8 +9,10 @@ import type {
   FileItem,
   GameServer,
   HostMonitoring,
+  MonitoringHistoryPayload,
   InstalledModItem,
   MonitoringHistoryPoint,
+  MonitoringWindow,
   ModItem,
   SettingsPayload,
   UpdateStatusPayload,
@@ -41,6 +43,7 @@ export const files = ref<FileItem[]>(emptyFiles);
 export const isLoading = ref(true);
 export const isDashboardLoaded = ref(false);
 export const isMonitoringLoading = ref(false);
+export const isMonitoringHistoryLoading = ref(false);
 export const isSavingSettings = ref(false);
 export const isUpdateLoading = ref(false);
 export const isApplyingUpdate = ref(false);
@@ -98,6 +101,13 @@ export const monitoring = ref<HostMonitoring>({
   collected_at: "",
 });
 export const monitoringHistory = ref<MonitoringHistoryPoint[]>([]);
+export const monitoringHistoryMeta = ref<MonitoringHistoryPayload>({
+  window: "1h",
+  sample_seconds: 30,
+  retention_hours: 24,
+  points: [],
+});
+export const monitoringWindow = ref<MonitoringWindow>("1h");
 
 export const onlineServersCount = computed(
   () => servers.value.filter((server) => server.state === "running").length,

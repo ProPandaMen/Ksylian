@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import os
-import socket
 import subprocess
 from collections.abc import Callable
-from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Header
 
 from ..activity import append_action_log
 from ..config import ACTION_LOG, PROXY_DOMAIN, PROXY_PORT, PUBLIC_DOMAIN, TOKEN, UPDATE_LOG
-from ..schemas import AppUpdateRequest, AppUpdateResult, HostMonitoring, ServiceUsage
+from ..monitoring_history import collect_host_monitoring, history_payload
+from ..schemas import AppUpdateRequest, AppUpdateResult, HostMonitoring, MonitoringHistoryPayload
 from ..security import require_token
 from ..updates import append_update_log, ensure_updater_configured, update_script_path, validate_update_target
 
@@ -90,53 +87,23 @@ def create_system_router(
     @router.get("/monitoring", response_model=HostMonitoring)
     def monitoring(x_ksylian_token: str | None = Header(default=None)) -> HostMonitoring:
         require_token(x_ksylian_token)
-        memory, swap = memory_usage()
-        load_average = [round(value, 2) for value in os.getloadavg()]
-
-        try:
-            uptime_seconds = float(Path("/proc/uptime").read_text().split()[0])
-        except (OSError, ValueError, IndexError):
-            uptime_seconds = 0
-
-        services = []
-        for server_id in active_server_ids():
-            config = load_server_store()[server_id]
-            cpu, ram = service_usage(config.service)
-            services.append(
-                ServiceUsage(
-                    id=server_id,
-                    name=config.name,
-                    state=service_state(config.service),
-                    cpu=cpu,
-                    ram=ram,
-                )
-            )
-
-        agent_cpu, agent_ram = service_usage("ksylian-agent.service")
-        services.append(
-            ServiceUsage(
-                id="ksylian-agent",
-                name="Ksylian Agent",
-                state=service_state("ksylian-agent.service"),
-                cpu=agent_cpu,
-                ram=agent_ram,
-            )
+        return collect_host_monitoring(
+            active_server_ids=active_server_ids,
+            load_server_store=load_server_store,
+            memory_usage=memory_usage,
+            service_usage=service_usage,
+            service_state=service_state,
+            host_ips=host_ips,
+            format_duration=format_duration,
+            cpu_percent=cpu_percent,
+            disk_usage=disk_usage,
+            top_processes=top_processes,
+            temperature_label=temperature_label,
         )
 
-        return HostMonitoring(
-            hostname=socket.gethostname(),
-            ip_addresses=host_ips(),
-            uptime=format_duration(uptime_seconds),
-            load_average=load_average,
-            cpu_percent=cpu_percent(),
-            cpu_cores=os.cpu_count() or 1,
-            memory=memory,
-            swap=swap,
-            disks=disk_usage(),
-            top_processes=top_processes(),
-            services=services,
-            temperature=temperature_label(),
-            collected_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        )
+    @router.get("/monitoring/history", response_model=MonitoringHistoryPayload)
+    def monitoring_history(window: str = "1h", x_ksylian_token: str | None = Header(default=None)) -> MonitoringHistoryPayload:
+        require_token(x_ksylian_token)
+        return history_payload(window)
 
     return router

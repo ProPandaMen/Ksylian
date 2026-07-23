@@ -54,6 +54,7 @@ def init_database() -> None:
                 display_name TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'member',
                 theme TEXT NOT NULL DEFAULT 'pink',
+                preferences TEXT NOT NULL DEFAULT '{}',
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
@@ -73,12 +74,19 @@ def init_database() -> None:
             CREATE INDEX IF NOT EXISTS idx_invites_used_at ON invites(used_at);
             """
         )
+        ensure_user_preferences_column(connection)
         migrate_legacy_user_store(connection)
     try:
         DATABASE_PATH.chmod(0o600)
     except OSError:
         pass
     DATABASE_READY = True
+
+
+def ensure_user_preferences_column(connection: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
+    if "preferences" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'")
 
 
 def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
@@ -91,8 +99,8 @@ def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
         connection.execute(
             """
             INSERT OR IGNORE INTO users
-                (id, username, display_name, role, theme, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, username, display_name, role, theme, preferences, password_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(item.get("id") or secrets.token_urlsafe(10)),
@@ -100,6 +108,7 @@ def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
                 str(item.get("display_name") or item.get("username") or ""),
                 str(item.get("role") or "member"),
                 str(item.get("theme") or "pink"),
+                json.dumps(item.get("preferences") if isinstance(item.get("preferences"), dict) else {}),
                 str(item.get("password_hash") or ""),
                 str(item.get("created_at") or iso_now()),
             ),
@@ -134,7 +143,7 @@ def load_user_store() -> dict:
             row_to_dict(row)
             for row in connection.execute(
                 """
-                SELECT id, username, display_name, role, theme, password_hash, created_at
+                SELECT id, username, display_name, role, theme, preferences, password_hash, created_at
                 FROM users
                 ORDER BY created_at ASC
                 """
@@ -163,8 +172,8 @@ def save_user_store(data: dict) -> None:
         connection.executemany(
             """
             INSERT INTO users
-                (id, username, display_name, role, theme, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, username, display_name, role, theme, preferences, password_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -173,6 +182,7 @@ def save_user_store(data: dict) -> None:
                     str(item.get("display_name") or item.get("username") or ""),
                     str(item.get("role") or "member"),
                     str(item.get("theme") or "pink"),
+                    json.dumps(item.get("preferences") if isinstance(item.get("preferences"), dict) else {}),
                     str(item.get("password_hash") or ""),
                     str(item.get("created_at") or iso_now()),
                 )

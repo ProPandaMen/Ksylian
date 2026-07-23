@@ -427,3 +427,43 @@ class HostMonitoring(BaseModel):
     services: list[ServiceUsage]
     temperature: str
     collected_at: str
+
+
+class MonitoringDiskPoint(BaseModel):
+    mount: str
+    percent: int
+    used: int
+    total: int
+
+
+class MonitoringServicesPoint(BaseModel):
+    running: int
+    total: int
+    unhealthy: list[str] = []
+
+
+class MonitoringTopProcessPoint(BaseModel):
+    pid: int
+    name: str
+    cpu: float
+    memory: float
+
+
+class MonitoringHistoryPoint(BaseModel):
+    timestamp: int
+    collected_at: str
+    cpu: int
+    memory: int
+    swap: int
+    temperature: float | None = None
+    load_average: list[float]
+    disks: list[MonitoringDiskPoint] = []
+    services: MonitoringServicesPoint
+    top_process: MonitoringTopProcessPoint | None = None
+
+
+class MonitoringHistoryPayload(BaseModel):
+    window: str
+    sample_seconds: int
+    retention_hours: int
+    points: list[MonitoringHistoryPoint]

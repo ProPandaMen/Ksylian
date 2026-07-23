@@ -1,17 +1,190 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { AlertTriangle, CheckCircle2, Cpu, Gauge, HardDrive, MemoryStick, Network, ServerCog } from "@lucide/vue";
-import type { DiskUsage, HostMonitoring, MonitoringHistoryPoint, ServerState } from "../types";
+import { computed, onMounted, ref, watch } from "vue";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  CheckCircle2,
+  Cpu,
+  Gauge,
+  GripVertical,
+  HardDrive,
+  MemoryStick,
+  Network,
+  RotateCcw,
+  Save,
+  ServerCog,
+  SlidersHorizontal,
+  X,
+} from "@lucide/vue";
+import MetricChart from "../components/MetricChart.vue";
+import { useAuthStore } from "../composables/useAuthStore";
+import type {
+  DiskUsage,
+  HostMonitoring,
+  MonitoringHistoryPayload,
+  MonitoringHistoryPoint,
+  MonitoringWindow,
+  ServerState,
+} from "../types";
 
 const props = defineProps<{
   monitoring: HostMonitoring;
   metricHistory: MonitoringHistoryPoint[];
+  historyMeta: MonitoringHistoryPayload;
+  selectedWindow: MonitoringWindow;
+  isHistoryLoading: boolean;
   monitoringStatus: { label: string; tone: string };
   stateLabels: Record<ServerState, string>;
 }>();
 
-type MetricKey = "cpu" | "memory" | "swap" | "temperature";
+const emit = defineEmits<{
+  "change-window": [window: MonitoringWindow];
+  "refresh-history": [];
+}>();
+
 type InsightTone = "ok" | "warning" | "danger";
+type BlockId =
+  | "host"
+  | "summary"
+  | "charts.cpu"
+  | "charts.memory"
+  | "charts.disk"
+  | "charts.temperatureSwap"
+  | "insights"
+  | "disks"
+  | "services"
+  | "processes";
+
+const auth = useAuthStore();
+const windows: Array<{ id: MonitoringWindow; label: string }> = [
+  { id: "1h", label: "1 час" },
+  { id: "6h", label: "6 часов" },
+  { id: "24h", label: "24 часа" },
+];
+const defaultBlocks: BlockId[] = [
+  "host",
+  "summary",
+  "charts.cpu",
+  "charts.memory",
+  "charts.disk",
+  "charts.temperatureSwap",
+  "insights",
+  "disks",
+  "services",
+  "processes",
+];
+const blockLabels: Record<BlockId, string> = {
+  host: "Хост",
+  summary: "Сводка",
+  "charts.cpu": "CPU",
+  "charts.memory": "RAM",
+  "charts.disk": "Диски",
+  "charts.temperatureSwap": "Температура и Swap",
+  insights: "Инсайты",
+  disks: "Детали дисков",
+  services: "Сервисы",
+  processes: "Процессы",
+};
+
+const isEditingLayout = ref(false);
+const savedBlocks = ref<BlockId[]>([...defaultBlocks]);
+const draftBlocks = ref<BlockId[]>([...defaultBlocks]);
+const draggedBlock = ref<BlockId | null>(null);
+
+const visibleBlocks = computed(() => (isEditingLayout.value ? draftBlocks.value : savedBlocks.value));
+const historyPoints = computed(() => props.metricHistory);
+
+function sanitizeBlocks(blocks: string[] | undefined | null): BlockId[] {
+  const allowed = new Set(defaultBlocks);
+  const result = (blocks || []).filter((block): block is BlockId => allowed.has(block as BlockId));
+  defaultBlocks.forEach((block) => {
+    if (!result.includes(block)) {
+      result.push(block);
+    }
+  });
+  return result;
+}
+
+function applyPreferences() {
+  const stored = auth.preferences.value.monitoring_layout?.blocks;
+  savedBlocks.value = sanitizeBlocks(stored);
+  if (!isEditingLayout.value) {
+    draftBlocks.value = [...savedBlocks.value];
+  }
+}
+
+onMounted(() => {
+  applyPreferences();
+});
+
+watch(() => auth.preferences.value.monitoring_layout?.blocks, applyPreferences);
+
+function startLayoutEdit() {
+  draftBlocks.value = [...savedBlocks.value];
+  isEditingLayout.value = true;
+}
+
+function cancelLayoutEdit() {
+  draftBlocks.value = [...savedBlocks.value];
+  isEditingLayout.value = false;
+}
+
+async function saveLayout() {
+  savedBlocks.value = sanitizeBlocks(draftBlocks.value);
+  await auth.updatePreferences({
+    monitoring_layout: {
+      version: 1,
+      blocks: savedBlocks.value,
+    },
+  });
+  isEditingLayout.value = false;
+}
+
+async function resetLayout() {
+  draftBlocks.value = [...defaultBlocks];
+  savedBlocks.value = [...defaultBlocks];
+  await auth.updatePreferences({
+    monitoring_layout: {
+      version: 1,
+      blocks: defaultBlocks,
+    },
+  });
+  isEditingLayout.value = false;
+}
+
+function moveBlock(block: BlockId, direction: -1 | 1) {
+  const index = draftBlocks.value.indexOf(block);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= draftBlocks.value.length) {
+    return;
+  }
+  const next = [...draftBlocks.value];
+  [next[index], next[target]] = [next[target], next[index]];
+  draftBlocks.value = next;
+}
+
+function dropBlock(target: BlockId) {
+  if (!draggedBlock.value || draggedBlock.value === target) {
+    draggedBlock.value = null;
+    return;
+  }
+  const next = draftBlocks.value.filter((block) => block !== draggedBlock.value);
+  next.splice(next.indexOf(target), 0, draggedBlock.value);
+  draftBlocks.value = next;
+  draggedBlock.value = null;
+}
+
+function blockClass(block: BlockId) {
+  return [
+    "monitor-block",
+    block.replace(".", "-"),
+    {
+      editing: isEditingLayout.value,
+      dragging: draggedBlock.value === block,
+    },
+  ];
+}
 
 function clampPercent(percent: number) {
   return Math.min(100, Math.max(0, Math.round(percent)));
@@ -29,9 +202,7 @@ function freeLabel(disk: DiskUsage) {
 }
 
 function diskBarStyle(percent: number) {
-  return {
-    "--disk-used": `${clampPercent(percent)}%`,
-  };
+  return { "--disk-used": `${clampPercent(percent)}%` };
 }
 
 function metricTone(percent: number) {
@@ -44,28 +215,13 @@ function metricTone(percent: number) {
   return "ok";
 }
 
-function historyWindowLabel(history: MonitoringHistoryPoint[]) {
-  if (history.length <= 1) {
-    return "нужны ещё снимки";
-  }
-  const seconds = Math.max(0, Math.round((history.at(-1)!.timestamp - history[0].timestamp) / 1000));
-  if (seconds >= 60) {
-    return `${Math.round(seconds / 60)} мин`;
-  }
-  return `${seconds} сек`;
+function mainDisk(disks: DiskUsage[]) {
+  return disks.find((disk) => disk.mount === "/") || disks[0] || null;
 }
 
-function mainDisk(disks: DiskUsage[]) {
-  const rootDisk = disks.find((disk) => disk.mount === "/");
-  if (rootDisk) {
-    return rootDisk;
-  }
-  return disks.reduce<DiskUsage | null>((selected, disk) => {
-    if (!selected) {
-      return disk;
-    }
-    return disk.percent > selected.percent ? disk : selected;
-  }, null);
+function mainDiskPoint(point: MonitoringHistoryPoint) {
+  const root = point.disks?.find((disk) => disk.mount === "/") || point.disks?.[0];
+  return root?.percent ?? null;
 }
 
 function runningServices(monitoring: HostMonitoring) {
@@ -83,10 +239,7 @@ function serviceTone(service: HostMonitoring["services"][number]) {
   if (service.state === "crashed") {
     return "danger";
   }
-  if (service.state !== "running") {
-    return "warning";
-  }
-  if (service.cpu >= 75) {
+  if (service.state !== "running" || service.cpu >= 75) {
     return "warning";
   }
   return "ok";
@@ -103,84 +256,60 @@ function processTone(process: HostMonitoring["top_processes"][number]) {
 }
 
 function compactIps(ips: string[]) {
-  if (!ips.length) {
-    return "IP не найден";
-  }
-  return ips.slice(0, 2).join(" · ");
+  return ips.length ? ips.slice(0, 2).join(" · ") : "IP не найден";
 }
 
-function metricUnit(key: MetricKey) {
-  return key === "temperature" ? "°C" : "%";
+function average(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
-function trendLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
-  const values = chartValues(history, key);
-  if (values.length < 4) {
-    return "тренд появится позже";
-  }
-  const start = values.slice(0, Math.max(1, Math.floor(values.length / 3)));
-  const end = values.slice(-Math.max(1, Math.floor(values.length / 3)));
-  const startAverage = start.reduce((sum, value) => sum + value, 0) / start.length;
-  const endAverage = end.reduce((sum, value) => sum + value, 0) / end.length;
-  const delta = Math.round(endAverage - startAverage);
-  if (Math.abs(delta) < 4) {
-    return "стабильно";
-  }
-  const unit = metricUnit(key);
-  return delta > 0 ? `растёт на ${delta}${unit}` : `снижается на ${Math.abs(delta)}${unit}`;
+function metricValues(valueForPoint: (point: MonitoringHistoryPoint) => number | null | undefined) {
+  return historyPoints.value
+    .map(valueForPoint)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
-function metricWindowLabel(history: MonitoringHistoryPoint[], key: MetricKey) {
-  const values = chartValues(history, key);
+function metricSummary(valueForPoint: (point: MonitoringHistoryPoint) => number | null | undefined, unit: string) {
+  const values = metricValues(valueForPoint);
+  if (values.length < 2) {
+    return "история собирается";
+  }
   const min = Math.round(Math.min(...values));
+  const avg = Math.round(average(values));
   const max = Math.round(Math.max(...values));
-  if (values.length <= 1) {
-    return "ждём историю";
-  }
-  const unit = metricUnit(key);
-  return `${min}-${max}${unit} · ${trendLabel(history, key)}`;
+  const delta = Math.round((values.at(-1)! - values[0]) * 10) / 10;
+  const trend = Math.abs(delta) < 1 ? "стабильно" : delta > 0 ? `+${delta}${unit}` : `${delta}${unit}`;
+  return `min ${min}${unit} · avg ${avg}${unit} · max ${max}${unit} · ${trend}`;
 }
+
+const servicesAnalytics = computed(() => {
+  const latest = historyPoints.value.at(-1)?.services;
+  const unhealthy = historyPoints.value.flatMap((point) => point.services?.unhealthy || []);
+  const uniqueUnhealthy = [...new Set(unhealthy)].slice(0, 3);
+  return {
+    label: latest ? `${latest.running} / ${latest.total}` : serviceHealthLabel(props.monitoring),
+    detail: uniqueUnhealthy.length ? `Проблемы: ${uniqueUnhealthy.join(", ")}` : "За период падений не видно",
+  };
+});
 
 const monitoringInsights = computed(() => {
   const monitoring = props.monitoring;
   const insights: Array<{ tone: InsightTone; title: string; detail: string }> = [];
 
-  if (monitoring.cpu_percent >= 90) {
+  if (monitoring.cpu_percent >= 75) {
     insights.push({
-      tone: "danger",
-      title: "CPU близко к пределу",
-      detail: `${monitoring.cpu_percent}% сейчас · ${trendLabel(props.metricHistory, "cpu")}`,
-    });
-  } else if (monitoring.cpu_percent >= 75) {
-    insights.push({
-      tone: "warning",
-      title: "CPU требует внимания",
-      detail: `${monitoring.cpu_percent}% сейчас · ${trendLabel(props.metricHistory, "cpu")}`,
+      tone: monitoring.cpu_percent >= 90 ? "danger" : "warning",
+      title: monitoring.cpu_percent >= 90 ? "CPU близко к пределу" : "CPU требует внимания",
+      detail: `${monitoring.cpu_percent}% сейчас · ${metricSummary((point) => point.cpu, "%")}`,
     });
   }
-
-  if (monitoring.memory.percent >= 90) {
+  if (monitoring.memory.percent >= 75) {
     insights.push({
-      tone: "danger",
-      title: "RAM почти исчерпана",
-      detail: `${monitoring.memory.used_label} из ${monitoring.memory.total_label} · ${trendLabel(props.metricHistory, "memory")}`,
-    });
-  } else if (monitoring.memory.percent >= 75) {
-    insights.push({
-      tone: "warning",
-      title: "RAM растёт",
-      detail: `${monitoring.memory.percent}% занято · ${trendLabel(props.metricHistory, "memory")}`,
+      tone: monitoring.memory.percent >= 90 ? "danger" : "warning",
+      title: monitoring.memory.percent >= 90 ? "RAM почти исчерпана" : "RAM растёт",
+      detail: `${monitoring.memory.used_label} из ${monitoring.memory.total_label}`,
     });
   }
-
-  if (monitoring.swap.percent >= 50) {
-    insights.push({
-      tone: monitoring.swap.percent >= 75 ? "danger" : "warning",
-      title: "Активно используется Swap",
-      detail: `${monitoring.swap.used_label} из ${monitoring.swap.total_label}`,
-    });
-  }
-
   monitoring.disks
     .filter((disk) => disk.percent >= 75)
     .slice(0, 3)
@@ -201,301 +330,278 @@ const monitoringInsights = computed(() => {
     });
   }
 
-  const hotProcess = monitoring.top_processes.find((process) => process.cpu >= 75);
-  if (hotProcess) {
-    insights.push({
-      tone: hotProcess.cpu >= 90 ? "danger" : "warning",
-      title: "Процесс забирает CPU",
-      detail: `${hotProcess.name} · ${hotProcess.cpu}% CPU · PID ${hotProcess.pid}`,
-    });
-  }
-
   if (!insights.length) {
     insights.push({
       tone: "ok",
       title: "Критичных признаков нет",
-      detail: "CPU, RAM, диски и сервисы выглядят штатно на последнем снимке.",
+      detail: `CPU, RAM, диски и сервисы штатно · ${historyPoints.value.length} точек за период`,
     });
   }
 
   return insights.slice(0, 5);
 });
 
-function chartValues(history: MonitoringHistoryPoint[], key: MetricKey) {
-  const values = history
-    .map((point) => point[key])
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-
-  return values.length ? values : [0];
+function loadContext(point: MonitoringHistoryPoint) {
+  return [`load ${(point.load_average || []).join(" / ")}`].filter(Boolean);
 }
 
-function chartPath(history: MonitoringHistoryPoint[], key: MetricKey, maxValue = 100) {
-  const values = chartValues(history, key);
-  const width = 220;
-  const height = 58;
-  const safeMax = Math.max(1, maxValue);
-  const points = values.length === 1 ? [values[0], values[0]] : values;
-
-  return points
-    .map((value, index) => {
-      const x = (index / Math.max(1, points.length - 1)) * width;
-      const y = height - (Math.min(safeMax, Math.max(0, value)) / safeMax) * height;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
+function memoryContext(point: MonitoringHistoryPoint) {
+  return [`RAM ${point.memory}%`];
 }
 
-function chartAreaPath(history: MonitoringHistoryPoint[], key: MetricKey, maxValue = 100) {
-  const line = chartPath(history, key, maxValue);
-  return `${line} L 220 58 L 0 58 Z`;
+function diskContext(point: MonitoringHistoryPoint) {
+  const disk = point.disks?.find((item) => item.mount === "/") || point.disks?.[0];
+  return disk ? [`${disk.mount}: ${(disk.used / 1024 ** 3).toFixed(1)} GB занято`] : [];
+}
+
+function windowLabel(window: MonitoringWindow) {
+  return windows.find((item) => item.id === window)?.label || "1 час";
 }
 </script>
 
 <template>
   <section class="monitoring-page">
-    <section class="monitor-hero" aria-label="Сводка мониторинга">
-      <div class="monitor-hero-main">
-        <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
-        <h2>{{ monitoring.hostname }}</h2>
-        <p>
-          Работает {{ monitoring.uptime }} · {{ compactIps(monitoring.ip_addresses) }} · снято
-          {{ monitoring.collected_at || 'только что' }}
-        </p>
+    <section class="monitor-toolbar" aria-label="Настройки аналитики">
+      <div class="segmented-control monitor-periods" aria-label="Период истории">
+        <button
+          v-for="window in windows"
+          :key="window.id"
+          type="button"
+          :class="{ active: selectedWindow === window.id }"
+          @click="emit('change-window', window.id)"
+        >
+          {{ window.label }}
+        </button>
       </div>
-
-      <div class="monitor-summary-grid">
-        <article class="monitor-summary-card" :class="metricTone(monitoring.cpu_percent)">
-          <Cpu :size="18" />
-          <span>CPU</span>
-          <strong>{{ monitoring.cpu_percent }}%</strong>
-          <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
-        </article>
-        <article class="monitor-summary-card" :class="metricTone(monitoring.memory.percent)">
-          <MemoryStick :size="18" />
-          <span>RAM</span>
-          <strong>{{ monitoring.memory.percent }}%</strong>
-          <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
-        </article>
-        <article class="monitor-summary-card" :class="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'">
-          <HardDrive :size="18" />
-          <span>Диск</span>
-          <strong>{{ mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a' }}</strong>
-          <small>{{ mainDisk(monitoring.disks)?.mount || 'mount points не найдены' }}</small>
-        </article>
-        <article class="monitor-summary-card" :class="monitoring.services.length && runningServices(monitoring) === monitoring.services.length ? 'ok' : 'warning'">
-          <ServerCog :size="18" />
-          <span>Сервисы</span>
-          <strong>{{ serviceHealthLabel(monitoring) }}</strong>
-          <small>работают сейчас</small>
-        </article>
+      <div class="monitor-toolbar-actions">
+        <span>{{ historyMeta.points.length }} точек · шаг {{ historyMeta.sample_seconds }} сек</span>
+        <button class="ghost-button compact" type="button" :disabled="isHistoryLoading" @click="emit('refresh-history')">Обновить историю</button>
+        <button v-if="!isEditingLayout" class="ghost-button compact" type="button" @click="startLayoutEdit">
+          <SlidersHorizontal :size="16" />
+          Настроить
+        </button>
+        <template v-else>
+          <button class="ghost-button compact" type="button" @click="resetLayout">
+            <RotateCcw :size="16" />
+            Сбросить
+          </button>
+          <button class="ghost-button compact" type="button" @click="cancelLayoutEdit">
+            <X :size="16" />
+            Отмена
+          </button>
+          <button class="primary-button compact" type="button" @click="saveLayout">
+            <Save :size="16" />
+            Сохранить
+          </button>
+        </template>
       </div>
     </section>
 
-    <section class="monitor-section" aria-label="Ресурсы">
-      <div class="monitor-section-head">
-        <div>
-          <h3>История нагрузки</h3>
-          <p>{{ metricHistory.length }} точек · окно {{ historyWindowLabel(metricHistory) }} · обновление каждые 5 сек</p>
+    <section class="monitor-layout-grid" :class="{ editing: isEditingLayout }">
+      <div
+        v-for="block in visibleBlocks"
+        :key="block"
+        :class="blockClass(block)"
+        :draggable="isEditingLayout"
+        @dragstart="draggedBlock = block"
+        @dragover.prevent
+        @drop="dropBlock(block)"
+      >
+        <div v-if="isEditingLayout" class="monitor-block-controls">
+          <span><GripVertical :size="16" /> {{ blockLabels[block] }}</span>
+          <div>
+            <button type="button" :disabled="draftBlocks.indexOf(block) === 0" @click="moveBlock(block, -1)" aria-label="Выше">
+              <ArrowUp :size="15" />
+            </button>
+            <button type="button" :disabled="draftBlocks.indexOf(block) === draftBlocks.length - 1" @click="moveBlock(block, 1)" aria-label="Ниже">
+              <ArrowDown :size="15" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div class="resource-chart-grid">
-        <article class="resource-chart-card" :class="metricTone(monitoring.cpu_percent)">
-          <div class="resource-chart-head">
+        <section v-if="block === 'host'" class="monitor-hero-main" aria-label="Сводка мониторинга">
+          <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
+          <h2>{{ monitoring.hostname }}</h2>
+          <p>Работает {{ monitoring.uptime }} · {{ compactIps(monitoring.ip_addresses) }} · снято {{ monitoring.collected_at || 'только что' }}</p>
+        </section>
+
+        <section v-else-if="block === 'summary'" class="monitor-summary-grid" aria-label="Ключевые показатели">
+          <article class="monitor-summary-card" :class="metricTone(monitoring.cpu_percent)">
             <Cpu :size="18" />
             <span>CPU</span>
             <strong>{{ monitoring.cpu_percent }}%</strong>
-          </div>
-          <svg class="resource-chart" viewBox="0 0 220 58" preserveAspectRatio="none" aria-hidden="true">
-            <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'cpu')" />
-            <path class="resource-chart-line" :d="chartPath(metricHistory, 'cpu')" />
-          </svg>
-          <div class="resource-chart-meta">
             <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
-            <span>{{ metricWindowLabel(metricHistory, 'cpu') }}</span>
-          </div>
-        </article>
-
-        <article class="resource-chart-card" :class="metricTone(monitoring.memory.percent)">
-          <div class="resource-chart-head">
+          </article>
+          <article class="monitor-summary-card" :class="metricTone(monitoring.memory.percent)">
             <MemoryStick :size="18" />
             <span>RAM</span>
             <strong>{{ monitoring.memory.percent }}%</strong>
-          </div>
-          <svg class="resource-chart" viewBox="0 0 220 58" preserveAspectRatio="none" aria-hidden="true">
-            <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'memory')" />
-            <path class="resource-chart-line" :d="chartPath(metricHistory, 'memory')" />
-          </svg>
-          <div class="resource-chart-meta">
             <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
-            <span>{{ metricWindowLabel(metricHistory, 'memory') }}</span>
-          </div>
-        </article>
-
-        <article class="resource-chart-card" :class="metricTone(monitoring.swap.percent)">
-          <div class="resource-chart-head">
-            <HardDrive :size="18" />
-            <span>Swap</span>
-            <strong>{{ monitoring.swap.percent }}%</strong>
-          </div>
-          <svg class="resource-chart" viewBox="0 0 220 58" preserveAspectRatio="none" aria-hidden="true">
-            <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'swap')" />
-            <path class="resource-chart-line" :d="chartPath(metricHistory, 'swap')" />
-          </svg>
-          <div class="resource-chart-meta">
-            <small>{{ monitoring.swap.used_label }} / {{ monitoring.swap.total_label }}</small>
-            <span>{{ metricWindowLabel(metricHistory, 'swap') }}</span>
-          </div>
-        </article>
-
-        <article class="resource-chart-card">
-          <div class="resource-chart-head">
-            <Gauge :size="18" />
-            <span>Температура</span>
-            <strong>{{ monitoring.temperature }}</strong>
-          </div>
-          <svg class="resource-chart" viewBox="0 0 220 58" preserveAspectRatio="none" aria-hidden="true">
-            <path class="resource-chart-area" :d="chartAreaPath(metricHistory, 'temperature')" />
-            <path class="resource-chart-line" :d="chartPath(metricHistory, 'temperature')" />
-          </svg>
-          <div class="resource-chart-meta">
-            <small>{{ monitoring.collected_at || 'только что' }}</small>
-            <span>{{ metricWindowLabel(metricHistory, 'temperature') }}</span>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="monitor-section" aria-label="Что требует внимания">
-      <div class="monitor-section-head">
-        <div>
-          <h3>Требует внимания</h3>
-          <p>Автоматическая интерпретация последнего снимка</p>
-        </div>
-      </div>
-
-      <div class="monitor-insight-list">
-        <article v-for="insight in monitoringInsights" :key="`${insight.title}-${insight.detail}`" class="monitor-insight-card" :class="insight.tone">
-          <CheckCircle2 v-if="insight.tone === 'ok'" :size="18" />
-          <AlertTriangle v-else :size="18" />
-          <div>
-            <strong>{{ insight.title }}</strong>
-            <span>{{ insight.detail }}</span>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="monitor-columns">
-      <section class="monitor-section" aria-label="Диски">
-        <div class="monitor-section-head">
-          <div>
-            <h3>Диски</h3>
-            <p>{{ monitoring.disks.length }} точек монтирования</p>
-          </div>
-        </div>
-
-        <div class="disk-list">
-          <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card" :class="metricTone(disk.percent)">
-            <div class="disk-card-main">
-              <div class="disk-card-title">
-                <strong>{{ disk.mount }}</strong>
-                <span>{{ disk.filesystem }}</span>
-              </div>
-              <strong class="disk-card-percent">{{ clampPercent(disk.percent) }}%</strong>
-            </div>
-
-            <div class="disk-bar" :style="diskBarStyle(disk.percent)" aria-hidden="true">
-              <span></span>
-            </div>
-
-            <dl class="disk-card-stats">
-              <div>
-                <dt>Занято</dt>
-                <dd>{{ disk.used_label }}</dd>
-              </div>
-              <div>
-                <dt>Свободно</dt>
-                <dd>{{ freeLabel(disk) }}</dd>
-              </div>
-              <div>
-                <dt>Всего</dt>
-                <dd>{{ disk.total_label }}</dd>
-              </div>
-            </dl>
           </article>
-          <article v-if="!monitoring.disks.length" class="monitor-empty-row">
+          <article class="monitor-summary-card" :class="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'">
             <HardDrive :size="18" />
+            <span>Диск</span>
+            <strong>{{ mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a' }}</strong>
+            <small>{{ mainDisk(monitoring.disks)?.mount || 'mount points не найдены' }}</small>
+          </article>
+          <article class="monitor-summary-card" :class="monitoring.services.length && runningServices(monitoring) === monitoring.services.length ? 'ok' : 'warning'">
+            <ServerCog :size="18" />
+            <span>Сервисы</span>
+            <strong>{{ serviceHealthLabel(monitoring) }}</strong>
+            <small>{{ servicesAnalytics.detail }}</small>
+          </article>
+        </section>
+
+        <MetricChart
+          v-else-if="block === 'charts.cpu'"
+          title="CPU"
+          unit="%"
+          :points="historyPoints"
+          :value-for-point="(point) => point.cpu"
+          :tone="metricTone(monitoring.cpu_percent)"
+          :current="`${monitoring.cpu_percent}%`"
+          :summary="metricSummary((point) => point.cpu, '%')"
+          :context-for-point="loadContext"
+        />
+
+        <MetricChart
+          v-else-if="block === 'charts.memory'"
+          title="RAM"
+          unit="%"
+          :points="historyPoints"
+          :value-for-point="(point) => point.memory"
+          :tone="metricTone(monitoring.memory.percent)"
+          :current="`${monitoring.memory.percent}%`"
+          :summary="metricSummary((point) => point.memory, '%')"
+          :context-for-point="memoryContext"
+        />
+
+        <MetricChart
+          v-else-if="block === 'charts.disk'"
+          title="Диск"
+          unit="%"
+          :points="historyPoints"
+          :value-for-point="mainDiskPoint"
+          :tone="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'"
+          :current="mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a'"
+          :summary="metricSummary(mainDiskPoint, '%')"
+          :context-for-point="diskContext"
+        />
+
+        <section v-else-if="block === 'charts.temperatureSwap'" class="monitor-combo-charts">
+          <MetricChart
+            title="Температура"
+            unit="°C"
+            :points="historyPoints"
+            :value-for-point="(point) => point.temperature"
+            :current="monitoring.temperature"
+            :summary="metricSummary((point) => point.temperature, '°C')"
+            :max-value="100"
+          />
+          <MetricChart
+            title="Swap"
+            unit="%"
+            :points="historyPoints"
+            :value-for-point="(point) => point.swap"
+            :tone="metricTone(monitoring.swap.percent)"
+            :current="`${monitoring.swap.percent}%`"
+            :summary="metricSummary((point) => point.swap, '%')"
+          />
+        </section>
+
+        <section v-else-if="block === 'insights'" class="monitor-section compact" aria-label="Что требует внимания">
+          <div class="monitor-section-head">
             <div>
-              <strong>Диски пока не прочитаны</strong>
-              <span>Agent не вернул mount points</span>
+              <h3>Требует внимания</h3>
+              <p>{{ windowLabel(selectedWindow) }} · автоматическая интерпретация</p>
             </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="monitor-section" aria-label="Сервисы">
-        <div class="monitor-section-head">
-          <div>
-            <h3>Сервисы</h3>
-            <p>{{ serviceHealthLabel(monitoring) }} работают</p>
           </div>
-        </div>
-
-        <div class="service-list">
-          <article v-for="service in monitoring.services" :key="service.id" class="service-card" :class="serviceTone(service)">
-            <div class="service-card-main">
-              <span class="server-state" :class="service.state"></span>
-              <div class="service-name">
-                <strong>{{ service.name }}</strong>
-                <span>{{ stateLabels[service.state] }}</span>
+          <div class="monitor-insight-list">
+            <article v-for="insight in monitoringInsights" :key="`${insight.title}-${insight.detail}`" class="monitor-insight-card" :class="insight.tone">
+              <CheckCircle2 v-if="insight.tone === 'ok'" :size="18" />
+              <AlertTriangle v-else :size="18" />
+              <div>
+                <strong>{{ insight.title }}</strong>
+                <span>{{ insight.detail }}</span>
               </div>
+            </article>
+          </div>
+        </section>
+
+        <section v-else-if="block === 'disks'" class="monitor-section" aria-label="Диски">
+          <div class="monitor-section-head">
+            <div>
+              <h3>Диски</h3>
+              <p>{{ monitoring.disks.length }} точек монтирования</p>
             </div>
-
-            <dl class="service-card-stats">
-              <div>
-                <dt>CPU</dt>
-                <dd>{{ service.cpu }}%</dd>
+          </div>
+          <div class="disk-list">
+            <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card" :class="metricTone(disk.percent)">
+              <div class="disk-card-main">
+                <div class="disk-card-title">
+                  <strong>{{ disk.mount }}</strong>
+                  <span>{{ disk.filesystem }}</span>
+                </div>
+                <strong class="disk-card-percent">{{ clampPercent(disk.percent) }}%</strong>
               </div>
-              <div>
-                <dt>RAM</dt>
-                <dd>{{ service.ram }}</dd>
+              <div class="disk-bar" :style="diskBarStyle(disk.percent)" aria-hidden="true"><span></span></div>
+              <dl class="disk-card-stats">
+                <div><dt>Занято</dt><dd>{{ disk.used_label }}</dd></div>
+                <div><dt>Свободно</dt><dd>{{ freeLabel(disk) }}</dd></div>
+                <div><dt>Всего</dt><dd>{{ disk.total_label }}</dd></div>
+              </dl>
+            </article>
+          </div>
+        </section>
+
+        <section v-else-if="block === 'services'" class="monitor-section" aria-label="Сервисы">
+          <div class="monitor-section-head">
+            <div>
+              <h3>Сервисы</h3>
+              <p>{{ servicesAnalytics.label }} работают · {{ servicesAnalytics.detail }}</p>
+            </div>
+          </div>
+          <div class="service-list">
+            <article v-for="service in monitoring.services" :key="service.id" class="service-card" :class="serviceTone(service)">
+              <div class="service-card-main">
+                <span class="server-state" :class="service.state"></span>
+                <div class="service-name">
+                  <strong>{{ service.name }}</strong>
+                  <span>{{ stateLabels[service.state] }}</span>
+                </div>
               </div>
-            </dl>
-          </article>
-        </div>
-      </section>
-    </section>
+              <dl class="service-card-stats">
+                <div><dt>CPU</dt><dd>{{ service.cpu }}%</dd></div>
+                <div><dt>RAM</dt><dd>{{ service.ram }}</dd></div>
+              </dl>
+            </article>
+          </div>
+        </section>
 
-    <section class="monitor-section" aria-label="Топ процессов">
-      <div class="monitor-section-head">
-        <div>
-          <h3>Топ процессов</h3>
-          <p>по CPU на момент последнего снимка</p>
-        </div>
-        <Network :size="18" />
-      </div>
-
-      <div class="process-table">
-        <div class="process-row head">
-          <span>PID</span>
-          <span>Процесс</span>
-          <span>CPU</span>
-          <span>RAM</span>
-        </div>
-        <div v-for="process in monitoring.top_processes" :key="process.pid" class="process-row" :class="processTone(process)">
-          <span>{{ process.pid }}</span>
-          <strong>{{ process.name }}</strong>
-          <span class="process-metric" data-label="CPU">{{ process.cpu }}%</span>
-          <span class="process-metric" data-label="RAM">{{ process.memory }}%</span>
-          <small>{{ process.command }}</small>
-        </div>
-        <div v-if="!monitoring.top_processes.length" class="process-row">
-          <span>-</span>
-          <strong>Нет данных</strong>
-          <span>-</span>
-          <span>-</span>
-        </div>
+        <section v-else-if="block === 'processes'" class="monitor-section" aria-label="Топ процессов">
+          <div class="monitor-section-head">
+            <div>
+              <h3>Топ процессов</h3>
+              <p>по CPU на момент последнего снимка</p>
+            </div>
+            <Network :size="18" />
+          </div>
+          <div class="process-table">
+            <div class="process-row head">
+              <span>PID</span>
+              <span>Процесс</span>
+              <span>CPU</span>
+              <span>RAM</span>
+            </div>
+            <div v-for="process in monitoring.top_processes" :key="process.pid" class="process-row" :class="processTone(process)">
+              <span>{{ process.pid }}</span>
+              <strong>{{ process.name }}</strong>
+              <span class="process-metric" data-label="CPU">{{ process.cpu }}%</span>
+              <span class="process-metric" data-label="RAM">{{ process.memory }}%</span>
+              <small>{{ process.command }}</small>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   </section>

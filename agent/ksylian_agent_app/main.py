@@ -130,6 +130,7 @@ from .monitoring import (
     temperature_label,
     top_processes,
 )
+from .monitoring_history import collect_host_monitoring, start_monitoring_sampler
 from .routes.system import create_system_router
 from .routes.servers import create_servers_router
 def last_server_event(server_id: str) -> str:
@@ -290,6 +291,25 @@ def to_agent_server(server_id: str) -> AgentServer:
         warnings=server_warnings(config),
     )
 
+
+
+@app.on_event("startup")
+def start_monitoring_history_sampler() -> None:
+    start_monitoring_sampler(
+        lambda: collect_host_monitoring(
+            active_server_ids=active_server_ids,
+            load_server_store=load_server_store,
+            memory_usage=memory_usage,
+            service_usage=service_usage,
+            service_state=service_state,
+            host_ips=host_ips,
+            format_duration=format_duration,
+            cpu_percent=cpu_percent,
+            disk_usage=disk_usage,
+            top_processes=top_processes,
+            temperature_label=temperature_label,
+        )
+    )
 
 
 app.include_router(create_system_router(

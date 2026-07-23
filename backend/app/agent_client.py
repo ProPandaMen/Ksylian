@@ -20,6 +20,7 @@ from .schemas import (
     FileWriteRequest,
     GameServer,
     HostMonitoring,
+    MonitoringHistoryPayload,
     InstalledModItem,
     ModBulkActionRequest,
     ModBulkInstallRequest,
@@ -222,6 +223,11 @@ class AgentClient:
         response = self.get("/monitoring")
         response.raise_for_status()
         return HostMonitoring(**response.json())
+
+    def monitoring_history(self, window: str) -> MonitoringHistoryPayload:
+        response = self.get("/monitoring/history", params={"window": window})
+        response.raise_for_status()
+        return MonitoringHistoryPayload(**response.json())
 
     def restart(self) -> None:
         response = self.post("/agent/actions/restart")

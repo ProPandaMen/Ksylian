@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -12,7 +13,9 @@ from ..schemas import (
     FileItem,
     GameServer,
     HostMonitoring,
+    MetricUsage,
     MinecraftVersionsPayload,
+    MonitoringHistoryPayload,
     ModItem,
 )
 
@@ -92,6 +95,17 @@ def create_dashboard_router(
             temperature="n/a",
             collected_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
+
+    @router.get("/api/monitoring/history", response_model=MonitoringHistoryPayload)
+    def host_monitoring_history(window: str = "1h") -> MonitoringHistoryPayload:
+        if window not in {"1h", "6h", "24h"}:
+            window = "1h"
+        try:
+            return agent_client.monitoring_history(window)
+        except Exception as error:
+            append_log(f"agent monitoring history failed: {error}")
+            require_agent_available()
+            return MonitoringHistoryPayload(window=window, sample_seconds=30, retention_hours=24, points=[])
 
 
     @router.get("/api/minecraft/versions", response_model=MinecraftVersionsPayload)

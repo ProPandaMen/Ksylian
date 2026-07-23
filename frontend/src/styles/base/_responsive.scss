@@ -38,6 +38,23 @@
     grid-template-columns: 1fr;
   }
 
+  .monitor-layout-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monitor-block.host,
+  .monitor-block.summary,
+  .monitor-block.charts-cpu,
+  .monitor-block.charts-memory,
+  .monitor-block.charts-disk,
+  .monitor-block.charts-temperatureSwap,
+  .monitor-block.insights,
+  .monitor-block.disks,
+  .monitor-block.services,
+  .monitor-block.processes {
+    grid-column: 1 / -1;
+  }
+
   .monitor-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -133,12 +150,14 @@
   }
 
   .topbar,
-  .topbar-actions {
+  .topbar-actions,
+  .monitor-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .topbar-actions {
+  .topbar-actions,
+  .monitor-toolbar-actions {
     min-width: 0;
   }
 
@@ -231,6 +250,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .monitor-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .server-row {
     grid-template-columns: 1fr;
     gap: 12px;
@@ -277,6 +300,24 @@
   }
 
   .monitor-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-chart-head {
+    display: grid;
+  }
+
+  .metric-chart-head small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .monitor-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .monitor-combo-charts {
     grid-template-columns: 1fr;
   }
 

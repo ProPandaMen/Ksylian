@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import secrets
 import time
 from collections.abc import Callable
@@ -27,7 +28,9 @@ from ..schemas import (
     BootstrapAdminRequest,
     CreateInviteRequest,
     InviteRegistrationRequest,
+    PreferencesUpdateRequest,
     ThemeUpdateRequest,
+    UserPreferences,
     UserInvite,
 )
 
@@ -87,6 +90,29 @@ def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
                 item["theme"] = payload.theme
                 save_user_store(store)
                 return user_public(item)
+        raise HTTPException(status_code=404, detail="User not found")
+
+    @router.get("/api/auth/me/preferences", response_model=UserPreferences)
+    def get_my_preferences(user: dict = Depends(require_current_user)) -> UserPreferences:
+        try:
+            data = json.loads(str(user.get("preferences") or "{}"))
+        except json.JSONDecodeError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        return UserPreferences(**data)
+
+
+    @router.put("/api/auth/me/preferences", response_model=UserPreferences)
+    def update_my_preferences(payload: PreferencesUpdateRequest, user: dict = Depends(require_current_user)) -> UserPreferences:
+        preferences = UserPreferences(monitoring_layout=payload.monitoring_layout)
+        store = load_user_store()
+        for item in store.get("users", []):
+            if isinstance(item, dict) and item.get("id") == user.get("id"):
+                item["preferences"] = preferences.model_dump()
+                save_user_store(store)
+                append_log(f"auth: preferences updated for {item.get('username')}")
+                return preferences
         raise HTTPException(status_code=404, detail="User not found")
 
 

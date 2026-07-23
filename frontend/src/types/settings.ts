@@ -23,6 +23,15 @@ export interface AuthUser {
   created_at: string;
 }
 
+export interface MonitoringLayoutPreference {
+  version: number;
+  blocks: string[];
+}
+
+export interface UserPreferences {
+  monitoring_layout: MonitoringLayoutPreference | null;
+}
+
 export interface AuthSessionPayload {
   token: string;
   user: AuthUser;

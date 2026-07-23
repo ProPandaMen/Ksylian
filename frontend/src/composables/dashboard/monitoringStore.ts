@@ -1,6 +1,16 @@
 import { useToasts } from "../useToasts";
 import { useMonitoringRequests } from "./monitoring";
-import { agentStatus, isMonitoringLoading, monitoring, recordMonitoringSnapshot, settings } from "./state";
+import type { MonitoringWindow } from "../../types";
+import {
+  agentStatus,
+  isMonitoringHistoryLoading,
+  isMonitoringLoading,
+  monitoring,
+  monitoringHistory,
+  monitoringHistoryMeta,
+  monitoringWindow,
+  settings,
+} from "./state";
 
 const monitoringRequests = useMonitoringRequests();
 
@@ -26,7 +36,6 @@ export function useMonitoringDashboardActions() {
     try {
       const data = await monitoringRequests.monitoring();
       monitoring.value = data;
-      recordMonitoringSnapshot(data);
       await loadAgentStatus();
     } catch (error) {
       await loadAgentStatus();
@@ -37,5 +46,22 @@ export function useMonitoringDashboardActions() {
     }
   }
 
-  return { loadAgentStatus, loadMonitoring };
+  async function loadMonitoringHistory(window: MonitoringWindow = monitoringWindow.value) {
+    const { showToast } = useToasts();
+    monitoringWindow.value = window;
+    isMonitoringHistoryLoading.value = true;
+
+    try {
+      const data = await monitoringRequests.monitoringHistory(window);
+      monitoringHistoryMeta.value = data;
+      monitoringHistory.value = data.points;
+    } catch (error) {
+      showToast("Не удалось загрузить историю мониторинга", "error");
+      console.error(error);
+    } finally {
+      isMonitoringHistoryLoading.value = false;
+    }
+  }
+
+  return { loadAgentStatus, loadMonitoring, loadMonitoringHistory };
 }
