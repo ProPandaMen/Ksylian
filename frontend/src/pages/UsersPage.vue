@@ -1,32 +1,110 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Ban, Copy, Crown, MessageSquare, RefreshCw, ShieldCheck, UserPlus, UserX } from "@lucide/vue";
+import { Copy, RefreshCw, RotateCcw, ShieldCheck, UserCheck, UserPlus, UserX } from "@lucide/vue";
 import { requestJson } from "../services/api";
-import { useDashboardStore } from "../composables/useDashboardStore";
-import type { AuthUser, GamePlayer, PlayerActionRequest, PlayerListPayload, UserInvite } from "../types";
+import { useAuthStore } from "../composables/useAuthStore";
+import type { AuthUser, UserInvite } from "../types";
 import { useToasts } from "../composables/useToasts";
 
-const dashboard = useDashboardStore();
+const auth = useAuthStore();
 const users = ref<AuthUser[]>([]);
 const invites = ref<UserInvite[]>([]);
-const playerPayload = ref<PlayerListPayload>({ online: [], known: [], history: [], rcon_available: false, game_time: "" });
-const selectedServerId = ref("");
-const selectedPlayer = ref("");
-const playerValue = ref("");
-const playerReason = ref("");
 const ttlHours = ref(24);
+const inviteRole = ref<"member" | "admin">("member");
 const isLoading = ref(false);
-const isPlayersLoading = ref(false);
 const isCreating = ref(false);
-const isPlayerActionRunning = ref(false);
+const busyUserId = ref("");
+const busyInviteId = ref("");
 const lastInviteUrl = ref("");
 const { showToast } = useToasts();
 
-const activeInvites = computed(() => invites.value.filter((invite) => !invite.used_at));
-const selectedPlayerItem = computed(() => playerPayload.value.known.find((item) => item.name === selectedPlayer.value));
+const ttlOptions = [
+  { value: 6, label: "6ч" },
+  { value: 24, label: "24ч" },
+  { value: 72, label: "3д" },
+  { value: 168, label: "7д" },
+  { value: 336, label: "14д" },
+];
+
+const roleOptions: Array<{ value: "member" | "admin"; label: string }> = [
+  { value: "member", label: "Участник" },
+  { value: "admin", label: "Админ" },
+];
+
+const activeUsers = computed(() => users.value.filter((item) => !item.disabled_at));
+const adminUsers = computed(() => activeUsers.value.filter((item) => item.role === "admin"));
+const inactiveUsers = computed(() => users.value.filter((item) => item.disabled_at));
+const activeInvites = computed(() => invites.value.filter((invite) => inviteState(invite) === "active"));
+const archivedInvites = computed(() => invites.value.filter((invite) => inviteState(invite) !== "active"));
 
 function inviteUrl(token: string) {
   return `${window.location.origin}/invite?token=${encodeURIComponent(token)}`;
+}
+
+function isExpired(invite: UserInvite) {
+  return Boolean(invite.expires_at && new Date(invite.expires_at).getTime() < Date.now());
+}
+
+function inviteState(invite: UserInvite) {
+  if (invite.revoked_at) {
+    return "revoked";
+  }
+  if (invite.used_at) {
+    return "used";
+  }
+  if (isExpired(invite)) {
+    return "expired";
+  }
+  return "active";
+}
+
+function inviteStateLabel(invite: UserInvite) {
+  const state = inviteState(invite);
+  if (state === "active") {
+    return "Активно";
+  }
+  if (state === "used") {
+    return "Использовано";
+  }
+  if (state === "revoked") {
+    return "Отозвано";
+  }
+  return "Истекло";
+}
+
+function roleLabel(role: AuthUser["role"] | UserInvite["role"]) {
+  return role === "admin" ? "Админ" : "Участник";
+}
+
+function themeLabel(theme: AuthUser["theme"]) {
+  const labels: Record<AuthUser["theme"], string> = {
+    pink: "Pink",
+    black: "Black",
+    white: "White",
+    green: "Green",
+  };
+  return labels[theme] || theme;
+}
+
+function userInitials(user: AuthUser) {
+  const source = user.display_name || user.username;
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || user.username.slice(0, 2).toUpperCase();
+}
+
+function canDemote(user: AuthUser) {
+  return !(user.role === "admin" && !user.disabled_at && adminUsers.value.length <= 1);
+}
+
+function canDeactivate(user: AuthUser) {
+  if (user.id === auth.user.value?.id) {
+    return false;
+  }
+  return !(user.role === "admin" && !user.disabled_at && adminUsers.value.length <= 1);
 }
 
 async function copyInvite(url: string) {
@@ -37,60 +115,17 @@ async function copyInvite(url: string) {
 async function loadUsers() {
   isLoading.value = true;
   try {
-    if (!dashboard.isDashboardLoaded.value) {
-      await dashboard.loadDashboard();
-    }
-    selectedServerId.value = selectedServerId.value || dashboard.servers.value[0]?.id || "";
-    users.value = await requestJson<AuthUser[]>("/api/users");
-    invites.value = await requestJson<UserInvite[]>("/api/users/invites");
-    await loadPlayers();
+    const [userItems, inviteItems] = await Promise.all([
+      requestJson<AuthUser[]>("/api/users"),
+      requestJson<UserInvite[]>("/api/users/invites"),
+    ]);
+    users.value = userItems;
+    invites.value = inviteItems;
   } catch (error) {
-    showToast("Не удалось загрузить пользователей", "error");
+    showToast("Не удалось загрузить пользователей Ksylian", "error");
     console.error(error);
   } finally {
     isLoading.value = false;
-  }
-}
-
-async function loadPlayers() {
-  if (!selectedServerId.value) {
-    playerPayload.value = { online: [], known: [], history: [], rcon_available: false, game_time: "" };
-    return;
-  }
-  isPlayersLoading.value = true;
-  try {
-    playerPayload.value = await requestJson<PlayerListPayload>(`/api/servers/${selectedServerId.value}/players`);
-    selectedPlayer.value = selectedPlayer.value || playerPayload.value.online[0]?.name || playerPayload.value.known[0]?.name || "";
-  } catch (error) {
-    showToast("Не удалось загрузить игроков сервера", "error");
-    console.error(error);
-  } finally {
-    isPlayersLoading.value = false;
-  }
-}
-
-async function runPlayerAction(action: PlayerActionRequest["action"], player = selectedPlayer.value) {
-  if (!selectedServerId.value || !player) {
-    return;
-  }
-  isPlayerActionRunning.value = true;
-  try {
-    const result = await requestJson<{ players: PlayerListPayload; message: string }>(`/api/servers/${selectedServerId.value}/players/actions`, {
-      method: "POST",
-      body: JSON.stringify({
-        action,
-        player,
-        value: playerValue.value,
-        reason: playerReason.value,
-      }),
-    });
-    playerPayload.value = result.players;
-    showToast(result.message, "success");
-  } catch (error) {
-    showToast("Не удалось выполнить действие игрока", "error");
-    console.error(error);
-  } finally {
-    isPlayerActionRunning.value = false;
   }
 }
 
@@ -99,7 +134,7 @@ async function createInvite() {
   try {
     const invite = await requestJson<UserInvite>("/api/users/invites", {
       method: "POST",
-      body: JSON.stringify({ role: "member", ttl_hours: ttlHours.value }),
+      body: JSON.stringify({ role: inviteRole.value, ttl_hours: ttlHours.value }),
     });
     invites.value = [invite, ...invites.value];
     lastInviteUrl.value = inviteUrl(invite.token);
@@ -112,167 +147,240 @@ async function createInvite() {
   }
 }
 
+async function changeRole(user: AuthUser, role: AuthUser["role"]) {
+  if (user.role === role || busyUserId.value) {
+    return;
+  }
+  busyUserId.value = user.id;
+  try {
+    const updated = await requestJson<AuthUser>(`/api/users/${user.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+    users.value = users.value.map((item) => (item.id === updated.id ? updated : item));
+    showToast("Роль пользователя обновлена", "success");
+  } catch (error) {
+    showToast("Не удалось обновить роль", "error");
+    console.error(error);
+  } finally {
+    busyUserId.value = "";
+  }
+}
+
+async function deactivateUser(user: AuthUser) {
+  if (!canDeactivate(user) || busyUserId.value) {
+    return;
+  }
+  busyUserId.value = user.id;
+  try {
+    const updated = await requestJson<AuthUser>(`/api/users/${user.id}/deactivate`, { method: "POST" });
+    users.value = users.value.map((item) => (item.id === updated.id ? updated : item));
+    showToast("Пользователь отключён", "success");
+  } catch (error) {
+    showToast("Не удалось отключить пользователя", "error");
+    console.error(error);
+  } finally {
+    busyUserId.value = "";
+  }
+}
+
+async function restoreUser(user: AuthUser) {
+  if (busyUserId.value) {
+    return;
+  }
+  busyUserId.value = user.id;
+  try {
+    const updated = await requestJson<AuthUser>(`/api/users/${user.id}/restore`, { method: "POST" });
+    users.value = users.value.map((item) => (item.id === updated.id ? updated : item));
+    showToast("Пользователь восстановлен", "success");
+  } catch (error) {
+    showToast("Не удалось восстановить пользователя", "error");
+    console.error(error);
+  } finally {
+    busyUserId.value = "";
+  }
+}
+
+async function revokeInvite(invite: UserInvite) {
+  if (busyInviteId.value || inviteState(invite) !== "active") {
+    return;
+  }
+  busyInviteId.value = invite.id;
+  try {
+    const updated = await requestJson<UserInvite>(`/api/users/invites/${invite.id}/revoke`, { method: "POST" });
+    invites.value = invites.value.map((item) => (item.id === updated.id ? updated : item));
+    showToast("Приглашение отозвано", "success");
+  } catch (error) {
+    showToast("Не удалось отозвать приглашение", "error");
+    console.error(error);
+  } finally {
+    busyInviteId.value = "";
+  }
+}
+
 onMounted(loadUsers);
 </script>
 
 <template>
   <section class="users-page">
-    <section class="users-section" aria-label="Игроки Minecraft">
+    <section class="users-hero panel">
+      <div>
+        <p class="eyebrow">ksylian accounts</p>
+        <h2>Пользователи панели</h2>
+      </div>
+      <div class="users-hero-actions">
+        <button class="ghost-button compact" type="button" :aria-busy="isLoading" @click="loadUsers">
+          <RefreshCw :class="{ spinning: isLoading }" :size="16" />
+          <span>Обновить</span>
+        </button>
+        <button class="primary-button compact" type="button" :disabled="isCreating" @click="createInvite">
+          <UserPlus :size="16" />
+          <span>{{ isCreating ? 'Создаю' : 'Создать приглашение' }}</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="users-summary-grid" aria-label="Сводка пользователей">
+      <article class="users-summary-card">
+        <UserCheck :size="18" />
+        <span>Всего</span>
+        <strong>{{ users.length }}</strong>
+        <small>аккаунтов Ksylian</small>
+      </article>
+      <article class="users-summary-card ok">
+        <ShieldCheck :size="18" />
+        <span>Активные</span>
+        <strong>{{ activeUsers.length }}</strong>
+        <small>{{ inactiveUsers.length }} отключено</small>
+      </article>
+      <article class="users-summary-card">
+        <ShieldCheck :size="18" />
+        <span>Админы</span>
+        <strong>{{ adminUsers.length }}</strong>
+        <small>с активным доступом</small>
+      </article>
+      <article class="users-summary-card">
+        <UserPlus :size="18" />
+        <span>Инвайты</span>
+        <strong>{{ activeInvites.length }}</strong>
+        <small>активных ссылок</small>
+      </article>
+    </section>
+
+    <section class="users-section users-directory" aria-label="Пользователи Ksylian">
       <div class="users-section-head">
         <div>
-          <p class="eyebrow">minecraft</p>
-          <h3>Игроки сервера</h3>
+          <p class="eyebrow">directory</p>
+          <h3>Аккаунты</h3>
         </div>
-        <span class="users-status" :class="{ connected: playerPayload.rcon_available }">
-          {{ playerPayload.rcon_available ? 'RCON доступен' : 'RCON недоступен' }}
-        </span>
+        <span class="users-status">{{ activeUsers.length }} активных</span>
       </div>
 
-      <div class="users-control-row">
-        <label>
-          <span>Сервер</span>
-          <select v-model="selectedServerId" @change="loadPlayers">
-            <option v-for="server in dashboard.servers.value" :key="server.id" :value="server.id">{{ server.name }}</option>
-          </select>
-        </label>
-        <label>
-          <span>Игрок</span>
-          <input v-model="selectedPlayer" type="text" placeholder="Nickname" />
-        </label>
-        <div class="users-actions">
-          <button class="ghost-button compact" type="button" :aria-busy="isPlayersLoading" @click="loadPlayers">
-            <RefreshCw :class="{ spinning: isPlayersLoading }" :size="16" />
-            <span>Обновить</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="users-control-row">
-        <label>
-          <span>Сообщение / группа / permission / IP</span>
-          <input v-model="playerValue" type="text" placeholder="Например, default или Привет!" />
-        </label>
-        <label>
-          <span>Причина</span>
-          <input v-model="playerReason" type="text" placeholder="Для kick/ban" />
-        </label>
-      </div>
-
-      <div class="users-actions player-actions">
-        <button class="ghost-button compact" type="button" :disabled="isPlayerActionRunning" @click="runPlayerAction(selectedPlayerItem?.whitelisted ? 'whitelist_remove' : 'whitelist_add')">
-          <ShieldCheck :size="16" />
-          <span>{{ selectedPlayerItem?.whitelisted ? 'Убрать whitelist' : 'Whitelist' }}</span>
-        </button>
-        <button class="ghost-button compact" type="button" :disabled="isPlayerActionRunning" @click="runPlayerAction(selectedPlayerItem?.operator ? 'deop' : 'op')">
-          <Crown :size="16" />
-          <span>{{ selectedPlayerItem?.operator ? 'Снять OP' : 'OP' }}</span>
-        </button>
-        <button class="ghost-button compact danger" type="button" :disabled="isPlayerActionRunning" @click="runPlayerAction(selectedPlayerItem?.banned ? 'pardon' : 'ban')">
-          <Ban :size="16" />
-          <span>{{ selectedPlayerItem?.banned ? 'Pardon' : 'Ban' }}</span>
-        </button>
-        <button class="ghost-button compact danger" type="button" :disabled="isPlayerActionRunning" @click="runPlayerAction('kick')">
-          <UserX :size="16" />
-          <span>Kick</span>
-        </button>
-        <button class="ghost-button compact" type="button" :disabled="isPlayerActionRunning || !playerValue" @click="runPlayerAction('message')">
-          <MessageSquare :size="16" />
-          <span>Сообщение</span>
-        </button>
-        <button class="ghost-button compact" type="button" :disabled="isPlayerActionRunning || !playerValue" @click="runPlayerAction('luckperms_group_add')">LP group +</button>
-        <button class="ghost-button compact" type="button" :disabled="isPlayerActionRunning || !playerValue" @click="runPlayerAction('luckperms_group_remove')">LP group -</button>
-      </div>
-
-      <div class="users-subhead">
-        <span>Онлайн {{ playerPayload.online.length }} · gametime {{ playerPayload.game_time || 'n/a' }}</span>
-      </div>
       <div class="user-list">
-        <article
-          v-for="player in playerPayload.known"
-          :key="player.uuid || player.name"
-          class="user-row"
-          :class="{ highlighted: selectedPlayer === player.name }"
-          @click="selectedPlayer = player.name"
-        >
-          <div>
-            <strong>{{ player.name }}</strong>
-            <span>
-              {{ player.online ? 'online' : 'offline' }} · UUID {{ player.uuid || 'unknown' }} · last {{ player.last_seen || 'n/a' }}
+        <article v-for="item in users" :key="item.id" class="user-row user-account-card" :class="{ disabled: item.disabled_at }">
+          <div class="user-avatar" aria-hidden="true">{{ userInitials(item) }}</div>
+          <div class="user-main">
+            <strong>{{ item.display_name }}</strong>
+            <span>@{{ item.username }} · создан {{ item.created_at || 'n/a' }}</span>
+            <small>{{ roleLabel(item.role) }} · тема {{ themeLabel(item.theme) }}</small>
+          </div>
+          <div class="user-meta">
+            <span class="users-status" :class="{ connected: !item.disabled_at, danger: item.disabled_at }">
+              {{ item.disabled_at ? 'Отключён' : 'Активен' }}
             </span>
-            <small>
-              {{ player.whitelisted ? 'whitelist' : 'no whitelist' }} · {{ player.operator ? 'op' : 'no op' }} · {{ player.banned ? 'banned' : 'not banned' }}
-              <template v-if="player.luckperms_groups.length"> · LP {{ player.luckperms_groups.join(', ') }}</template>
-            </small>
+            <span v-if="item.id === auth.user.value?.id" class="users-status">Вы</span>
           </div>
-          <span class="users-status" :class="{ connected: player.online }">{{ player.ping || player.game_time || (player.online ? 'online' : 'seen') }}</span>
-        </article>
-        <article v-if="!playerPayload.known.length" class="user-row muted">
-          <div>
-            <strong>Игроков пока нет</strong>
-            <span>Список собирается из usercache.json, stats и RCON.</span>
+          <div class="users-actions account-actions">
+            <select
+              :value="item.role"
+              :disabled="busyUserId === item.id || (item.role === 'admin' && !canDemote(item))"
+              @change="changeRole(item, ($event.target as HTMLSelectElement).value as AuthUser['role'])"
+            >
+              <option value="member">Участник</option>
+              <option value="admin">Админ</option>
+            </select>
+            <button
+              v-if="item.disabled_at"
+              class="ghost-button compact"
+              type="button"
+              :disabled="busyUserId === item.id"
+              @click="restoreUser(item)"
+            >
+              <RotateCcw :size="16" />
+              <span>Восстановить</span>
+            </button>
+            <button
+              v-else
+              class="ghost-button compact danger"
+              type="button"
+              :disabled="busyUserId === item.id || !canDeactivate(item)"
+              @click="deactivateUser(item)"
+            >
+              <UserX :size="16" />
+              <span>Отключить</span>
+            </button>
           </div>
         </article>
-      </div>
-
-      <div class="users-subhead">
-        <span>История действий</span>
-      </div>
-      <div class="user-list compact-history">
-        <article v-for="item in playerPayload.history" :key="`${item.at}-${item.player}-${item.action}`" class="user-row">
+        <article v-if="!users.length && !isLoading" class="user-row muted">
           <div>
-            <strong>{{ item.player }} · {{ item.action }}</strong>
-            <span>{{ item.at }}{{ item.detail ? ` · ${item.detail}` : '' }}</span>
+            <strong>Пользователей пока нет</strong>
+            <span>После bootstrap здесь появится первый администратор.</span>
           </div>
         </article>
       </div>
     </section>
 
-    <section class="users-section" aria-label="Приглашения пользователей">
+    <section class="users-section users-invites" aria-label="Приглашения пользователей">
       <div class="users-section-head">
-        <h3>Приглашения</h3>
+        <div>
+          <p class="eyebrow">invites</p>
+          <h3>Приглашения</h3>
+        </div>
       </div>
 
-      <div class="users-control-row">
-        <label>
+      <div class="invite-builder">
+        <div>
           <span>Срок ссылки</span>
-          <select v-model.number="ttlHours">
-            <option :value="6">6 часов</option>
-            <option :value="24">24 часа</option>
-            <option :value="72">3 дня</option>
-            <option :value="168">7 дней</option>
-          </select>
-        </label>
-        <div class="users-actions">
-          <button class="ghost-button compact" type="button" :aria-busy="isLoading" @click="loadUsers">
-            <RefreshCw :class="{ spinning: isLoading }" :size="16" />
-            <span>Обновить</span>
-          </button>
-          <button class="primary-button compact" type="button" :disabled="isCreating" @click="createInvite">
-            <UserPlus :size="16" />
-            <span>{{ isCreating ? 'Создаю' : 'Создать ссылку' }}</span>
-          </button>
+          <div class="segmented-control users-segmented" aria-label="Срок приглашения">
+            <button v-for="option in ttlOptions" :key="option.value" type="button" :class="{ active: ttlHours === option.value }" @click="ttlHours = option.value">
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+        <div>
+          <span>Роль</span>
+          <div class="segmented-control users-segmented" aria-label="Роль приглашения">
+            <button v-for="option in roleOptions" :key="option.value" type="button" :class="{ active: inviteRole === option.value }" @click="inviteRole = option.value">
+              {{ option.label }}
+            </button>
+          </div>
         </div>
       </div>
 
       <div class="users-subhead">
         <span>Активные приглашения</span>
       </div>
-
       <div class="user-list">
         <article
           v-for="invite in activeInvites"
           :key="invite.id"
-          class="user-row"
+          class="user-row invite-row"
           :class="{ highlighted: lastInviteUrl === inviteUrl(invite.token) }"
         >
           <div>
-            <strong>{{ invite.role === 'admin' ? 'Админ' : 'Участник' }}</strong>
+            <strong>{{ roleLabel(invite.role) }}</strong>
             <span>Действует до {{ invite.expires_at }}</span>
           </div>
-          <button class="ghost-button compact" type="button" @click="copyInvite(inviteUrl(invite.token))">
-            <Copy :size="16" />
-            <span>Скопировать</span>
-          </button>
+          <div class="users-actions">
+            <button class="ghost-button compact" type="button" @click="copyInvite(inviteUrl(invite.token))">
+              <Copy :size="16" />
+              <span>Скопировать</span>
+            </button>
+            <button class="ghost-button compact danger" type="button" :disabled="busyInviteId === invite.id" @click="revokeInvite(invite)">
+              <UserX :size="16" />
+              <span>Отозвать</span>
+            </button>
+          </div>
         </article>
         <article v-if="!activeInvites.length" class="user-row muted">
           <div>
@@ -281,21 +389,19 @@ onMounted(loadUsers);
           </div>
         </article>
       </div>
-    </section>
 
-    <section class="users-section" aria-label="Пользователи">
-      <div class="users-section-head">
-        <h3>Пользователи</h3>
-      </div>
-      <div class="user-list">
-        <article v-for="item in users" :key="item.id" class="user-row">
-          <div>
-            <strong>{{ item.display_name }}</strong>
-            <span>@{{ item.username }} · {{ item.role === 'admin' ? 'Админ' : 'Участник' }}</span>
-          </div>
-          <span class="users-status">{{ item.theme }}</span>
-        </article>
-      </div>
+      <details v-if="archivedInvites.length" class="users-archive">
+        <summary>Архив приглашений · {{ archivedInvites.length }}</summary>
+        <div class="user-list">
+          <article v-for="invite in archivedInvites" :key="invite.id" class="user-row muted invite-row">
+            <div>
+              <strong>{{ roleLabel(invite.role) }}</strong>
+              <span>{{ inviteStateLabel(invite) }} · до {{ invite.expires_at }}</span>
+            </div>
+            <span class="users-status">{{ inviteStateLabel(invite) }}</span>
+          </article>
+        </div>
+      </details>
     </section>
   </section>
 </template>

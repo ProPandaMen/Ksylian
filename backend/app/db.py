@@ -56,7 +56,8 @@ def init_database() -> None:
                 theme TEXT NOT NULL DEFAULT 'pink',
                 preferences TEXT NOT NULL DEFAULT '{}',
                 password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                disabled_at TEXT NOT NULL DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS invites (
@@ -66,6 +67,7 @@ def init_database() -> None:
                 created_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 used_at TEXT NOT NULL DEFAULT '',
+                revoked_at TEXT NOT NULL DEFAULT '',
                 invited_by TEXT NOT NULL DEFAULT ''
             );
 
@@ -74,7 +76,7 @@ def init_database() -> None:
             CREATE INDEX IF NOT EXISTS idx_invites_used_at ON invites(used_at);
             """
         )
-        ensure_user_preferences_column(connection)
+        ensure_auth_columns(connection)
         migrate_legacy_user_store(connection)
     try:
         DATABASE_PATH.chmod(0o600)
@@ -83,10 +85,16 @@ def init_database() -> None:
     DATABASE_READY = True
 
 
-def ensure_user_preferences_column(connection: sqlite3.Connection) -> None:
+def ensure_auth_columns(connection: sqlite3.Connection) -> None:
     columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
     if "preferences" not in columns:
         connection.execute("ALTER TABLE users ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'")
+    if "disabled_at" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN disabled_at TEXT NOT NULL DEFAULT ''")
+
+    invite_columns = {row["name"] for row in connection.execute("PRAGMA table_info(invites)")}
+    if "revoked_at" not in invite_columns:
+        connection.execute("ALTER TABLE invites ADD COLUMN revoked_at TEXT NOT NULL DEFAULT ''")
 
 
 def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
@@ -99,8 +107,8 @@ def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
         connection.execute(
             """
             INSERT OR IGNORE INTO users
-                (id, username, display_name, role, theme, preferences, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, username, display_name, role, theme, preferences, password_hash, created_at, disabled_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(item.get("id") or secrets.token_urlsafe(10)),
@@ -111,6 +119,7 @@ def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
                 json.dumps(item.get("preferences") if isinstance(item.get("preferences"), dict) else {}),
                 str(item.get("password_hash") or ""),
                 str(item.get("created_at") or iso_now()),
+                str(item.get("disabled_at") or ""),
             ),
         )
     for item in legacy_store.get("invites", []):
@@ -121,8 +130,8 @@ def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
         connection.execute(
             """
             INSERT OR IGNORE INTO invites
-                (id, token, role, created_at, expires_at, used_at, invited_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, token, role, created_at, expires_at, used_at, revoked_at, invited_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(item.get("id") or secrets.token_urlsafe(8)),
@@ -131,6 +140,7 @@ def migrate_legacy_user_store(connection: sqlite3.Connection) -> None:
                 str(item.get("created_at") or iso_now()),
                 str(item.get("expires_at") or iso_now()),
                 str(item.get("used_at") or ""),
+                str(item.get("revoked_at") or ""),
                 str(item.get("invited_by") or ""),
             ),
         )
@@ -143,7 +153,7 @@ def load_user_store() -> dict:
             row_to_dict(row)
             for row in connection.execute(
                 """
-                SELECT id, username, display_name, role, theme, preferences, password_hash, created_at
+                SELECT id, username, display_name, role, theme, preferences, password_hash, created_at, disabled_at
                 FROM users
                 ORDER BY created_at ASC
                 """
@@ -153,7 +163,7 @@ def load_user_store() -> dict:
             row_to_dict(row)
             for row in connection.execute(
                 """
-                SELECT id, token, role, created_at, expires_at, used_at, invited_by
+                SELECT id, token, role, created_at, expires_at, used_at, revoked_at, invited_by
                 FROM invites
                 ORDER BY created_at DESC
                 """
@@ -172,8 +182,8 @@ def save_user_store(data: dict) -> None:
         connection.executemany(
             """
             INSERT INTO users
-                (id, username, display_name, role, theme, preferences, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, username, display_name, role, theme, preferences, password_hash, created_at, disabled_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -185,6 +195,7 @@ def save_user_store(data: dict) -> None:
                     json.dumps(item.get("preferences") if isinstance(item.get("preferences"), dict) else {}),
                     str(item.get("password_hash") or ""),
                     str(item.get("created_at") or iso_now()),
+                    str(item.get("disabled_at") or ""),
                 )
                 for item in users
             ],
@@ -192,8 +203,8 @@ def save_user_store(data: dict) -> None:
         connection.executemany(
             """
             INSERT INTO invites
-                (id, token, role, created_at, expires_at, used_at, invited_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, token, role, created_at, expires_at, used_at, revoked_at, invited_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -203,6 +214,7 @@ def save_user_store(data: dict) -> None:
                     str(item.get("created_at") or iso_now()),
                     str(item.get("expires_at") or iso_now()),
                     str(item.get("used_at") or ""),
+                    str(item.get("revoked_at") or ""),
                     str(item.get("invited_by") or ""),
                 )
                 for item in invites

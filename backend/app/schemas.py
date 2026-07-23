@@ -137,6 +137,7 @@ class AuthUser(BaseModel):
     role: UserRole
     theme: ThemeName = "pink"
     created_at: str
+    disabled_at: str = ""
 
 
 class MonitoringLayoutPreference(BaseModel):
@@ -168,12 +169,18 @@ class UserInvite(BaseModel):
     created_at: str
     expires_at: str
     used_at: str = ""
+    revoked_at: str = ""
     invited_by: str = ""
 
 
 class CreateInviteRequest(BaseModel):
     role: UserRole = "member"
     ttl_hours: int = 24
+
+
+class UpdateUserRequest(BaseModel):
+    role: UserRole | None = None
+    disabled_at: str | None = None
 
 
 class UpdateStatusPayload(BaseModel):

@@ -48,6 +48,7 @@ def user_public(user: dict) -> AuthUser:
         role=str(user.get("role") or "member"),  # type: ignore[arg-type]
         theme=str(user.get("theme") or "pink"),  # type: ignore[arg-type]
         created_at=str(user.get("created_at") or ""),
+        disabled_at=str(user.get("disabled_at") or ""),
     )
 
 
@@ -107,7 +108,10 @@ def user_from_token(token: str) -> dict | None:
         return None
     if expires_at < utc_now():
         return None
-    return next((user for user in stored_users() if str(user.get("id")) == user_id), None)
+    user = next((user for user in stored_users() if str(user.get("id")) == user_id), None)
+    if user and user.get("disabled_at"):
+        return None
+    return user
 
 
 def current_user_from_request(request: Request) -> dict | None:

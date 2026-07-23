@@ -199,7 +199,7 @@
   .settings-section-head,
   .settings-row,
   .users-section-head,
-  .users-control-row,
+  .users-hero,
   .user-row,
   .monitor-section-head,
   .monitor-row,
@@ -214,8 +214,11 @@
   }
 
   .settings-row,
-  .users-control-row,
-  .users-control-row label,
+  .users-summary-grid,
+  .user-account-card,
+  .invite-builder,
+  .players-summary-grid,
+  .players-control-grid,
   .monitor-row,
   .monitor-metric-row,
   .server-file-row,
@@ -225,7 +228,7 @@
     grid-template-columns: 1fr;
   }
 
-  .users-control-row,
+  .users-hero,
   .user-row,
   .monitor-section-head,
   .monitor-empty-row,
@@ -235,8 +238,18 @@
   }
 
   .users-actions,
+  .users-hero-actions,
+  .user-meta,
   .servers-section-head .panel-actions {
     justify-content: flex-start;
+  }
+
+  .account-actions,
+  .account-actions select,
+  .invite-builder .segmented-control,
+  .users-hero-actions .primary-button,
+  .users-hero-actions .ghost-button {
+    width: 100%;
   }
 
   .settings-row dd,

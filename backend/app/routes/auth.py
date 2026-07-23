@@ -30,9 +30,26 @@ from ..schemas import (
     InviteRegistrationRequest,
     PreferencesUpdateRequest,
     ThemeUpdateRequest,
+    UpdateUserRequest,
     UserPreferences,
     UserInvite,
 )
+
+
+def active_admin_count(users: list[dict]) -> int:
+    return sum(1 for item in users if isinstance(item, dict) and item.get("role") == "admin" and not item.get("disabled_at"))
+
+
+def ensure_not_last_active_admin(store: dict, target: dict, next_role: str | None = None, next_disabled_at: str | None = None) -> None:
+    current_users = [item for item in store.get("users", []) if isinstance(item, dict)]
+    if target.get("role") != "admin" or target.get("disabled_at"):
+        return
+    will_remain_admin = (next_role or target.get("role")) == "admin"
+    will_remain_active = not (next_disabled_at if next_disabled_at is not None else target.get("disabled_at"))
+    if will_remain_admin and will_remain_active:
+        return
+    if active_admin_count(current_users) <= 1:
+        raise HTTPException(status_code=409, detail="At least one active admin is required")
 
 
 def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
@@ -74,6 +91,8 @@ def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
         user = next((item for item in stored_users() if item.get("username") == username), None)
         if not user or not verify_password(payload.password, str(user.get("password_hash") or "")):
             raise HTTPException(status_code=401, detail="Invalid username or password")
+        if user.get("disabled_at"):
+            raise HTTPException(status_code=403, detail="User is disabled")
         return AuthSessionPayload(token=create_token(str(user["id"])), user=user_public(user))
 
 
@@ -123,7 +142,12 @@ def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
             (
                 item
                 for item in store.get("invites", [])
-                if isinstance(item, dict) and item.get("token") == payload.token and not item.get("used_at")
+                if (
+                    isinstance(item, dict)
+                    and item.get("token") == payload.token
+                    and not item.get("used_at")
+                    and not item.get("revoked_at")
+                )
             ),
             None,
         )
@@ -149,6 +173,7 @@ def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
             "theme": payload.theme,
             "password_hash": hash_password(payload.password),
             "created_at": iso_now(),
+            "disabled_at": "",
         }
         store["users"].append(user)
         invite["used_at"] = iso_now()
@@ -160,6 +185,51 @@ def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
     @router.get("/api/users", response_model=list[AuthUser])
     def list_users(_: dict = Depends(require_admin_user)) -> list[AuthUser]:
         return [user_public(user) for user in stored_users()]
+
+
+    @router.patch("/api/users/{user_id}", response_model=AuthUser)
+    def update_user(user_id: str, payload: UpdateUserRequest, admin: dict = Depends(require_admin_user)) -> AuthUser:
+        store = load_user_store()
+        target = next((item for item in store.get("users", []) if isinstance(item, dict) and item.get("id") == user_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+        if target.get("id") == admin.get("id") and payload.disabled_at:
+            raise HTTPException(status_code=409, detail="You cannot disable your own account")
+        ensure_not_last_active_admin(store, target, payload.role, payload.disabled_at)
+        if payload.role is not None:
+            target["role"] = payload.role
+        if payload.disabled_at is not None:
+            target["disabled_at"] = payload.disabled_at
+        save_user_store(store)
+        append_log(f"auth: user {target.get('username')} updated by {admin.get('username')}")
+        return user_public(target)
+
+
+    @router.post("/api/users/{user_id}/deactivate", response_model=AuthUser)
+    def deactivate_user(user_id: str, admin: dict = Depends(require_admin_user)) -> AuthUser:
+        store = load_user_store()
+        target = next((item for item in store.get("users", []) if isinstance(item, dict) and item.get("id") == user_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+        if target.get("id") == admin.get("id"):
+            raise HTTPException(status_code=409, detail="You cannot disable your own account")
+        ensure_not_last_active_admin(store, target, next_disabled_at=iso_now())
+        target["disabled_at"] = target.get("disabled_at") or iso_now()
+        save_user_store(store)
+        append_log(f"auth: user {target.get('username')} deactivated by {admin.get('username')}")
+        return user_public(target)
+
+
+    @router.post("/api/users/{user_id}/restore", response_model=AuthUser)
+    def restore_user(user_id: str, admin: dict = Depends(require_admin_user)) -> AuthUser:
+        store = load_user_store()
+        target = next((item for item in store.get("users", []) if isinstance(item, dict) and item.get("id") == user_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+        target["disabled_at"] = ""
+        save_user_store(store)
+        append_log(f"auth: user {target.get('username')} restored by {admin.get('username')}")
+        return user_public(target)
 
 
     @router.get("/api/users/invites", response_model=list[UserInvite])
@@ -187,5 +257,18 @@ def create_auth_router(append_log: Callable[[str], None]) -> APIRouter:
         save_user_store(store)
         append_log(f"auth: invite created by {user.get('username')}")
         return invite
+
+
+    @router.post("/api/users/invites/{invite_id}/revoke", response_model=UserInvite)
+    def revoke_invite(invite_id: str, user: dict = Depends(require_admin_user)) -> UserInvite:
+        store = load_user_store()
+        invite = next((item for item in store.get("invites", []) if isinstance(item, dict) and item.get("id") == invite_id), None)
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invite not found")
+        if not invite.get("used_at"):
+            invite["revoked_at"] = invite.get("revoked_at") or iso_now()
+        save_user_store(store)
+        append_log(f"auth: invite revoked by {user.get('username')}")
+        return UserInvite(**invite)
 
     return router

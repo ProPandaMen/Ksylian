@@ -8,6 +8,7 @@ import ServerFilesTab from "./server-detail/ServerFilesTab.vue";
 import ServerLogsTab from "./server-detail/ServerLogsTab.vue";
 import ServerModsTab from "./server-detail/ServerModsTab.vue";
 import ServerOverviewTab from "./server-detail/ServerOverviewTab.vue";
+import ServerPlayersTab from "./server-detail/ServerPlayersTab.vue";
 import ServerSettingsTab from "./server-detail/ServerSettingsTab.vue";
 import { serverDetailTabs, type ServerDetailTab } from "./serverDetailTabs";
 
@@ -75,6 +76,7 @@ onMounted(loadCurrentTabData);
     </nav>
 
     <ServerOverviewTab v-if="activeServerDetailTab === 'overview'" />
+    <ServerPlayersTab v-if="activeServerDetailTab === 'players'" />
     <ServerLogsTab v-if="activeServerDetailTab === 'logs'" />
     <ServerDiagnosticsTab v-if="activeServerDetailTab === 'diagnostics'" />
     <ServerFilesTab v-if="activeServerDetailTab === 'files'" />

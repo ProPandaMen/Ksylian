@@ -21,6 +21,7 @@ export interface AuthUser {
   role: "admin" | "member";
   theme: ThemeName;
   created_at: string;
+  disabled_at: string;
 }
 
 export interface MonitoringLayoutPreference {
@@ -44,6 +45,7 @@ export interface UserInvite {
   created_at: string;
   expires_at: string;
   used_at: string;
+  revoked_at: string;
   invited_by: string;
 }
 
