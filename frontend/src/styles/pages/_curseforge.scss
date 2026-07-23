@@ -59,13 +59,14 @@
   background: transparent;
 }
 
-.catalog-search input {
+.workspace .catalog-search input {
   min-height: 100%;
   padding: 0;
+  background: transparent;
   box-shadow: none;
 }
 
-.catalog-search input:focus {
+.workspace .catalog-search input:focus {
   box-shadow: none;
 }
 
