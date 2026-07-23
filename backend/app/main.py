@@ -102,16 +102,15 @@ from .auth import (
     create_token,
     current_user_from_request,
     hash_password,
-    init_database,
     normalize_username,
     require_admin_user,
     require_current_user,
-    save_user_store,
     stored_users,
     user_public,
     validate_password,
     verify_password,
 )
+from .db import init_database
 from .routes.auth import create_auth_router
 from .routes.dashboard import create_dashboard_router
 from .routes.marketplace import create_marketplace_router

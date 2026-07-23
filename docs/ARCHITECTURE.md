@@ -36,7 +36,8 @@ Backend пока сохраняет совместимый `backend/app/main.py`
 
 - `schemas.py` — Pydantic-модели и enum-ы публичного API.
 - `settings.py` — env-конфиг, константы и JSON settings helpers.
-- `auth.py` — пользователи, invite, SQLite init/migration и token auth helpers.
+- `db.py` — SQLite init/migration, legacy import и persistence helpers.
+- `auth.py` — token auth, password hashing, current-user helpers и public user mapping.
 - `agent_client.py` — единая typed-точка для всех запросов к host agent.
 - `routes/auth.py` — auth/users handlers без изменения публичных URL.
 - `routes/dashboard.py` — dashboard, monitoring, Minecraft versions и agent status/restart handlers.
@@ -53,9 +54,11 @@ Frontend начал выделение небольших модулей:
 - `dashboardLabels.ts` хранит display labels для состояний и типов серверов.
 - `serverDetailTabs.ts` хранит тип и список вкладок страницы сервера.
 - `types/` хранит доменные типы, а `types.ts` остаётся barrel export для совместимости старых импортов.
+- `composables/dashboard/state.ts` хранит общий dashboard state и computed значения.
+- `composables/dashboard/*Store.ts` хранит доменные actions: servers, monitoring, files, mods, backups и settings.
 - `pages/server-detail/` содержит вынесенные вкладки страницы сервера: overview, logs, diagnostics, files, mods, backups и settings.
 
-Следующий безопасный шаг — вынести state/actions из `useDashboardStore.ts` в доменные composables, оставив store совместимым facade для текущих страниц.
+Следующий безопасный шаг — постепенно ужать route factory dependency fan-out в backend/agent service modules без изменения публичных API.
 
 ## Проверки
 
