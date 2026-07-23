@@ -212,6 +212,46 @@ class CurseForgeSearchPayload(BaseModel):
     has_api_key: bool
 
 
+class CurseForgeFileDependency(BaseModel):
+    mod_id: int
+    relation_type: int
+    required: bool = True
+
+
+class CurseForgeFile(BaseModel):
+    id: int
+    mod_id: int
+    display_name: str
+    file_name: str
+    download_url: str = ""
+    release_type: Literal["release", "beta", "alpha", "unknown"] = "unknown"
+    game_versions: list[str] = Field(default_factory=list)
+    dependencies: list[CurseForgeFileDependency] = Field(default_factory=list)
+    file_date: str = ""
+    file_length: int = 0
+    hashes: dict[str, str] = Field(default_factory=dict)
+    restricted: bool = False
+
+
+class CurseForgeFilesPayload(BaseModel):
+    items: list[CurseForgeFile]
+    has_api_key: bool
+
+
+class CurseForgeInstallRequest(BaseModel):
+    server_id: str
+    project_id: int
+    file_id: int
+    include_dependencies: bool = True
+
+
+class CurseForgeInstallResult(BaseModel):
+    ok: bool
+    message: str
+    installed: list[InstalledModItem] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+
+
 class FileItem(BaseModel):
     name: str
     meta: str
@@ -304,6 +344,9 @@ class ModInstallRequest(BaseModel):
     encoding: Literal["base64"] = "base64"
     pinned: bool = False
     release_channel: Literal["release", "beta", "alpha"] = "release"
+    source: Literal["curseforge", "manual", "imported", "unknown"] = "manual"
+    project_id: str = ""
+    file_id: str = ""
 
 
 class ModOperationRequest(BaseModel):
@@ -327,6 +370,102 @@ class ActionResult(BaseModel):
     ok: bool
     message: str
     server: GameServer
+
+
+class BuildManifestMod(BaseModel):
+    id: str
+    name: str
+    version: str = ""
+    loader: Literal["fabric", "forge", "neoforge", "unknown"] = "unknown"
+    side: Literal["client", "server", "both", "unknown"] = "unknown"
+    filename: str
+    path: str
+    sha256: str
+    source: Literal["curseforge", "manual", "imported", "unknown"] = "unknown"
+    project_id: str = ""
+    file_id: str = ""
+    installed_at: str = ""
+    dependencies: list[ModDependency] = Field(default_factory=list)
+
+
+class BuildManifest(BaseModel):
+    schema_version: int = Field(default=1, alias="schema")
+    server_id: str
+    server_name: str
+    minecraft_version: str
+    loader: Literal["legacy", "vanilla", "paper", "purpur", "fabric", "forge", "neoforge"]
+    loader_version: str = ""
+    java_runtime: str = "auto"
+    generated_at: str
+    mods: list[BuildManifestMod] = Field(default_factory=list)
+    manual_changes: list[str] = Field(default_factory=list)
+
+
+class BuildManifestDiff(BaseModel):
+    added: list[BuildManifestMod] = Field(default_factory=list)
+    removed: list[BuildManifestMod] = Field(default_factory=list)
+    changed: list[dict[str, BuildManifestMod]] = Field(default_factory=list)
+
+
+class BuildImportRequest(BaseModel):
+    manifest: BuildManifest
+    mode: Literal["merge", "replace"] = "merge"
+
+
+class ModUpdatePlanItem(BaseModel):
+    current: BuildManifestMod
+    candidate: BuildManifestMod
+    action: Literal["update", "keep"] = "keep"
+    reason: str = ""
+
+
+class ModUpdatePlan(BaseModel):
+    server_id: str
+    created_at: str
+    items: list[ModUpdatePlanItem] = Field(default_factory=list)
+    diff: BuildManifestDiff = Field(default_factory=BuildManifestDiff)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SafeUpdateRequest(BaseModel):
+    plan: ModUpdatePlan | None = None
+    timeout_seconds: int = 180
+    apply: bool = False
+
+
+class SafeUpdateResult(BaseModel):
+    ok: bool
+    message: str
+    plan: ModUpdatePlan
+    backup_id: str = ""
+    test_instance_path: str = ""
+    log_findings: list[str] = Field(default_factory=list)
+
+
+class ImportServerRequest(BaseModel):
+    name: str
+    path: str
+    keep_current_path: bool = True
+    min_ram: str = "1G"
+    max_ram: str = "2G"
+    java_runtime: str = "auto"
+    jvm_args: str = ""
+    cpu_limit: int = 100
+    loader_version: str = ""
+
+
+class ImportServerPreview(BaseModel):
+    ok: bool
+    name: str
+    path: str
+    type: Literal["legacy", "vanilla", "paper", "purpur", "fabric", "forge", "neoforge"]
+    version: str = ""
+    loader_version: str = ""
+    java_runtime: str = "auto"
+    port: int = 25565
+    has_server_properties: bool = False
+    mod_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ServerConfigPayload(BaseModel):

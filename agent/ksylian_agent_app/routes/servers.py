@@ -14,6 +14,9 @@ from ..schemas import (
     AgentServer,
     BackupItem,
     BackupRequest,
+    BuildImportRequest,
+    BuildManifest,
+    BuildManifestDiff,
     CreateAgentServerRequest,
     CrashReportItem,
     FileContentPayload,
@@ -30,8 +33,12 @@ from ..schemas import (
     RconCommandPayload,
     RconCommandResult,
     RestoreRequest,
+    SafeUpdateRequest,
+    SafeUpdateResult,
     ServerConfigPayload,
     StoredServer,
+    ImportServerPreview,
+    ImportServerRequest,
 )
 
 
@@ -52,6 +59,8 @@ def create_servers_router(**deps) -> APIRouter:
     folder_size = deps["folder_size"]
     host_primary_ip = deps["host_primary_ip"]
     install_mod = deps["install_mod"]
+    import_build = deps["import_build"]
+    import_existing_server = deps["import_existing_server"]
     list_server_files = deps["list_server_files"]
     load_server_or_404 = deps["load_server_or_404"]
     load_server_store = deps["load_server_store"]
@@ -67,6 +76,14 @@ def create_servers_router(**deps) -> APIRouter:
     require_token = deps["require_token"]
     restore_backup = deps["restore_backup"]
     rollback_last_update = deps["rollback_last_update"]
+    build_manifest = deps["build_manifest"]
+    diff_manifests = deps["diff_manifests"]
+    export_build = deps["export_build"]
+    manifest_history_dir = deps["manifest_history_dir"]
+    preview_existing_server = deps["preview_existing_server"]
+    read_manifest = deps["read_manifest"]
+    safe_update_modpack = deps["safe_update_modpack"]
+    save_manifest = deps["save_manifest"]
     run = deps["run"]
     save_disabled_server_ids = deps["save_disabled_server_ids"]
     save_server_store = deps["save_server_store"]
@@ -135,6 +152,24 @@ def create_servers_router(**deps) -> APIRouter:
         append_action_log("server_create_queued", server.id, f"{server.type} {server.version}")
         threading.Thread(target=provision_server_in_background, args=(server.id,), daemon=True).start()
         return to_agent_server(server.id)
+
+
+    @router.post("/servers/import/preview", response_model=ImportServerPreview)
+    def preview_import_server(
+        payload: ImportServerRequest,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> ImportServerPreview:
+        require_token(x_ksylian_token)
+        return preview_existing_server(payload.path, payload.name)
+
+
+    @router.post("/servers/import", response_model=AgentActionResult)
+    def import_server(
+        payload: ImportServerRequest,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> AgentActionResult:
+        require_token(x_ksylian_token)
+        return import_existing_server(payload, server_snapshot=to_agent_server)
 
 
     @router.get("/loaders/{loader_type}/versions", response_model=list[str])
@@ -343,6 +378,75 @@ def create_servers_router(**deps) -> APIRouter:
     def server_mods(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> list[InstalledModItem]:
         require_token(x_ksylian_token)
         return scan_installed_mods(load_server_or_404(server_id))
+
+
+    @router.get("/servers/{server_id}/manifest", response_model=BuildManifest)
+    def server_manifest(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> BuildManifest:
+        require_token(x_ksylian_token)
+        server = load_server_or_404(server_id)
+        return read_manifest(server) or save_manifest(server)
+
+
+    @router.post("/servers/{server_id}/manifest/refresh", response_model=BuildManifest)
+    def refresh_server_manifest(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> BuildManifest:
+        require_token(x_ksylian_token)
+        return save_manifest(load_server_or_404(server_id))
+
+
+    @router.get("/servers/{server_id}/manifest/history", response_model=list[str])
+    def server_manifest_history(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> list[str]:
+        require_token(x_ksylian_token)
+        server = load_server_or_404(server_id)
+        history = manifest_history_dir(server)
+        if not history.exists():
+            return []
+        return [path.name for path in sorted(history.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)]
+
+
+    @router.post("/servers/{server_id}/manifest/diff", response_model=BuildManifestDiff)
+    def diff_server_manifest(
+        server_id: str,
+        payload: BuildManifest,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> BuildManifestDiff:
+        require_token(x_ksylian_token)
+        return diff_manifests(payload, build_manifest(load_server_or_404(server_id)))
+
+
+    @router.post("/servers/{server_id}/manifest/import", response_model=BuildManifest)
+    def import_server_manifest(
+        server_id: str,
+        payload: BuildImportRequest,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> BuildManifest:
+        require_token(x_ksylian_token)
+        return import_build(load_server_or_404(server_id), payload)
+
+
+    @router.post("/servers/{server_id}/manifest/export")
+    def export_server_manifest(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> dict[str, str]:
+        require_token(x_ksylian_token)
+        archive = export_build(load_server_or_404(server_id))
+        return {"path": str(archive), "name": archive.name}
+
+
+    @router.post("/servers/{server_id}/updates/plan", response_model=SafeUpdateResult)
+    def plan_safe_server_update(
+        server_id: str,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> SafeUpdateResult:
+        require_token(x_ksylian_token)
+        return safe_update_modpack(load_server_or_404(server_id), SafeUpdateRequest(apply=False), to_agent_server)
+
+
+    @router.post("/servers/{server_id}/updates/apply", response_model=SafeUpdateResult)
+    def apply_safe_server_update(
+        server_id: str,
+        payload: SafeUpdateRequest,
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> SafeUpdateResult:
+        require_token(x_ksylian_token)
+        return safe_update_modpack(load_server_or_404(server_id), payload, to_agent_server)
 
 
     @router.post("/servers/{server_id}/mods", response_model=InstalledModItem)

@@ -13,6 +13,9 @@ from ..schemas import (
     ActionResult,
     BackupItem,
     BackupRequest,
+    BuildImportRequest,
+    BuildManifest,
+    BuildManifestDiff,
     CreateServerRequest,
     CrashReportItem,
     FileContentPayload,
@@ -30,6 +33,10 @@ from ..schemas import (
     RconCommandPayload,
     RconCommandResult,
     RestoreRequest,
+    ImportServerPreview,
+    ImportServerRequest,
+    SafeUpdateRequest,
+    SafeUpdateResult,
     ServerAction,
     ServerConfigPayload,
     ServerState,
@@ -102,6 +109,30 @@ def create_servers_router(
         servers[server.id] = server
         append_log(f"{server.name}: server draft created")
         return server
+
+
+    @router.post("/api/servers/import/preview", response_model=ImportServerPreview)
+    def preview_import_server(payload: ImportServerRequest) -> ImportServerPreview:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for server import")
+        try:
+            return agent_client.preview_import_server(payload)
+        except Exception as error:
+            append_log(f"agent import preview failed for {payload.path}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent import preview failed") from error
+
+
+    @router.post("/api/servers/import", response_model=ActionResult)
+    def import_existing_server(payload: ImportServerRequest) -> ActionResult:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for server import")
+        try:
+            result = agent_client.import_server(payload)
+            append_log(result.message)
+            return result
+        except Exception as error:
+            append_log(f"agent import failed for {payload.path}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent import failed") from error
 
 
     @router.delete("/api/servers/{server_id}")
@@ -434,6 +465,96 @@ def create_servers_router(
         except Exception as error:
             append_log(f"agent mods unavailable for {server_id}: {error}")
             raise HTTPException(status_code=502, detail="Host agent mod scanner failed") from error
+
+
+    @router.get("/api/servers/{server_id}/manifest", response_model=BuildManifest)
+    def get_server_manifest(server_id: str) -> BuildManifest:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for manifests")
+        try:
+            return agent_client.manifest(server_id)
+        except Exception as error:
+            append_log(f"agent manifest failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent manifest failed") from error
+
+
+    @router.post("/api/servers/{server_id}/manifest/refresh", response_model=BuildManifest)
+    def refresh_server_manifest(server_id: str) -> BuildManifest:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for manifests")
+        try:
+            manifest = agent_client.refresh_manifest(server_id)
+            append_log(f"{server_id}: manifest refreshed")
+            return manifest
+        except Exception as error:
+            append_log(f"agent manifest refresh failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent manifest refresh failed") from error
+
+
+    @router.get("/api/servers/{server_id}/manifest/history", response_model=list[str])
+    def get_server_manifest_history(server_id: str) -> list[str]:
+        if not AGENT_URL:
+            return []
+        try:
+            return agent_client.manifest_history(server_id)
+        except Exception as error:
+            append_log(f"agent manifest history failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent manifest history failed") from error
+
+
+    @router.post("/api/servers/{server_id}/manifest/diff", response_model=BuildManifestDiff)
+    def diff_server_manifest(server_id: str, payload: BuildManifest) -> BuildManifestDiff:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for manifests")
+        try:
+            return agent_client.diff_manifest(server_id, payload)
+        except Exception as error:
+            append_log(f"agent manifest diff failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent manifest diff failed") from error
+
+
+    @router.post("/api/servers/{server_id}/manifest/import", response_model=BuildManifest)
+    def import_server_manifest(server_id: str, payload: BuildImportRequest) -> BuildManifest:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for manifests")
+        try:
+            return agent_client.import_manifest(server_id, payload)
+        except Exception as error:
+            append_log(f"agent manifest import failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent manifest import failed") from error
+
+
+    @router.post("/api/servers/{server_id}/manifest/export")
+    def export_server_manifest(server_id: str) -> dict[str, str]:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for manifests")
+        try:
+            return agent_client.export_manifest(server_id)
+        except Exception as error:
+            append_log(f"agent manifest export failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent manifest export failed") from error
+
+
+    @router.post("/api/servers/{server_id}/updates/plan", response_model=SafeUpdateResult)
+    def plan_safe_update(server_id: str) -> SafeUpdateResult:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for safe updates")
+        try:
+            return agent_client.plan_safe_update(server_id)
+        except Exception as error:
+            append_log(f"agent safe update plan failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent safe update plan failed") from error
+
+
+    @router.post("/api/servers/{server_id}/updates/apply", response_model=SafeUpdateResult)
+    def apply_safe_update(server_id: str, payload: SafeUpdateRequest) -> SafeUpdateResult:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for safe updates")
+        try:
+            return agent_client.apply_safe_update(server_id, payload)
+        except Exception as error:
+            append_log(f"agent safe update apply failed for {server_id}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent safe update apply failed") from error
 
 
     @router.post("/api/servers/{server_id}/mods", response_model=InstalledModItem)

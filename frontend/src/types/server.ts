@@ -98,3 +98,29 @@ export interface RconCommandResult {
   ok: boolean;
   output: string;
 }
+
+export interface ImportServerRequest {
+  name: string;
+  path: string;
+  keep_current_path: boolean;
+  min_ram: string;
+  max_ram: string;
+  java_runtime: "auto" | "8" | "17" | "21";
+  jvm_args: string;
+  cpu_limit: number;
+  loader_version: string;
+}
+
+export interface ImportServerPreview {
+  ok: boolean;
+  name: string;
+  path: string;
+  type: "legacy" | MinecraftServerType;
+  version: string;
+  loader_version: string;
+  java_runtime: string;
+  port: number;
+  has_server_properties: boolean;
+  mod_count: number;
+  warnings: string[];
+}

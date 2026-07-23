@@ -2,12 +2,18 @@
 import { ref } from "vue";
 import { Package, RefreshCw } from "@lucide/vue";
 import { useDashboardStore } from "../../composables/useDashboardStore";
+import { requestJson } from "../../services/api";
+import type { BuildManifest, SafeUpdateResult } from "../../types";
 
 const store = useDashboardStore();
 const modUploadInput = ref<HTMLInputElement | null>(null);
 const modBulkUpdateInput = ref<HTMLInputElement | null>(null);
 const modUpdateInput = ref<HTMLInputElement | null>(null);
 const pendingModUpdatePath = ref("");
+const manifest = ref<BuildManifest | null>(null);
+const safeUpdate = ref<SafeUpdateResult | null>(null);
+const manifestMessage = ref("");
+const isManifestLoading = ref(false);
 
 async function installSelectedMods(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -37,10 +43,105 @@ async function updateSelectedMod(event: Event) {
   pendingModUpdatePath.value = "";
   input.value = "";
 }
+
+async function refreshManifest() {
+  const serverId = store.selectedServer.value?.id;
+  if (!serverId) {
+    return;
+  }
+  isManifestLoading.value = true;
+  manifestMessage.value = "";
+  try {
+    manifest.value = await requestJson<BuildManifest>(`/api/servers/${serverId}/manifest/refresh`, { method: "POST" });
+    manifestMessage.value = `Manifest обновлён: ${manifest.value.mods.length} модов`;
+  } catch (error) {
+    manifestMessage.value = "Не удалось обновить manifest";
+    console.error(error);
+  } finally {
+    isManifestLoading.value = false;
+  }
+}
+
+async function exportManifest() {
+  const serverId = store.selectedServer.value?.id;
+  if (!serverId) {
+    return;
+  }
+  try {
+    const result = await requestJson<{ name: string }>(`/api/servers/${serverId}/manifest/export`, { method: "POST" });
+    manifestMessage.value = `Экспорт создан: ${result.name}`;
+  } catch (error) {
+    manifestMessage.value = "Не удалось экспортировать сборку";
+    console.error(error);
+  }
+}
+
+async function planSafeUpdate() {
+  const serverId = store.selectedServer.value?.id;
+  if (!serverId) {
+    return;
+  }
+  isManifestLoading.value = true;
+  try {
+    safeUpdate.value = await requestJson<SafeUpdateResult>(`/api/servers/${serverId}/updates/plan`, { method: "POST" });
+    manifestMessage.value = safeUpdate.value.message;
+  } catch (error) {
+    manifestMessage.value = "Не удалось подготовить safe update";
+    console.error(error);
+  } finally {
+    isManifestLoading.value = false;
+  }
+}
+
+async function applySafeUpdate() {
+  const serverId = store.selectedServer.value?.id;
+  if (!serverId || !safeUpdate.value) {
+    return;
+  }
+  isManifestLoading.value = true;
+  try {
+    safeUpdate.value = await requestJson<SafeUpdateResult>(`/api/servers/${serverId}/updates/apply`, {
+      method: "POST",
+      body: JSON.stringify({ plan: safeUpdate.value.plan, apply: true, timeout_seconds: 180 }),
+    });
+    manifestMessage.value = safeUpdate.value.message;
+    await store.loadDashboard(serverId);
+  } catch (error) {
+    manifestMessage.value = "Safe update не применён";
+    console.error(error);
+  } finally {
+    isManifestLoading.value = false;
+  }
+}
 </script>
 
 <template>
   <section class="server-tab-panel">
+      <section class="server-detail-section">
+        <div class="server-detail-section-head">
+          <h3>Манифест сборки</h3>
+          <div class="panel-actions">
+            <button class="ghost-button compact" type="button" :disabled="isManifestLoading" @click="refreshManifest">Обновить manifest</button>
+            <button class="ghost-button compact" type="button" :disabled="isManifestLoading" @click="exportManifest">Экспорт</button>
+            <button class="ghost-button compact" type="button" :disabled="isManifestLoading" @click="planSafeUpdate">Тест обновления</button>
+            <button class="ghost-button compact" type="button" :disabled="isManifestLoading || !safeUpdate?.ok" @click="applySafeUpdate">Применить</button>
+          </div>
+        </div>
+        <div class="server-mod-list">
+          <article class="server-mod-row">
+            <Package :size="20" />
+            <div>
+              <strong>{{ manifest ? `${manifest.mods.length} модов в manifest` : 'Manifest ещё не загружен' }}</strong>
+              <span>{{ manifest?.minecraft_version || store.selectedServer.value?.version }} · {{ manifest?.loader || store.selectedServer.value?.pack }}</span>
+              <small v-if="manifest?.manual_changes.length">Ручные изменения: {{ manifest.manual_changes.join(', ') }}</small>
+              <small v-if="safeUpdate">Safe update: {{ safeUpdate.message }}</small>
+              <em v-for="warning in safeUpdate?.plan.warnings || []" :key="warning">{{ warning }}</em>
+              <em v-for="finding in safeUpdate?.log_findings || []" :key="finding">{{ finding }}</em>
+              <small v-if="manifestMessage">{{ manifestMessage }}</small>
+            </div>
+          </article>
+        </div>
+      </section>
       <section class="server-detail-section">
         <div class="server-detail-section-head">
           <h3>Установленные моды</h3>

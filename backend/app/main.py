@@ -536,12 +536,12 @@ def curseforge_headers() -> dict[str, str]:
     return {"Accept": "application/json", "x-api-key": key}
 
 
-def curseforge_get(path: str, params: dict[str, int | str]) -> dict:
+def curseforge_get(path: str, params: dict[str, int | str] | None = None) -> dict:
     try:
         response = httpx.get(
             f"{CURSEFORGE_BASE_URL}{path}",
             headers=curseforge_headers(),
-            params=params,
+            params=params or {},
             timeout=20,
         )
         response.raise_for_status()
@@ -702,4 +702,6 @@ app.include_router(create_marketplace_router(
     curseforge_api_key=curseforge_api_key,
     curseforge_get=curseforge_get,
     transform_curseforge_project=transform_curseforge_project,
+    append_log=append_log,
+    agent_client=agent_client,
 ))

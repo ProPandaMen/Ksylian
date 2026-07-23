@@ -13,8 +13,13 @@ if str(AGENT_DIR) not in sys.path:
 import ksylian_agent
 from ksylian_agent_app.backups import backup_manifest, backup_manifest_path
 from ksylian_agent_app.hashing import file_digest
+from ksylian_agent_app.imports import preview_existing_server
+import ksylian_agent_app.manifest as manifest_module
+from ksylian_agent_app.manifest import save_manifest
 from ksylian_agent_app.minecraft import normalize_cpu_limit, normalize_ram, ram_to_bytes
 from ksylian_agent_app.mods import mod_metadata_from_fabric, mod_metadata_from_toml, parse_mod_toml_fallback
+from ksylian_agent_app.mod_sources import write_mod_source
+from ksylian_agent_app.schemas import StoredServer
 from ksylian_agent_app.security import ensure_child_path, is_relative_path
 from ksylian_agent_app.storage import slugify
 
@@ -104,6 +109,60 @@ class BackupHelperTests(unittest.TestCase):
                 file_digest(path, "sha256"),
                 "f07b83a9c5c0a44e5fb8453e8530f160daae42d61a220bbc0cd328aa4af002ec",
             )
+
+
+class ManifestHelperTests(unittest.TestCase):
+    def test_manifest_preserves_curseforge_source_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous_data_dir = manifest_module.DATA_DIR
+            previous_append_log = manifest_module.append_action_log
+            manifest_module.DATA_DIR = root / "agent-data"
+            manifest_module.append_action_log = lambda *_args, **_kwargs: None
+            mods_dir = root / "mods"
+            mods_dir.mkdir()
+            mod_file = mods_dir / "example.jar"
+            mod_file.write_bytes(b"not-a-real-jar")
+            server = StoredServer(
+                id="example",
+                name="Example",
+                type="forge",
+                pack="Forge",
+                version="1.20.1",
+                port=25565,
+                service="example.service",
+                path=str(root),
+                backup_path=str(root / "world"),
+                address="127.0.0.1:25565",
+                created_at="test",
+                managed=False,
+            )
+            write_mod_source(server, "example.jar", source="curseforge", project_id="123", file_id="456")
+
+            try:
+                manifest = save_manifest(server)
+            finally:
+                manifest_module.DATA_DIR = previous_data_dir
+                manifest_module.append_action_log = previous_append_log
+
+            self.assertEqual(manifest.mods[0].source, "curseforge")
+            self.assertEqual(manifest.mods[0].project_id, "123")
+            self.assertEqual(manifest.mods[0].file_id, "456")
+
+
+class ImportPreviewTests(unittest.TestCase):
+    def test_import_preview_detects_forge_server_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "server.properties").write_text("server-port=25570\n")
+            (root / "forge-1.20.1-47.2.0.jar").write_bytes(b"jar")
+            (root / "mods").mkdir()
+
+            preview = preview_existing_server(str(root), "Imported Forge")
+
+            self.assertEqual(preview.type, "forge")
+            self.assertEqual(preview.version, "1.20.1")
+            self.assertEqual(preview.port, 25570)
 
 
 if __name__ == "__main__":

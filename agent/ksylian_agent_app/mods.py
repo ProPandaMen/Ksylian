@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # Python < 3.11
 from .activity import append_action_log
 from .files import operate_server_file
 from .hashing import file_digest
+from .mod_sources import write_mod_source
 from .monitoring import format_bytes
 from .processes import apply_server_permissions
 from .schemas import (
@@ -226,6 +227,13 @@ def install_mod(server: StoredServer, request: ModInstallRequest) -> InstalledMo
         raise HTTPException(status_code=413, detail="Mod file is too large")
     destination = ensure_child_path(mods_dir, filename)
     destination.write_bytes(data)
+    write_mod_source(
+        server,
+        filename,
+        source=request.source,
+        project_id=request.project_id,
+        file_id=request.file_id,
+    )
     if request.pinned:
         (mods_dir / ".ksylian-pins.json").write_text(json.dumps({filename: request.release_channel}, ensure_ascii=False, indent=2))
     if server.managed:

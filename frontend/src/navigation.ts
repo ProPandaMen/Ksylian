@@ -5,7 +5,7 @@ import type { TabId } from "./types";
 export const navItems: Array<{ id: TabId; label: string; icon: Component; disabled?: boolean }> = [
   { id: "servers", label: "Серверы", icon: Server },
   { id: "monitoring", label: "Мониторинг", icon: Gauge },
-  { id: "modpacks", label: "CurseForge", icon: PackagePlus, disabled: true },
+  { id: "modpacks", label: "CurseForge", icon: PackagePlus },
   { id: "users", label: "Пользователи", icon: Users },
   { id: "settings", label: "Настройки", icon: Settings },
 ];

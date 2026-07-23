@@ -206,6 +206,17 @@ from .mods import (
     scan_installed_mods,
 )
 from .hashing import file_digest
+from .manifest import (
+    build_manifest,
+    diff_manifests,
+    export_build,
+    import_build,
+    manifest_history_dir,
+    read_manifest,
+    save_manifest,
+)
+from .imports import import_existing_server, preview_existing_server
+from .safe_updates import safe_update_modpack
 
 
 from .loaders import (
@@ -438,6 +449,8 @@ app.include_router(create_servers_router(
     folder_size=folder_size,
     host_primary_ip=host_primary_ip,
     install_mod=install_mod,
+    import_build=import_build,
+    import_existing_server=import_existing_server,
     list_server_files=list_server_files,
     load_server_or_404=load_server_or_404,
     load_server_store=load_server_store,
@@ -453,6 +466,14 @@ app.include_router(create_servers_router(
     require_token=require_token,
     restore_backup=restore_backup,
     rollback_last_update=rollback_last_update,
+    build_manifest=build_manifest,
+    diff_manifests=diff_manifests,
+    export_build=export_build,
+    manifest_history_dir=manifest_history_dir,
+    preview_existing_server=preview_existing_server,
+    read_manifest=read_manifest,
+    safe_update_modpack=safe_update_modpack,
+    save_manifest=save_manifest,
     run=run,
     save_disabled_server_ids=save_disabled_server_ids,
     save_server_store=save_server_store,

@@ -7,6 +7,9 @@ from .schemas import (
     AgentStatus,
     BackupItem,
     BackupRequest,
+    BuildImportRequest,
+    BuildManifest,
+    BuildManifestDiff,
     CreateServerRequest,
     CrashReportItem,
     FileContentPayload,
@@ -24,6 +27,10 @@ from .schemas import (
     ModOperationRequest,
     RconCommandResult,
     RestoreRequest,
+    ImportServerPreview,
+    ImportServerRequest,
+    SafeUpdateRequest,
+    SafeUpdateResult,
     ServerAction,
     ServerConfigPayload,
 )
@@ -227,6 +234,16 @@ class AgentClient:
         response.raise_for_status()
         return GameServer(**response.json())
 
+    def preview_import_server(self, payload: ImportServerRequest) -> ImportServerPreview:
+        response = self.post("/servers/import/preview", json=payload.model_dump())
+        response.raise_for_status()
+        return ImportServerPreview(**response.json())
+
+    def import_server(self, payload: ImportServerRequest) -> ActionResult:
+        response = self.post("/servers/import", json=payload.model_dump())
+        response.raise_for_status()
+        return ActionResult(**response.json())
+
     def delete_server(self, server_id: str) -> dict[str, bool]:
         response = self.delete(f"/servers/{server_id}")
         response.raise_for_status()
@@ -237,6 +254,47 @@ class AgentClient:
         response = self.post(f"/servers/{server_id}/actions/{action.value}")
         response.raise_for_status()
         return ActionResult(**response.json())
+
+    def manifest(self, server_id: str) -> BuildManifest:
+        response = self.get(f"/servers/{server_id}/manifest")
+        response.raise_for_status()
+        return BuildManifest(**response.json())
+
+    def refresh_manifest(self, server_id: str) -> BuildManifest:
+        response = self.post(f"/servers/{server_id}/manifest/refresh")
+        response.raise_for_status()
+        return BuildManifest(**response.json())
+
+    def manifest_history(self, server_id: str) -> list[str]:
+        response = self.get(f"/servers/{server_id}/manifest/history")
+        response.raise_for_status()
+        return [str(item) for item in response.json()]
+
+    def diff_manifest(self, server_id: str, payload: BuildManifest) -> BuildManifestDiff:
+        response = self.post(f"/servers/{server_id}/manifest/diff", json=payload.model_dump(by_alias=True))
+        response.raise_for_status()
+        return BuildManifestDiff(**response.json())
+
+    def import_manifest(self, server_id: str, payload: BuildImportRequest) -> BuildManifest:
+        response = self.post(f"/servers/{server_id}/manifest/import", json=payload.model_dump(by_alias=True))
+        response.raise_for_status()
+        return BuildManifest(**response.json())
+
+    def export_manifest(self, server_id: str) -> dict[str, str]:
+        response = self.post(f"/servers/{server_id}/manifest/export")
+        response.raise_for_status()
+        data = response.json()
+        return {"path": str(data.get("path") or ""), "name": str(data.get("name") or "")}
+
+    def plan_safe_update(self, server_id: str) -> SafeUpdateResult:
+        response = self.post(f"/servers/{server_id}/updates/plan")
+        response.raise_for_status()
+        return SafeUpdateResult(**response.json())
+
+    def apply_safe_update(self, server_id: str, payload: SafeUpdateRequest) -> SafeUpdateResult:
+        response = self.post(f"/servers/{server_id}/updates/apply", json=payload.model_dump(by_alias=True))
+        response.raise_for_status()
+        return SafeUpdateResult(**response.json())
 
     def server_config(self, server_id: str) -> ServerConfigPayload:
         response = self.get(f"/servers/{server_id}/config")
