@@ -493,7 +493,7 @@
   position: absolute;
   z-index: 2;
   display: grid;
-  width: 132px;
+  width: min(176px, calc(100% - 16px));
   gap: 3px;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--chart-tone) 24%, transparent);

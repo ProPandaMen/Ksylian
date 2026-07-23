@@ -76,10 +76,13 @@ const tooltipStyle = computed(() => {
   if (!point) {
     return {};
   }
-  const left = point.x > width * 0.66 ? point.x - 132 : point.x + 12;
+  const xPercent = (point.x / width) * 100;
+  const yPercent = (point.y / height) * 100;
+  const opensLeft = point.x > width * 0.62;
   return {
-    left: `${Math.max(8, Math.min(width - 132, left))}px`,
-    top: `${Math.max(8, point.y - 12)}px`,
+    left: `${Math.max(0, Math.min(100, xPercent))}%`,
+    top: `${Math.max(18, Math.min(82, yPercent))}%`,
+    transform: opensLeft ? "translate(calc(-100% - 14px), -50%)" : "translate(14px, -50%)",
   };
 });
 
