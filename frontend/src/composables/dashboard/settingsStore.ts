@@ -5,6 +5,7 @@ import {
   curseForgeApiKey,
   isApplyingUpdate,
   isSavingSettings,
+  isSettingsLoaded,
   isUpdateLoading,
   settings,
   updateStatus,
@@ -21,6 +22,8 @@ export function useSettingsDashboardActions(callbacks: { loadAgentStatus: () => 
     } catch (error) {
       showToast("Не удалось загрузить настройки", "error");
       console.error(error);
+    } finally {
+      isSettingsLoaded.value = true;
     }
   }
 

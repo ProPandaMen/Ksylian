@@ -45,6 +45,7 @@ export const isDashboardLoaded = ref(false);
 export const isMonitoringLoading = ref(false);
 export const isMonitoringHistoryLoading = ref(false);
 export const isSavingSettings = ref(false);
+export const isSettingsLoaded = ref(false);
 export const isUpdateLoading = ref(false);
 export const isApplyingUpdate = ref(false);
 export const isCreatingServer = ref(false);

@@ -89,7 +89,11 @@ function loadAppData() {
 }
 
 function redirectUnavailableRoutes() {
-  if (route.name === "modpacks" && store.settings.value.curseforge_api_key_status !== "valid") {
+  if (
+    route.name === "modpacks"
+    && store.isSettingsLoaded.value
+    && store.settings.value.curseforge_api_key_status !== "valid"
+  ) {
     router.replace("/settings");
   }
 }
