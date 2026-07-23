@@ -10,7 +10,7 @@
 from ksylian_agent_app.main import app
 ```
 
-Основная реализация живёт в пакете `agent/ksylian_agent_app/`. Часть доменов уже физически вынесена из бывшего монолита, остальные имеют стабильные import-точки для следующего среза:
+Основная реализация живёт в пакете `agent/ksylian_agent_app/`. Домены первого agent-среза физически вынесены из бывшего монолита:
 
 - `config.py` — env-конфиг, константы и пути.
 - `schemas.py` — Pydantic-модели agent API.
@@ -24,8 +24,9 @@ from ksylian_agent_app.main import app
 - `backups.py` — backup, restore, rollback, retention.
 - `files.py` — файловый менеджер.
 - `mods.py` — scanner и операции с модами.
+- `activity.py`, `hashing.py`, `runtime.py` — action log, checksum helpers и transient runtime state.
 
-Следующий безопасный шаг — физически перенести `files.py`, затем `mods.py`, затем `backups.py`, оставляя routes и публичные JSON-схемы без изменений.
+Следующий безопасный шаг — сгруппировать FastAPI handlers в `routes/` по тем же доменам, оставляя публичные URL и JSON-схемы без изменений.
 
 ## Backend
 

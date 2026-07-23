@@ -12,6 +12,7 @@ if str(AGENT_DIR) not in sys.path:
 
 import ksylian_agent
 from ksylian_agent_app.backups import backup_manifest, backup_manifest_path
+from ksylian_agent_app.hashing import file_digest
 from ksylian_agent_app.minecraft import normalize_cpu_limit, normalize_ram, ram_to_bytes
 from ksylian_agent_app.mods import mod_metadata_from_fabric, mod_metadata_from_toml, parse_mod_toml_fallback
 from ksylian_agent_app.security import ensure_child_path, is_relative_path
@@ -93,6 +94,16 @@ class BackupHelperTests(unittest.TestCase):
             manifest_path.write_text(json.dumps({"server_id": "server", "archive_sha256": "abc"}))
 
             self.assertEqual(backup_manifest(archive)["server_id"], "server")
+
+    def test_file_digest_returns_sha256(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "data.txt"
+            path.write_text("ksylian")
+
+            self.assertEqual(
+                file_digest(path, "sha256"),
+                "f07b83a9c5c0a44e5fb8453e8530f160daae42d61a220bbc0cd328aa4af002ec",
+            )
 
 
 if __name__ == "__main__":

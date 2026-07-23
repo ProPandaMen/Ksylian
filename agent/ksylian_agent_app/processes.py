@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from typing import Literal
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -51,3 +52,17 @@ def systemctl_issue_can_be_ignored(result: subprocess.CompletedProcess[str]) -> 
     message = f"{result.stdout}\n{result.stderr}".lower()
     return "not loaded" in message or "not found" in message or "does not exist" in message
 
+
+def service_state(
+    service: str,
+) -> Literal["installing", "stopped", "starting", "running", "stopping", "crashed", "updating", "backing_up"]:
+    result = run(["systemctl", "is-active", service])
+    if result.stdout.strip() == "active":
+        return "running"
+    if result.stdout.strip() in {"activating", "reloading"}:
+        return "starting"
+    if result.stdout.strip() == "deactivating":
+        return "stopping"
+    if result.stdout.strip() == "failed":
+        return "crashed"
+    return "stopped"
