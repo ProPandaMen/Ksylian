@@ -174,9 +174,9 @@ onUnmounted(stopLogStream);
             <button class="ghost-button compact" type="button" @click="downloadFullLogs">
               <span>Скачать</span>
             </button>
-            <button class="ghost-button compact" type="button" @click="refreshLogs">
-              <RefreshCw :size="16" />
-              <span>{{ store.isLogLoading.value ? 'Загрузка' : 'Обновить' }}</span>
+            <button class="ghost-button compact" type="button" :aria-busy="store.isLogLoading.value" @click="refreshLogs">
+              <RefreshCw :class="{ spinning: store.isLogLoading.value }" :size="16" />
+              <span>Обновить</span>
             </button>
           </div>
         </div>

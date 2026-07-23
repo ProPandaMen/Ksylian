@@ -149,9 +149,15 @@ watch(
           <h1 v-else>{{ pageTitle }}</h1>
         </div>
         <div v-if="isMonitoringPage || isServerDetailPage" class="topbar-actions">
-          <button v-if="isMonitoringPage" class="ghost-button compact" type="button" @click="store.loadMonitoring">
-            <RefreshCw :size="16" />
-            <span>{{ store.isMonitoringLoading.value ? 'Обновляю' : 'Обновить' }}</span>
+          <button
+            v-if="isMonitoringPage"
+            class="ghost-button compact"
+            type="button"
+            :aria-busy="store.isMonitoringLoading.value"
+            @click="store.loadMonitoring"
+          >
+            <RefreshCw :class="{ spinning: store.isMonitoringLoading.value }" :size="16" />
+            <span>Обновить</span>
           </button>
           <button
             v-else

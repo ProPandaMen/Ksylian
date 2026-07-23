@@ -37,6 +37,14 @@
   color: #fff;
 }
 
+.primary-button svg.spinning,
+.ghost-button svg.spinning,
+.icon-button svg.spinning {
+  animation: button-icon-spin 0.9s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 .ghost-button {
   color: var(--app-text);
   background: var(--app-surface);
@@ -82,4 +90,10 @@
   box-shadow:
     inset 5px 5px 10px var(--app-inset-dark),
     inset -5px -5px 10px var(--app-inset-light);
+}
+
+@keyframes button-icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

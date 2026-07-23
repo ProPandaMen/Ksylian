@@ -91,9 +91,9 @@ async function downloadServerFile(path: string) {
             <button class="ghost-button compact" type="button" :disabled="!store.selectedServerFilePath.value" @click="openParentFolder">
               <span>Назад</span>
             </button>
-            <button class="ghost-button compact" type="button" @click="store.loadServerFiles()">
-              <RefreshCw :size="16" />
-              <span>{{ store.isFileLoading.value ? 'Загрузка' : 'Обновить' }}</span>
+            <button class="ghost-button compact" type="button" :aria-busy="store.isFileLoading.value" @click="store.loadServerFiles()">
+              <RefreshCw :class="{ spinning: store.isFileLoading.value }" :size="16" />
+              <span>Обновить</span>
             </button>
           </div>
         </div>

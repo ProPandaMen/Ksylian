@@ -10,9 +10,9 @@ const store = useDashboardStore();
       <section class="server-detail-section">
         <div class="server-detail-section-head">
           <h3>Отчёты о падениях</h3>
-          <button class="ghost-button compact" type="button" @click="store.loadServerCrashReports()">
-            <RefreshCw :size="16" />
-            <span>{{ store.isCrashReportLoading.value ? 'Загрузка' : 'Обновить' }}</span>
+          <button class="ghost-button compact" type="button" :aria-busy="store.isCrashReportLoading.value" @click="store.loadServerCrashReports()">
+            <RefreshCw :class="{ spinning: store.isCrashReportLoading.value }" :size="16" />
+            <span>Обновить</span>
           </button>
         </div>
         <div class="crash-report-list">

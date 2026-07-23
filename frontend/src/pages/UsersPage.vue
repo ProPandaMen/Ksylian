@@ -140,9 +140,9 @@ onMounted(loadUsers);
           <input v-model="selectedPlayer" type="text" placeholder="Nickname" />
         </label>
         <div class="users-actions">
-          <button class="ghost-button compact" type="button" @click="loadPlayers">
-            <RefreshCw :size="16" />
-            <span>{{ isPlayersLoading ? 'Обновляю' : 'Обновить' }}</span>
+          <button class="ghost-button compact" type="button" :aria-busy="isPlayersLoading" @click="loadPlayers">
+            <RefreshCw :class="{ spinning: isPlayersLoading }" :size="16" />
+            <span>Обновить</span>
           </button>
         </div>
       </div>
@@ -243,9 +243,9 @@ onMounted(loadUsers);
           </select>
         </label>
         <div class="users-actions">
-          <button class="ghost-button compact" type="button" @click="loadUsers">
-            <RefreshCw :size="16" />
-            <span>{{ isLoading ? 'Обновляю' : 'Обновить' }}</span>
+          <button class="ghost-button compact" type="button" :aria-busy="isLoading" @click="loadUsers">
+            <RefreshCw :class="{ spinning: isLoading }" :size="16" />
+            <span>Обновить</span>
           </button>
           <button class="primary-button compact" type="button" :disabled="isCreating" @click="createInvite">
             <UserPlus :size="16" />

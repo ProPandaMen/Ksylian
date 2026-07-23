@@ -11,9 +11,9 @@ const store = useDashboardStore();
         <div class="server-detail-section-head">
           <h3>server.properties</h3>
           <div class="panel-actions">
-            <button class="ghost-button compact" type="button" @click="store.loadServerConfig()">
-              <RefreshCw :size="16" />
-              <span>{{ store.isConfigLoading.value ? 'Загрузка' : 'Обновить' }}</span>
+            <button class="ghost-button compact" type="button" :aria-busy="store.isConfigLoading.value" @click="store.loadServerConfig()">
+              <RefreshCw :class="{ spinning: store.isConfigLoading.value }" :size="16" />
+              <span>Обновить</span>
             </button>
             <button class="primary-button compact" type="button" :disabled="store.isConfigSaving.value" @click="store.saveServerConfig">
               <span>{{ store.isConfigSaving.value ? 'Сохраняю' : 'Сохранить' }}</span>
