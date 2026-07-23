@@ -8,7 +8,7 @@ export type ServerState =
   | "updating"
   | "backing_up";
 export type TabId = "servers" | "monitoring" | "modpacks" | "users" | "settings";
-export type MinecraftServerType = "vanilla" | "paper" | "purpur" | "fabric" | "forge";
+export type MinecraftServerType = "vanilla" | "paper" | "purpur" | "fabric" | "forge" | "neoforge";
 export type ThemeName = "pink" | "black" | "white" | "green";
 
 export interface NewServerDraft {
@@ -20,6 +20,9 @@ export interface NewServerDraft {
   java_runtime: "auto" | "8" | "17" | "21";
   jvm_args: string;
   cpu_limit: number;
+  loader_version: string;
+  installer_version: string;
+  install_fabric_api: boolean;
 }
 
 export type MinecraftVersionType = "release" | "snapshot" | "old_beta" | "old_alpha";
@@ -59,6 +62,9 @@ export interface BackupItem {
   size: string;
   created: string;
   server_id: string;
+  checksum?: string;
+  description?: string;
+  manifest?: string;
 }
 
 export interface CrashReportItem {
@@ -85,6 +91,92 @@ export interface FileItem {
   name: string;
   meta: string;
   kind: "folder" | "file";
+}
+
+export interface BackupRequest {
+  mode: "live" | "stopped";
+  parts: Array<"world" | "mods" | "config" | "root">;
+  description: string;
+}
+
+export interface RestoreRequest {
+  backup_id: string;
+  target: "all" | "world" | "mods" | "config";
+  insurance_backup: boolean;
+}
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: "folder" | "file";
+  size: string;
+  modified: string;
+  quick: string;
+}
+
+export interface FileListPayload {
+  path: string;
+  entries: FileEntry[];
+}
+
+export interface FileContentPayload {
+  path: string;
+  name: string;
+  content: string;
+  encoding: "text" | "base64";
+  syntax: "json" | "yaml" | "toml" | "properties" | "text" | "binary";
+}
+
+export interface FileSearchResult {
+  path: string;
+  line: number;
+  preview: string;
+  syntax: "json" | "yaml" | "toml" | "properties" | "text" | "binary";
+}
+
+export interface FileWriteRequest {
+  path: string;
+  content: string;
+  encoding: "text" | "base64";
+}
+
+export interface FileOperationRequest {
+  action: "mkdir" | "delete" | "move" | "rename" | "extract";
+  path: string;
+  target_path?: string;
+}
+
+export interface ModDependency {
+  id: string;
+  version: string;
+  required: boolean;
+}
+
+export interface InstalledModItem {
+  id: string;
+  name: string;
+  version: string;
+  loader: "fabric" | "forge" | "neoforge" | "unknown";
+  side: "client" | "server" | "both" | "unknown";
+  filename: string;
+  path: string;
+  size: string;
+  enabled: boolean;
+  sha1: string;
+  sha256: string;
+  sha512: string;
+  dependencies: ModDependency[];
+  duplicate: boolean;
+  multiple_versions: boolean;
+  warnings: string[];
+}
+
+export interface ModInstallRequest {
+  filename: string;
+  content: string;
+  encoding: "base64";
+  pinned: boolean;
+  release_channel: "release" | "beta" | "alpha";
 }
 
 export interface AgentStatus {

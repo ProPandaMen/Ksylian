@@ -4,9 +4,12 @@ import { useRoute } from "vue-router";
 import {
   CircleStop,
   Cpu,
+  FileText,
+  Folder,
   HardDrive,
   ListRestart,
   MemoryStick,
+  Package,
   Play,
   RefreshCw,
   Users,
@@ -15,7 +18,7 @@ import { stateLabels, useDashboardStore } from "../composables/useDashboardStore
 import { requestJson } from "../services/api";
 import type { RconCommandResult } from "../types";
 
-type ServerDetailTab = "overview" | "logs" | "diagnostics" | "settings";
+type ServerDetailTab = "overview" | "logs" | "files" | "mods" | "backups" | "diagnostics" | "settings";
 
 const route = useRoute();
 const store = useDashboardStore();
@@ -28,6 +31,14 @@ const rconCommand = ref("");
 const rconOutput = ref("");
 const rconHistory = ref<string[]>([]);
 const isRconSending = ref(false);
+const newFolderName = ref("");
+const fileEditorContent = ref("");
+const fileSearchQuery = ref("");
+const fileUploadInput = ref<HTMLInputElement | null>(null);
+const modUploadInput = ref<HTMLInputElement | null>(null);
+const modBulkUpdateInput = ref<HTMLInputElement | null>(null);
+const modUpdateInput = ref<HTMLInputElement | null>(null);
+const pendingModUpdatePath = ref("");
 const logLevels = ref<Record<"INFO" | "WARN" | "ERROR" | "FATAL", boolean>>({
   INFO: true,
   WARN: true,
@@ -39,6 +50,9 @@ let logSocket: WebSocket | undefined;
 const serverDetailTabs: Array<{ id: ServerDetailTab; label: string }> = [
   { id: "overview", label: "Информация" },
   { id: "logs", label: "Логи" },
+  { id: "files", label: "Файлы" },
+  { id: "mods", label: "Моды" },
+  { id: "backups", label: "Бэкапы" },
   { id: "diagnostics", label: "Диагностика" },
   { id: "settings", label: "Настройки" },
 ];
@@ -96,6 +110,12 @@ async function loadCurrentTabData() {
   }
   if (activeServerDetailTab.value === "diagnostics") {
     await store.loadServerCrashReports(serverId);
+  }
+  if (activeServerDetailTab.value === "files") {
+    await store.loadServerFiles(serverId);
+  }
+  if (activeServerDetailTab.value === "mods") {
+    await store.loadServerMods(serverId);
   }
   if (activeServerDetailTab.value === "settings") {
     await store.loadServerConfig(serverId);
@@ -187,6 +207,100 @@ async function sendRconCommand() {
   }
 }
 
+function openParentFolder() {
+  const current = store.selectedServerFilePath.value;
+  if (!current) {
+    return;
+  }
+  const parent = current.split("/").slice(0, -1).join("/");
+  store.loadServerFiles(undefined, parent);
+}
+
+async function openFileEntry(path: string, kind: "folder" | "file") {
+  if (kind === "folder") {
+    await store.loadServerFiles(undefined, path);
+    return;
+  }
+  await store.openServerFile(path);
+  fileEditorContent.value = store.selectedServerFileContent.value?.encoding === "text"
+    ? store.selectedServerFileContent.value.content
+    : "";
+}
+
+async function createFolder() {
+  const name = newFolderName.value.trim();
+  if (!name) {
+    return;
+  }
+  const base = store.selectedServerFilePath.value;
+  await store.runFileAction("mkdir", [base, name].filter(Boolean).join("/"));
+  newFolderName.value = "";
+}
+
+async function searchFiles() {
+  await store.searchServerFiles(fileSearchQuery.value);
+}
+
+async function saveOpenedFile() {
+  await store.saveServerFile(fileEditorContent.value);
+}
+
+async function uploadSelectedFiles(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const selectedFiles = Array.from(input.files || []);
+  for (const file of selectedFiles) {
+    await store.uploadServerFile(file);
+  }
+  input.value = "";
+}
+
+async function installSelectedMods(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const selectedFiles = Array.from(input.files || []).filter((file) => file.name.endsWith(".jar"));
+  await store.installServerMods(selectedFiles);
+  input.value = "";
+}
+
+async function bulkUpdateSelectedMods(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const selectedFiles = Array.from(input.files || []).filter((file) => file.name.endsWith(".jar"));
+  await store.bulkUpdateServerMods(selectedFiles);
+  input.value = "";
+}
+
+function chooseModUpdate(path: string) {
+  pendingModUpdatePath.value = path;
+  modUpdateInput.value?.click();
+}
+
+async function updateSelectedMod(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (file && pendingModUpdatePath.value) {
+    await store.updateServerMod(pendingModUpdatePath.value, file);
+  }
+  pendingModUpdatePath.value = "";
+  input.value = "";
+}
+
+async function downloadServerFile(path: string) {
+  await store.openServerFile(path);
+  const file = store.selectedServerFileContent.value;
+  if (!file) {
+    return;
+  }
+  const bytes = file.encoding === "base64"
+    ? Uint8Array.from(atob(file.content), (char) => char.charCodeAt(0))
+    : new TextEncoder().encode(file.content);
+  const blob = new Blob([bytes]);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function selectServerDetailTab(tabId: ServerDetailTab) {
   activeServerDetailTab.value = tabId;
 }
@@ -216,6 +330,12 @@ watch(
     stopLogStream();
     if (tabId === "diagnostics") {
       await store.loadServerCrashReports();
+    }
+    if (tabId === "files") {
+      await store.loadServerFiles();
+    }
+    if (tabId === "mods") {
+      await store.loadServerMods();
     }
     if (tabId === "settings") {
       await store.loadServerConfig();
@@ -291,6 +411,9 @@ onUnmounted(stopLogStream);
           </button>
           <button class="icon-button" type="button" title="Обновить файлы сервера" @click="store.runServerAction(store.selectedServer.value.id, 'update')">
             <RefreshCw :size="17" />
+          </button>
+          <button class="icon-button" type="button" title="Откатить последнее обновление" @click="store.runServerAction(store.selectedServer.value.id, 'rollback')">
+            <ListRestart :size="17" />
           </button>
           <button class="icon-button danger" type="button" title="Остановить" @click="store.runServerAction(store.selectedServer.value.id, 'stop')">
             <CircleStop :size="17" />
@@ -425,6 +548,186 @@ onUnmounted(stopLogStream);
             <div>
               <strong>Отчётов о падениях нет</strong>
               <span>Когда сервер упадёт с отчётом, он появится здесь.</span>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <section v-if="activeServerDetailTab === 'files'" class="server-tab-panel">
+      <section class="server-detail-section server-files-panel">
+        <div class="server-detail-section-head">
+          <div>
+            <h3>Файлы</h3>
+            <span>{{ store.selectedServerFilePath.value || '/' }}</span>
+          </div>
+          <div class="panel-actions">
+            <input ref="fileUploadInput" type="file" multiple class="visually-hidden" @change="uploadSelectedFiles" />
+            <button class="ghost-button compact" type="button" @click="fileUploadInput?.click()">
+              <span>Загрузить</span>
+            </button>
+            <button class="ghost-button compact" type="button" :disabled="!store.selectedServerFilePath.value" @click="openParentFolder">
+              <span>Назад</span>
+            </button>
+            <button class="ghost-button compact" type="button" @click="store.loadServerFiles()">
+              <RefreshCw :size="16" />
+              <span>{{ store.isFileLoading.value ? 'Загрузка' : 'Обновить' }}</span>
+            </button>
+          </div>
+        </div>
+        <form class="file-create-row" @submit.prevent="createFolder">
+          <input v-model="newFolderName" type="text" placeholder="Новая папка" />
+          <button class="primary-button compact" type="submit" :disabled="!newFolderName.trim()">Создать</button>
+        </form>
+        <form class="file-create-row" @submit.prevent="searchFiles">
+          <input v-model="fileSearchQuery" type="search" placeholder="Поиск по файлам" />
+          <button class="ghost-button compact" type="submit" :disabled="fileSearchQuery.trim().length < 2">Найти</button>
+        </form>
+        <div v-if="store.selectedServerFileSearchResults.value.length" class="server-search-results">
+          <button
+            v-for="result in store.selectedServerFileSearchResults.value"
+            :key="`${result.path}:${result.line}`"
+            type="button"
+            @click="openFileEntry(result.path, 'file')"
+          >
+            <strong>{{ result.path }}:{{ result.line }}</strong>
+            <span>{{ result.preview }}</span>
+          </button>
+        </div>
+        <div class="server-file-list">
+          <article v-for="entry in store.selectedServerFiles.value" :key="entry.path" class="server-file-row">
+            <button type="button" @click="openFileEntry(entry.path, entry.kind)">
+              <Folder v-if="entry.kind === 'folder'" :size="18" />
+              <FileText v-else :size="18" />
+              <span>{{ entry.name }}</span>
+            </button>
+            <small>{{ entry.size }} · {{ entry.modified }}</small>
+            <div class="server-file-actions">
+              <button
+                v-if="entry.kind === 'file'"
+                class="ghost-button compact"
+                type="button"
+                @click="downloadServerFile(entry.path)"
+              >
+                Скачать
+              </button>
+              <button
+                v-if="entry.kind === 'file' && (entry.name.endsWith('.zip') || entry.name.endsWith('.tar.gz'))"
+                class="ghost-button compact"
+                type="button"
+                @click="store.runFileAction('extract', entry.path)"
+              >
+                Распаковать
+              </button>
+              <button class="ghost-button compact danger" type="button" @click="store.runFileAction('delete', entry.path)">
+                Удалить
+              </button>
+            </div>
+          </article>
+          <article v-if="!store.selectedServerFiles.value.length" class="server-empty-state">
+            <div>
+              <strong>Папка пуста</strong>
+              <span>Файлы появятся здесь после создания или загрузки через agent API.</span>
+            </div>
+          </article>
+        </div>
+        <div v-if="store.selectedServerFileContent.value" class="file-editor-panel">
+          <div class="server-detail-section-head">
+            <div>
+              <h3>{{ store.selectedServerFileContent.value.name }}</h3>
+              <span>{{ store.selectedServerFileContent.value.syntax }}</span>
+            </div>
+            <button
+              class="primary-button compact"
+              type="button"
+              :disabled="store.selectedServerFileContent.value.encoding !== 'text' || store.isFileSaving.value"
+              @click="saveOpenedFile"
+            >
+              {{ store.isFileSaving.value ? 'Сохраняю' : 'Сохранить' }}
+            </button>
+          </div>
+          <textarea
+            v-if="store.selectedServerFileContent.value.encoding === 'text'"
+            v-model="fileEditorContent"
+            class="config-editor"
+            :class="`syntax-${store.selectedServerFileContent.value.syntax}`"
+            spellcheck="false"
+          ></textarea>
+          <p v-else class="server-muted-note">Бинарный файл открыт только для чтения.</p>
+        </div>
+      </section>
+    </section>
+
+    <section v-if="activeServerDetailTab === 'mods'" class="server-tab-panel">
+      <section class="server-detail-section">
+        <div class="server-detail-section-head">
+          <h3>Установленные моды</h3>
+          <div class="panel-actions">
+            <input ref="modUploadInput" type="file" multiple accept=".jar" class="visually-hidden" @change="installSelectedMods" />
+            <input ref="modBulkUpdateInput" type="file" multiple accept=".jar" class="visually-hidden" @change="bulkUpdateSelectedMods" />
+            <input ref="modUpdateInput" type="file" accept=".jar" class="visually-hidden" @change="updateSelectedMod" />
+            <button class="ghost-button compact" type="button" @click="modUploadInput?.click()">Установить JAR</button>
+            <button class="ghost-button compact" type="button" @click="modBulkUpdateInput?.click()">Обновить JAR</button>
+            <button class="ghost-button compact" type="button" @click="store.runBulkModAction('disable')">Отключить все</button>
+            <button class="ghost-button compact" type="button" @click="store.runBulkModAction('enable')">Включить все</button>
+            <button class="ghost-button compact" type="button" @click="store.loadServerMods()">
+              <RefreshCw :size="16" />
+              <span>{{ store.isModLoading.value ? 'Сканирую' : 'Сканировать' }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="server-mod-list">
+          <article v-for="mod in store.selectedServerMods.value" :key="mod.path" class="server-mod-row" :class="{ disabled: !mod.enabled }">
+            <Package :size="20" />
+            <div>
+              <strong>{{ mod.name }}</strong>
+              <span>{{ mod.id }} · {{ mod.version || 'без версии' }} · {{ mod.loader }}</span>
+              <small>{{ mod.filename }} · {{ mod.size }}</small>
+              <em v-for="warning in mod.warnings" :key="warning">{{ warning }}</em>
+            </div>
+            <div class="server-mod-actions">
+              <button class="ghost-button compact" type="button" @click="store.runModAction(mod.enabled ? 'disable' : 'enable', mod.path)">
+                {{ mod.enabled ? 'Отключить' : 'Включить' }}
+              </button>
+              <button class="ghost-button compact" type="button" @click="chooseModUpdate(mod.path)">Обновить</button>
+              <button class="ghost-button compact" type="button" @click="store.runModAction('pin', mod.path)">Зафиксировать</button>
+              <button class="ghost-button compact danger" type="button" @click="store.runModAction('delete', mod.path)">Удалить</button>
+            </div>
+          </article>
+          <article v-if="!store.selectedServerMods.value.length" class="server-empty-state">
+            <div>
+              <strong>Моды не найдены</strong>
+              <span>Сканер читает JAR-файлы из папки mods.</span>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <section v-if="activeServerDetailTab === 'backups'" class="server-tab-panel">
+      <section class="server-detail-section">
+        <div class="server-detail-section-head">
+          <h3>Бэкапы</h3>
+          <button class="primary-button compact" type="button" @click="store.createServerBackup()">
+            Создать безопасный бэкап
+          </button>
+        </div>
+        <div class="server-backup-list">
+          <article
+            v-for="backup in store.backups.value.filter((item) => item.server_id === store.selectedServer.value?.id)"
+            :key="backup.id"
+            class="server-backup-row"
+          >
+            <div>
+              <strong>{{ backup.name }}</strong>
+              <span>{{ backup.created }} · {{ backup.size }}</span>
+              <small v-if="backup.checksum">SHA-256 {{ backup.checksum.slice(0, 18) }}…</small>
+            </div>
+          </article>
+          <article v-if="!store.backups.value.some((item) => item.server_id === store.selectedServer.value?.id)" class="server-empty-state">
+            <div>
+              <strong>Бэкапов пока нет</strong>
+              <span>Создай первый backup перед изменениями мира или модов.</span>
             </div>
           </article>
         </div>

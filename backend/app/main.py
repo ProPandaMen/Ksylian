@@ -39,6 +39,7 @@ class ServerAction(str, Enum):
     stop = "stop"
     kill = "kill"
     update = "update"
+    rollback = "rollback"
     backup = "backup"
 
 
@@ -64,11 +65,14 @@ class BackupItem(BaseModel):
     size: str
     created: str
     server_id: str
+    checksum: str = ""
+    description: str = ""
+    manifest: str = ""
 
 
 class CreateServerRequest(BaseModel):
     name: str
-    type: Literal["vanilla", "paper", "purpur", "fabric", "forge"] = "vanilla"
+    type: Literal["vanilla", "paper", "purpur", "fabric", "forge", "neoforge"] = "vanilla"
     pack: str
     version: str = "1.20.1"
     address: str = ""
@@ -77,6 +81,9 @@ class CreateServerRequest(BaseModel):
     java_runtime: str = "auto"
     jvm_args: str = ""
     cpu_limit: int = 100
+    loader_version: str = ""
+    installer_version: str = ""
+    install_fabric_api: bool = False
 
 
 class MinecraftVersion(BaseModel):
@@ -225,6 +232,111 @@ class FileItem(BaseModel):
     name: str
     meta: str
     kind: Literal["folder", "file"]
+
+
+class BackupRequest(BaseModel):
+    mode: Literal["live", "stopped"] = "live"
+    parts: list[Literal["world", "mods", "config", "root"]] = Field(
+        default_factory=lambda: ["world", "mods", "config", "root"],
+    )
+    description: str = ""
+
+
+class RestoreRequest(BaseModel):
+    backup_id: str
+    target: Literal["all", "world", "mods", "config"] = "all"
+    insurance_backup: bool = True
+
+
+class FileEntry(BaseModel):
+    name: str
+    path: str
+    kind: Literal["folder", "file"]
+    size: str
+    modified: str
+    quick: str = ""
+
+
+class FileListPayload(BaseModel):
+    path: str
+    entries: list[FileEntry]
+
+
+class FileWriteRequest(BaseModel):
+    path: str
+    content: str
+    encoding: Literal["text", "base64"] = "text"
+
+
+class FileOperationRequest(BaseModel):
+    action: Literal["mkdir", "delete", "move", "rename", "extract"]
+    path: str
+    target_path: str = ""
+
+
+class FileContentPayload(BaseModel):
+    path: str
+    name: str
+    content: str
+    encoding: Literal["text", "base64"]
+    syntax: Literal["json", "yaml", "toml", "properties", "text", "binary"] = "text"
+
+
+class FileSearchResult(BaseModel):
+    path: str
+    line: int
+    preview: str
+    syntax: Literal["json", "yaml", "toml", "properties", "text", "binary"] = "text"
+
+
+class ModDependency(BaseModel):
+    id: str
+    version: str = ""
+    required: bool = True
+
+
+class InstalledModItem(BaseModel):
+    id: str
+    name: str
+    version: str = ""
+    loader: Literal["fabric", "forge", "neoforge", "unknown"] = "unknown"
+    side: Literal["client", "server", "both", "unknown"] = "unknown"
+    filename: str
+    path: str
+    size: str
+    enabled: bool = True
+    sha1: str
+    sha256: str
+    sha512: str
+    dependencies: list[ModDependency] = Field(default_factory=list)
+    duplicate: bool = False
+    multiple_versions: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ModInstallRequest(BaseModel):
+    filename: str
+    content: str
+    encoding: Literal["base64"] = "base64"
+    pinned: bool = False
+    release_channel: Literal["release", "beta", "alpha"] = "release"
+
+
+class ModOperationRequest(BaseModel):
+    action: Literal["delete", "disable", "enable", "pin", "update"]
+    path: str
+    filename: str = ""
+    content: str = ""
+    release_channel: Literal["release", "beta", "alpha"] = "release"
+
+
+class ModBulkInstallRequest(BaseModel):
+    items: list[ModInstallRequest]
+
+
+class ModBulkActionRequest(BaseModel):
+    action: Literal["update", "delete", "disable", "enable", "pin"]
+    items: list[ModOperationRequest]
 
 
 class ActionResult(BaseModel):
@@ -756,10 +868,10 @@ def agent_headers() -> dict[str, str]:
     return {"x-ksylian-token": AGENT_TOKEN}
 
 
-def agent_get(path: str) -> httpx.Response:
+def agent_get(path: str, params: dict[str, str] | None = None) -> httpx.Response:
     if not AGENT_URL:
         raise RuntimeError("Agent is not configured")
-    return httpx.get(f"{AGENT_URL}{path}", headers=agent_headers(), timeout=10)
+    return httpx.get(f"{AGENT_URL}{path}", headers=agent_headers(), params=params, timeout=10)
 
 
 def agent_post(path: str, json: dict | None = None) -> httpx.Response:
@@ -882,6 +994,93 @@ def load_agent_backups() -> list[BackupItem] | None:
     except Exception as error:
         append_log(f"agent backups unavailable: {error}")
         return None
+
+
+def agent_create_backup(server_id: str, payload: BackupRequest) -> BackupItem:
+    response = agent_post(f"/servers/{server_id}/backups", json=payload.model_dump())
+    response.raise_for_status()
+    return BackupItem(**response.json())
+
+
+def agent_restore_backup(server_id: str, payload: RestoreRequest) -> ActionResult:
+    response = agent_post(f"/servers/{server_id}/restore", json=payload.model_dump())
+    response.raise_for_status()
+    return ActionResult(**response.json())
+
+
+def agent_list_files(server_id: str, path: str = "") -> FileListPayload:
+    response = agent_get(f"/servers/{server_id}/files", params={"path": path})
+    response.raise_for_status()
+    return FileListPayload(**response.json())
+
+
+def agent_read_file(server_id: str, path: str) -> FileContentPayload:
+    response = agent_get(f"/servers/{server_id}/files/content", params={"path": path})
+    response.raise_for_status()
+    return FileContentPayload(**response.json())
+
+
+def agent_search_files(server_id: str, query: str, path: str = "") -> list[FileSearchResult]:
+    response = agent_get(f"/servers/{server_id}/files/search", params={"query": query, "path": path})
+    response.raise_for_status()
+    return [FileSearchResult(**item) for item in response.json()]
+
+
+def agent_write_file(server_id: str, payload: FileWriteRequest) -> FileEntry:
+    response = agent_put(f"/servers/{server_id}/files", json=payload.model_dump())
+    response.raise_for_status()
+    return FileEntry(**response.json())
+
+
+def agent_file_action(server_id: str, payload: FileOperationRequest) -> FileEntry | dict[str, bool]:
+    response = agent_post(f"/servers/{server_id}/files/actions", json=payload.model_dump())
+    response.raise_for_status()
+    data = response.json()
+    if isinstance(data, dict) and data.get("name"):
+        return FileEntry(**data)
+    return {"ok": True}
+
+
+def agent_list_mods(server_id: str) -> list[InstalledModItem]:
+    response = agent_get(f"/servers/{server_id}/mods")
+    response.raise_for_status()
+    return [InstalledModItem(**item) for item in response.json()]
+
+
+def agent_install_mod(server_id: str, payload: ModInstallRequest) -> InstalledModItem:
+    response = agent_post(f"/servers/{server_id}/mods", json=payload.model_dump())
+    response.raise_for_status()
+    return InstalledModItem(**response.json())
+
+
+def agent_bulk_install_mods(server_id: str, payload: ModBulkInstallRequest) -> list[InstalledModItem]:
+    response = agent_post(f"/servers/{server_id}/mods/bulk", json=payload.model_dump())
+    response.raise_for_status()
+    return [InstalledModItem(**item) for item in response.json()]
+
+
+def agent_mod_action(server_id: str, payload: ModOperationRequest) -> dict[str, bool]:
+    response = agent_post(f"/servers/{server_id}/mods/actions", json=payload.model_dump())
+    response.raise_for_status()
+    return {"ok": True}
+
+
+def agent_bulk_mod_action(server_id: str, payload: ModBulkActionRequest) -> dict[str, int]:
+    response = agent_post(f"/servers/{server_id}/mods/bulk-actions", json=payload.model_dump())
+    response.raise_for_status()
+    return {"completed": int(response.json().get("completed", 0))}
+
+
+def agent_loader_versions(loader_type: str) -> list[str]:
+    response = agent_get(f"/loaders/{loader_type}/versions")
+    response.raise_for_status()
+    return [str(item) for item in response.json()]
+
+
+def agent_fabric_installer_versions() -> list[str]:
+    response = agent_get("/loaders/fabric/installers")
+    response.raise_for_status()
+    return [str(item) for item in response.json()]
 
 
 def load_agent_monitoring() -> HostMonitoring | None:
@@ -1430,6 +1629,9 @@ def create_server(payload: CreateServerRequest) -> GameServer:
                 "java_runtime": payload.java_runtime,
                 "jvm_args": payload.jvm_args,
                 "cpu_limit": payload.cpu_limit,
+                "loader_version": payload.loader_version,
+                "installer_version": payload.installer_version,
+                "install_fabric_api": payload.install_fabric_api,
             })
             response.raise_for_status()
             server = GameServer(**response.json())
@@ -1701,15 +1903,12 @@ def list_backups() -> list[BackupItem]:
 
 
 @app.post("/api/backups", response_model=BackupItem)
-def create_backup(server_id: str = "ksy-vanilla") -> BackupItem:
+def create_backup(server_id: str = "ksy-vanilla", payload: BackupRequest | None = None) -> BackupItem:
     if AGENT_URL:
         try:
-            response = agent_post(f"/servers/{server_id}/actions/backup")
-            response.raise_for_status()
-            append_log(response.json()["message"])
-            agent_backups = load_agent_backups()
-            if agent_backups:
-                return agent_backups[0]
+            backup = agent_create_backup(server_id, payload or BackupRequest())
+            append_log(f"{server_id}: backup created")
+            return backup
         except Exception as error:
             append_log(f"agent backup failed for {server_id}: {error}")
             raise HTTPException(status_code=502, detail="Host agent backup failed") from error
@@ -1725,6 +1924,149 @@ def create_backup(server_id: str = "ksy-vanilla") -> BackupItem:
     backups.insert(0, backup)
     append_log(f"{server.name}: manual backup queued")
     return backup
+
+
+@app.post("/api/servers/{server_id}/restore", response_model=ActionResult)
+def restore_backup(server_id: str, payload: RestoreRequest) -> ActionResult:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for restore")
+    try:
+        return agent_restore_backup(server_id, payload)
+    except Exception as error:
+        append_log(f"agent restore failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent restore failed") from error
+
+
+@app.get("/api/servers/{server_id}/files", response_model=FileListPayload)
+def list_server_files(server_id: str, path: str = "") -> FileListPayload:
+    if not AGENT_URL:
+        return FileListPayload(path=path, entries=[])
+    try:
+        return agent_list_files(server_id, path)
+    except Exception as error:
+        append_log(f"agent files unavailable for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent file manager failed") from error
+
+
+@app.get("/api/servers/{server_id}/files/content", response_model=FileContentPayload)
+def read_server_file(server_id: str, path: str) -> FileContentPayload:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for file content")
+    try:
+        return agent_read_file(server_id, path)
+    except Exception as error:
+        append_log(f"agent file read failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent file read failed") from error
+
+
+@app.get("/api/servers/{server_id}/files/search", response_model=list[FileSearchResult])
+def search_server_files(server_id: str, query: str, path: str = "") -> list[FileSearchResult]:
+    if not AGENT_URL:
+        return []
+    try:
+        return agent_search_files(server_id, query, path)
+    except Exception as error:
+        append_log(f"agent file search failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent file search failed") from error
+
+
+@app.put("/api/servers/{server_id}/files", response_model=FileEntry)
+def write_server_file(server_id: str, payload: FileWriteRequest) -> FileEntry:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for file writes")
+    try:
+        return agent_write_file(server_id, payload)
+    except Exception as error:
+        append_log(f"agent file write failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent file write failed") from error
+
+
+@app.post("/api/servers/{server_id}/files/actions")
+def server_file_action(server_id: str, payload: FileOperationRequest) -> FileEntry | dict[str, bool]:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for file actions")
+    try:
+        return agent_file_action(server_id, payload)
+    except Exception as error:
+        append_log(f"agent file action failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent file action failed") from error
+
+
+@app.get("/api/servers/{server_id}/mods", response_model=list[InstalledModItem])
+def list_server_mods(server_id: str) -> list[InstalledModItem]:
+    if not AGENT_URL:
+        return []
+    try:
+        return agent_list_mods(server_id)
+    except Exception as error:
+        append_log(f"agent mods unavailable for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent mod scanner failed") from error
+
+
+@app.post("/api/servers/{server_id}/mods", response_model=InstalledModItem)
+def install_server_mod(server_id: str, payload: ModInstallRequest) -> InstalledModItem:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for mod install")
+    try:
+        return agent_install_mod(server_id, payload)
+    except Exception as error:
+        append_log(f"agent mod install failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent mod install failed") from error
+
+
+@app.post("/api/servers/{server_id}/mods/bulk", response_model=list[InstalledModItem])
+def bulk_install_server_mods(server_id: str, payload: ModBulkInstallRequest) -> list[InstalledModItem]:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for bulk mod install")
+    try:
+        return agent_bulk_install_mods(server_id, payload)
+    except Exception as error:
+        append_log(f"agent bulk mod install failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent bulk mod install failed") from error
+
+
+@app.post("/api/servers/{server_id}/mods/actions")
+def server_mod_action(server_id: str, payload: ModOperationRequest) -> dict[str, bool]:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for mod actions")
+    try:
+        return agent_mod_action(server_id, payload)
+    except Exception as error:
+        append_log(f"agent mod action failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent mod action failed") from error
+
+
+@app.post("/api/servers/{server_id}/mods/bulk-actions")
+def server_mod_bulk_action(server_id: str, payload: ModBulkActionRequest) -> dict[str, int]:
+    if not AGENT_URL:
+        raise HTTPException(status_code=409, detail="Host agent is required for bulk mod actions")
+    try:
+        return agent_bulk_mod_action(server_id, payload)
+    except Exception as error:
+        append_log(f"agent bulk mod action failed for {server_id}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent bulk mod action failed") from error
+
+
+@app.get("/api/loaders/{loader_type}/versions", response_model=list[str])
+def loader_versions(loader_type: Literal["forge", "neoforge", "fabric", "vanilla", "paper", "purpur"]) -> list[str]:
+    if not AGENT_URL:
+        return []
+    try:
+        return agent_loader_versions(loader_type)
+    except Exception as error:
+        append_log(f"agent loader versions failed for {loader_type}: {error}")
+        raise HTTPException(status_code=502, detail="Host agent loader versions failed") from error
+
+
+@app.get("/api/loaders/fabric/installers", response_model=list[str])
+def fabric_installer_versions() -> list[str]:
+    if not AGENT_URL:
+        return []
+    try:
+        return agent_fabric_installer_versions()
+    except Exception as error:
+        append_log(f"agent fabric installer versions failed: {error}")
+        raise HTTPException(status_code=502, detail="Host agent fabric installer versions failed") from error
 
 
 @app.get("/api/settings", response_model=SettingsPayload)

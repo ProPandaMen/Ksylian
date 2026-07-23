@@ -181,6 +181,8 @@
   .users-control-row label,
   .monitor-row,
   .monitor-metric-row,
+  .server-file-row,
+  .server-mod-row,
   .server-detail-row,
   .server-resource-row {
     grid-template-columns: 1fr;
@@ -223,7 +225,9 @@
   }
 
   .server-metrics,
-  .server-actions {
+  .server-actions,
+  .server-file-actions,
+  .server-mod-actions {
     justify-content: flex-start;
   }
 
@@ -276,6 +280,7 @@
 
   .new-server-steps,
   .new-server-fields label,
+  .file-create-row,
   .server-type-row {
     grid-template-columns: 1fr;
   }

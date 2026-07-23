@@ -14,7 +14,7 @@ import type { Component } from "vue";
 import { requestJson } from "../services/api";
 import type { MinecraftServerType, MinecraftVersionType, MinecraftVersionsPayload, NewServerDraft } from "../types";
 
-type NewServerStringField = Exclude<keyof NewServerDraft, "cpu_limit">;
+type NewServerStringField = Exclude<keyof NewServerDraft, "cpu_limit" | "install_fabric_api">;
 
 const modelValue = defineModel<NewServerDraft>({ required: true });
 
@@ -39,7 +39,11 @@ const versionFilters = ref<Record<MinecraftVersionType, boolean>>({
   old_alpha: false,
 });
 const isVersionLoading = ref(false);
+const isLoaderVersionLoading = ref(false);
 const versionError = ref("");
+const loaderVersionError = ref("");
+const loaderVersions = ref<string[]>([]);
+const installerVersions = ref<string[]>([]);
 
 const serverTypes: Array<{
   id: MinecraftServerType;
@@ -89,6 +93,14 @@ const serverTypes: Array<{
     icon: Hammer,
     available: true,
   },
+  {
+    id: "neoforge",
+    label: "NeoForge",
+    note: "готово",
+    description: "Современная ветка Forge для новых модовых сборок и актуальных версий Minecraft.",
+    icon: Hammer,
+    available: true,
+  },
 ];
 
 const selectedType = computed(() => serverTypes.find((item) => item.id === modelValue.value.type) ?? serverTypes[0]);
@@ -100,6 +112,7 @@ const filteredVersions = computed(() =>
 const selectedVersion = computed(() =>
   versions.value.versions.find((version) => version.id === modelValue.value.version),
 );
+const hasLoaderSettings = computed(() => ["fabric", "forge", "neoforge"].includes(modelValue.value.type));
 
 const canContinue = computed(() => Boolean(selectedType.value.available));
 const canSubmit = computed(() =>
@@ -121,6 +134,13 @@ function updateField(field: NewServerStringField, value: string) {
 }
 
 function updateNumberField(field: "cpu_limit", value: number) {
+  modelValue.value = {
+    ...modelValue.value,
+    [field]: value,
+  };
+}
+
+function updateBooleanField(field: "install_fabric_api", value: boolean) {
   modelValue.value = {
     ...modelValue.value,
     [field]: value,
@@ -176,6 +196,31 @@ async function loadMinecraftVersions() {
   }
 }
 
+async function loadLoaderVersions() {
+  loaderVersionError.value = "";
+  loaderVersions.value = [];
+  installerVersions.value = [];
+  if (!hasLoaderSettings.value) {
+    updateField("loader_version", "");
+    updateField("installer_version", "");
+    updateBooleanField("install_fabric_api", false);
+    return;
+  }
+
+  isLoaderVersionLoading.value = true;
+  try {
+    loaderVersions.value = await requestJson<string[]>(`/api/loaders/${modelValue.value.type}/versions`);
+    if (modelValue.value.type === "fabric") {
+      installerVersions.value = await requestJson<string[]>("/api/loaders/fabric/installers");
+    }
+  } catch (error) {
+    loaderVersionError.value = "Не удалось загрузить версии загрузчика";
+    console.error(error);
+  } finally {
+    isLoaderVersionLoading.value = false;
+  }
+}
+
 function toggleVersionFilter(type: MinecraftVersionType, value: boolean) {
   versionFilters.value = {
     ...versionFilters.value,
@@ -199,7 +244,17 @@ function submit() {
 }
 
 watch(filteredVersions, selectInitialVersion);
+watch(
+  () => modelValue.value.type,
+  () => {
+    updateField("loader_version", "");
+    updateField("installer_version", "");
+    updateBooleanField("install_fabric_api", false);
+    loadLoaderVersions();
+  },
+);
 onMounted(loadMinecraftVersions);
+onMounted(loadLoaderVersions);
 </script>
 
 <template>
@@ -347,6 +402,37 @@ onMounted(loadMinecraftVersions);
               @input="updateField('jvm_args', ($event.target as HTMLInputElement).value)"
             />
           </label>
+          <label v-if="hasLoaderSettings">
+            <span>Версия загрузчика</span>
+            <select
+              :value="modelValue.loader_version"
+              :disabled="isLoaderVersionLoading || isSubmitting"
+              @change="updateField('loader_version', ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">Последняя совместимая</option>
+              <option v-for="version in loaderVersions" :key="version" :value="version">{{ version }}</option>
+            </select>
+          </label>
+          <label v-if="modelValue.type === 'fabric'">
+            <span>Fabric installer</span>
+            <select
+              :value="modelValue.installer_version"
+              :disabled="isLoaderVersionLoading || isSubmitting"
+              @change="updateField('installer_version', ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">Последний стабильный</option>
+              <option v-for="version in installerVersions" :key="version" :value="version">{{ version }}</option>
+            </select>
+          </label>
+          <label v-if="modelValue.type === 'fabric'" class="new-server-checkbox-field">
+            <input
+              type="checkbox"
+              :checked="modelValue.install_fabric_api"
+              :disabled="isSubmitting"
+              @change="updateBooleanField('install_fabric_api', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Установить Fabric API</span>
+          </label>
         </div>
 
         <div class="version-filter-row" aria-label="Фильтр версий Minecraft">
@@ -389,6 +475,7 @@ onMounted(loadMinecraftVersions);
         </div>
 
         <p v-if="versionError" class="version-error">{{ versionError }}</p>
+        <p v-if="loaderVersionError" class="version-error">{{ loaderVersionError }}</p>
 
         <div v-if="isSubmitting" class="provisioning-card">
           <Loader2 :size="22" />

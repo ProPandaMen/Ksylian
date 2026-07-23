@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import base64
+import io
 import json
 import hashlib
 import re
@@ -13,14 +15,21 @@ import tarfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None  # type: ignore[assignment]
 
 
 class AgentServer(BaseModel):
@@ -42,7 +51,7 @@ class AgentServer(BaseModel):
 class StoredServer(BaseModel):
     id: str
     name: str
-    type: Literal["legacy", "vanilla", "paper", "purpur", "fabric", "forge"]
+    type: Literal["legacy", "vanilla", "paper", "purpur", "fabric", "forge", "neoforge"]
     pack: str
     version: str
     port: int
@@ -58,19 +67,25 @@ class StoredServer(BaseModel):
     java_runtime: str = "auto"
     jvm_args: list[str] = Field(default_factory=list)
     cpu_limit: int = 100
+    loader_version: str = ""
+    installer_version: str = ""
+    install_fabric_api: bool = False
     rcon_port: int = 0
     rcon_password: str = ""
 
 
 class CreateAgentServerRequest(BaseModel):
     name: str
-    type: Literal["vanilla", "paper", "purpur", "fabric", "forge"]
+    type: Literal["vanilla", "paper", "purpur", "fabric", "forge", "neoforge"]
     version: str = "1.20.1"
     min_ram: str = "1G"
     max_ram: str = "2G"
     java_runtime: str = "auto"
     jvm_args: str = ""
     cpu_limit: int = 100
+    loader_version: str = ""
+    installer_version: str = ""
+    install_fabric_api: bool = False
 
 
 class AgentActionResult(BaseModel):
@@ -90,6 +105,122 @@ class RconCommandPayload(BaseModel):
 class RconCommandResult(BaseModel):
     ok: bool
     output: str
+
+
+class BackupRequest(BaseModel):
+    mode: Literal["live", "stopped"] = "live"
+    parts: list[Literal["world", "mods", "config", "root"]] = Field(
+        default_factory=lambda: ["world", "mods", "config", "root"],
+    )
+    description: str = ""
+
+
+class RestoreRequest(BaseModel):
+    backup_id: str
+    target: Literal["all", "world", "mods", "config"] = "all"
+    insurance_backup: bool = True
+
+
+class BackupItem(BaseModel):
+    id: str
+    name: str
+    size: str
+    created: str
+    server_id: str
+    checksum: str = ""
+    description: str = ""
+    manifest: str = ""
+
+
+class FileEntry(BaseModel):
+    name: str
+    path: str
+    kind: Literal["folder", "file"]
+    size: str
+    modified: str
+    quick: str = ""
+
+
+class FileListPayload(BaseModel):
+    path: str
+    entries: list[FileEntry]
+
+
+class FileWriteRequest(BaseModel):
+    path: str
+    content: str
+    encoding: Literal["text", "base64"] = "text"
+
+
+class FileOperationRequest(BaseModel):
+    action: Literal["mkdir", "delete", "move", "rename", "extract"]
+    path: str
+    target_path: str = ""
+
+
+class FileContentPayload(BaseModel):
+    path: str
+    name: str
+    content: str
+    encoding: Literal["text", "base64"]
+    syntax: Literal["json", "yaml", "toml", "properties", "text", "binary"] = "text"
+
+
+class FileSearchResult(BaseModel):
+    path: str
+    line: int
+    preview: str
+    syntax: Literal["json", "yaml", "toml", "properties", "text", "binary"] = "text"
+
+
+class ModDependency(BaseModel):
+    id: str
+    version: str = ""
+    required: bool = True
+
+
+class InstalledModItem(BaseModel):
+    id: str
+    name: str
+    version: str = ""
+    loader: Literal["fabric", "forge", "neoforge", "unknown"] = "unknown"
+    side: Literal["client", "server", "both", "unknown"] = "unknown"
+    filename: str
+    path: str
+    size: str
+    enabled: bool = True
+    sha1: str
+    sha256: str
+    sha512: str
+    dependencies: list[ModDependency] = Field(default_factory=list)
+    duplicate: bool = False
+    multiple_versions: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ModInstallRequest(BaseModel):
+    filename: str
+    content: str
+    encoding: Literal["base64"] = "base64"
+    pinned: bool = False
+    release_channel: Literal["release", "beta", "alpha"] = "release"
+
+
+class ModOperationRequest(BaseModel):
+    action: Literal["delete", "disable", "enable", "pin", "update"]
+    path: str
+    filename: str = ""
+    content: str = ""
+    release_channel: Literal["release", "beta", "alpha"] = "release"
+
+
+class ModBulkInstallRequest(BaseModel):
+    items: list[ModInstallRequest]
+
+
+class ModBulkActionRequest(BaseModel):
+    action: Literal["update", "delete", "disable", "enable", "pin"]
+    items: list[ModOperationRequest]
 
 
 class CrashReportItem(BaseModel):
@@ -187,6 +318,12 @@ SERVERS = {
 }
 
 BACKUP_DIR = Path(os.getenv("KSYLIAN_BACKUP_DIR", "/mnt/hdd/ksylian-backups"))
+BACKUP_KEEP_LAST = int(os.getenv("KSYLIAN_BACKUP_KEEP_LAST", "12"))
+BACKUP_KEEP_DAILY = int(os.getenv("KSYLIAN_BACKUP_KEEP_DAILY", "7"))
+BACKUP_KEEP_WEEKLY = int(os.getenv("KSYLIAN_BACKUP_KEEP_WEEKLY", "4"))
+BACKUP_KEEP_MONTHLY = int(os.getenv("KSYLIAN_BACKUP_KEEP_MONTHLY", "6"))
+BACKUP_MAX_BYTES = int(os.getenv("KSYLIAN_BACKUP_MAX_BYTES", str(250 * 1024**3)))
+BACKUP_S3_URI = os.getenv("KSYLIAN_BACKUP_S3_URI", "").rstrip("/")
 DATA_DIR = Path(os.getenv("KSYLIAN_DATA_DIR", "/var/lib/ksylian-agent"))
 DISABLED_SERVERS_FILE = DATA_DIR / "disabled-servers.json"
 SERVERS_FILE = DATA_DIR / "servers.json"
@@ -205,7 +342,9 @@ RATE_LIMIT_REQUESTS = int(os.getenv("KSYLIAN_AGENT_RATE_LIMIT_REQUESTS", "240"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("KSYLIAN_AGENT_RATE_LIMIT_WINDOW_SECONDS", "60"))
 MINECRAFT_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 FABRIC_META_API_URL = "https://meta.fabricmc.net/v2"
+MODRINTH_API_URL = "https://api.modrinth.com/v2"
 FORGE_MAVEN_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge"
+NEOFORGE_MAVEN_URL = "https://maven.neoforged.net/releases/net/neoforged/neoforge"
 PAPER_API_URL = "https://fill.papermc.io/v3/projects/paper"
 PURPUR_API_URL = "https://api.purpurmc.org/v2/purpur"
 AGENT_USER_AGENT = "Ksylian/0.1 (https://github.com/ProPandaMen/Ksylian)"
@@ -346,6 +485,776 @@ def server_base_path(server: StoredServer) -> Path:
     if server.managed and not is_relative_path(path, SERVER_ROOT):
         raise HTTPException(status_code=409, detail="Managed server path is outside allowed directory")
     return path
+
+
+def server_child_path(server: StoredServer, relative_path: str = "") -> Path:
+    root = server_base_path(server)
+    cleaned = relative_path.strip().lstrip("/")
+    if not cleaned or cleaned == ".":
+        return root
+    return ensure_child_path(root, *Path(cleaned).parts)
+
+
+def relative_server_path(server: StoredServer, path: Path) -> str:
+    return path.resolve().relative_to(server_base_path(server).resolve()).as_posix()
+
+
+def load_server_or_404(server_id: str) -> StoredServer:
+    config = load_server_store().get(server_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    return config
+
+
+def backup_manifest_path(archive: Path) -> Path:
+    return archive.with_suffix(archive.suffix + ".manifest.json")
+
+
+def backup_archive_path(backup_id: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", backup_id):
+        raise HTTPException(status_code=400, detail="Invalid backup id")
+    archive = ensure_child_path(BACKUP_DIR, f"{backup_id}.tar.gz")
+    if not archive.exists():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    return archive
+
+
+def backup_part_paths(server: StoredServer, parts: list[str]) -> list[Path]:
+    root = server_base_path(server)
+    selected: list[Path] = []
+    root_files = ["server.properties", "whitelist.json", "ops.json", "banned-players.json", "eula.txt"]
+    if "world" in parts:
+        selected.append(root / "world")
+    if "mods" in parts:
+        selected.append(root / "mods")
+    if "config" in parts:
+        selected.append(root / "config")
+    if "root" in parts:
+        selected.extend(root / name for name in root_files)
+    return [path for path in selected if path.exists()]
+
+
+def iter_backup_files(paths: list[Path]) -> list[Path]:
+    files: list[Path] = []
+    for path in paths:
+        if path.is_file():
+            files.append(path)
+        elif path.is_dir():
+            files.extend(item for item in path.rglob("*") if item.is_file())
+    return sorted(files)
+
+
+def execute_save_command(server: StoredServer, command: str) -> None:
+    if not server.rcon_password:
+        return
+    try:
+        execute_rcon(server, command)
+    except HTTPException as error:
+        append_action_log("backup_rcon_warning", server.id, f"{command}: {error.detail}")
+
+
+def create_backup_archive(server: StoredServer, request: BackupRequest, reason: str = "manual") -> BackupItem:
+    root = server_base_path(server)
+    paths = backup_part_paths(server, request.parts)
+    if not paths:
+        raise HTTPException(status_code=404, detail="No backup sources found")
+
+    was_running = service_state(server.service) == "running"
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    server_runtime_states[server.id] = "backing_up"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_id = f"{server.id}-{stamp}"
+    archive = BACKUP_DIR / f"{backup_id}.tar.gz"
+
+    try:
+        if request.mode == "stopped" and was_running:
+            result = run(["systemctl", "stop", server.service], timeout=90)
+            if result.returncode != 0:
+                raise HTTPException(status_code=500, detail=result.stderr.strip() or "Failed to stop server")
+        elif request.mode == "live" and was_running:
+            execute_save_command(server, "save-off")
+            execute_save_command(server, "save-all flush")
+
+        files = iter_backup_files(paths)
+        manifest = {
+            "schema": 1,
+            "server_id": server.id,
+            "server_name": server.name,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "mode": request.mode,
+            "reason": reason,
+            "description": request.description,
+            "parts": request.parts,
+            "files": [
+                {
+                    "path": file.relative_to(root).as_posix(),
+                    "size": file.stat().st_size,
+                    "sha256": file_digest(file, "sha256"),
+                }
+                for file in files
+            ],
+        }
+
+        manifest_bytes = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+        with tarfile.open(archive, "w:gz") as tar:
+            for path in paths:
+                tar.add(path, arcname=f"server/{path.relative_to(root).as_posix()}")
+            info = tarfile.TarInfo("ksylian-backup-manifest.json")
+            info.size = len(manifest_bytes)
+            info.mtime = time.time()
+            tar.addfile(info, io.BytesIO(manifest_bytes))
+
+        manifest["archive_sha256"] = file_digest(archive, "sha256")
+        manifest_path = backup_manifest_path(archive)
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        manifest_path.chmod(0o600)
+        append_action_log("server_backup", server.id, str(archive))
+        sync_backup_to_s3(archive)
+        apply_backup_retention(server.id)
+        return backup_to_item(archive)
+    finally:
+        if request.mode == "live" and was_running:
+            execute_save_command(server, "save-on")
+        if request.mode == "stopped" and was_running:
+            run(["systemctl", "start", server.service], timeout=90)
+        server_runtime_states.pop(server.id, None)
+
+
+def backup_to_item(path: Path) -> BackupItem:
+    manifest_path = backup_manifest_path(path)
+    manifest: dict[str, Any] = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+    return BackupItem(
+        id=path.name.removesuffix(".tar.gz"),
+        name=path.name,
+        size=folder_size(path),
+        created=datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+        server_id=str(manifest.get("server_id") or path.name.split("-", 1)[0]),
+        checksum=str(manifest.get("archive_sha256") or ""),
+        description=str(manifest.get("description") or ""),
+        manifest=manifest_path.name if manifest_path.exists() else "",
+    )
+
+
+def backup_manifest(path: Path) -> dict[str, Any]:
+    manifest_path = backup_manifest_path(path)
+    if not manifest_path.exists():
+        return {}
+    try:
+        return json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def backup_total_bytes() -> int:
+    if not BACKUP_DIR.exists():
+        return 0
+    return sum(path.stat().st_size for path in BACKUP_DIR.glob("*.tar.gz") if path.exists())
+
+
+def remove_backup_file(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    backup_manifest_path(path).unlink(missing_ok=True)
+
+
+def apply_backup_retention(server_id: str) -> None:
+    if not BACKUP_DIR.exists():
+        return
+    backups = sorted(
+        [path for path in BACKUP_DIR.glob(f"{server_id}-*.tar.gz")],
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    keep: set[Path] = set(backups[:BACKUP_KEEP_LAST])
+    daily: set[str] = set()
+    weekly: set[str] = set()
+    monthly: set[str] = set()
+    for path in backups:
+        created = datetime.fromtimestamp(path.stat().st_mtime)
+        day_key = created.strftime("%Y-%m-%d")
+        week_key = f"{created.isocalendar().year}-W{created.isocalendar().week:02d}"
+        month_key = created.strftime("%Y-%m")
+        if len(daily) < BACKUP_KEEP_DAILY and day_key not in daily:
+            daily.add(day_key)
+            keep.add(path)
+        if len(weekly) < BACKUP_KEEP_WEEKLY and week_key not in weekly:
+            weekly.add(week_key)
+            keep.add(path)
+        if len(monthly) < BACKUP_KEEP_MONTHLY and month_key not in monthly:
+            monthly.add(month_key)
+            keep.add(path)
+
+    for path in backups:
+        if path not in keep:
+            remove_backup_file(path)
+            append_action_log("backup_retention_delete", server_id, path.name)
+
+    while BACKUP_MAX_BYTES > 0 and backup_total_bytes() > BACKUP_MAX_BYTES:
+        current = sorted(BACKUP_DIR.glob("*.tar.gz"), key=lambda item: item.stat().st_mtime)
+        removable = [path for path in current if path not in keep] or current
+        if not removable:
+            break
+        path = removable[0]
+        remove_backup_file(path)
+        append_action_log("backup_storage_cap_delete", server_id, path.name)
+
+
+def sync_backup_to_s3(path: Path) -> None:
+    if not BACKUP_S3_URI:
+        return
+    target = f"{BACKUP_S3_URI}/{path.name}"
+    result = run(["aws", "s3", "cp", str(path), target], timeout=600)
+    if result.returncode != 0:
+        append_action_log("backup_s3_failed", "-", result.stderr.strip() or result.stdout.strip())
+        return
+    manifest = backup_manifest_path(path)
+    if manifest.exists():
+        run(["aws", "s3", "cp", str(manifest), f"{BACKUP_S3_URI}/{manifest.name}"], timeout=600)
+    append_action_log("backup_s3_uploaded", "-", target)
+
+
+def verify_backup_archive(path: Path) -> None:
+    manifest_path = backup_manifest_path(path)
+    if not manifest_path.exists():
+        return
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise HTTPException(status_code=409, detail="Backup manifest is invalid") from error
+    expected = str(manifest.get("archive_sha256") or "")
+    if expected and file_digest(path, "sha256") != expected:
+        raise HTTPException(status_code=409, detail="Backup checksum mismatch")
+
+
+def restore_backup(server: StoredServer, request: RestoreRequest) -> AgentActionResult:
+    archive = backup_archive_path(request.backup_id)
+    verify_backup_archive(archive)
+    if service_state(server.service) == "running":
+        raise HTTPException(status_code=409, detail="Stop the server before restoring a backup")
+
+    if request.insurance_backup:
+        create_backup_archive(
+            server,
+            BackupRequest(mode="stopped", parts=["world", "mods", "config", "root"], description="Before restore"),
+            reason="restore-insurance",
+        )
+
+    prefixes = {
+        "all": ["server/"],
+        "world": ["server/world/"],
+        "mods": ["server/mods/"],
+        "config": ["server/config/", "server/server.properties", "server/whitelist.json", "server/ops.json", "server/banned-players.json"],
+    }[request.target]
+    root = server_base_path(server)
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar.getmembers():
+            if not member.name.startswith("server/") or member.isdir():
+                continue
+            if not any(member.name == prefix or member.name.startswith(prefix) for prefix in prefixes):
+                continue
+            relative_name = member.name.removeprefix("server/")
+            destination = ensure_child_path(root, *Path(relative_name).parts)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            source = tar.extractfile(member)
+            if source is None:
+                continue
+            with destination.open("wb") as file:
+                shutil.copyfileobj(source, file)
+    if server.managed:
+        apply_server_permissions(server)
+    append_action_log("server_restore", server.id, f"{archive.name}:{request.target}")
+    return AgentActionResult(ok=True, message=f"{server.name}: restored {request.target}", server=to_agent_server(server.id))
+
+
+def latest_restore_candidate(server: StoredServer) -> str:
+    if not BACKUP_DIR.exists():
+        raise HTTPException(status_code=404, detail="No backups available")
+    candidates = sorted(
+        [path for path in BACKUP_DIR.glob(f"{server.id}-*.tar.gz")],
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    for preferred_reason in ("pre-update", "restore-insurance", "manual"):
+        for path in candidates:
+            manifest = backup_manifest(path)
+            if str(manifest.get("reason") or "") == preferred_reason:
+                return path.name.removesuffix(".tar.gz")
+    if candidates:
+        return candidates[0].name.removesuffix(".tar.gz")
+    raise HTTPException(status_code=404, detail="No backups available")
+
+
+def rollback_last_update(server: StoredServer) -> AgentActionResult:
+    was_running = service_state(server.service) == "running"
+    if was_running:
+        result = run(["systemctl", "stop", server.service], timeout=90)
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=result.stderr.strip() or "Failed to stop server")
+    try:
+        backup_id = latest_restore_candidate(server)
+        result = restore_backup(server, RestoreRequest(backup_id=backup_id, target="all", insurance_backup=True))
+    finally:
+        if was_running:
+            run(["systemctl", "start", server.service], timeout=90)
+    append_action_log("server_rollback", server.id, backup_id)
+    return result
+
+
+def quick_file_label(path: Path) -> str:
+    name = path.name
+    if name in {"mods", "config", "world", "logs", "crash-reports"}:
+        return name
+    if name in {"server.properties", "whitelist.json", "ops.json", "banned-players.json"}:
+        return name
+    return ""
+
+
+def file_entry(server: StoredServer, path: Path) -> FileEntry:
+    stat = path.stat()
+    return FileEntry(
+        name=path.name,
+        path=relative_server_path(server, path),
+        kind="folder" if path.is_dir() else "file",
+        size=folder_size(path) if path.is_dir() else format_bytes(stat.st_size),
+        modified=datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        quick=quick_file_label(path),
+    )
+
+
+def file_syntax(path: Path) -> Literal["json", "yaml", "toml", "properties", "text", "binary"]:
+    name = path.name.lower()
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return "json"
+    if suffix in {".yml", ".yaml"}:
+        return "yaml"
+    if suffix == ".toml":
+        return "toml"
+    if suffix == ".properties" or name.endswith(".properties"):
+        return "properties"
+    if suffix in {".txt", ".log", ".conf", ".cfg", ".md"} or "." not in name:
+        return "text"
+    return "text"
+
+
+def search_server_files(server: StoredServer, query: str, relative_path: str = "") -> list[FileSearchResult]:
+    search = query.strip().lower()
+    if len(search) < 2:
+        raise HTTPException(status_code=400, detail="Search query must contain at least 2 characters")
+    root = server_child_path(server, relative_path)
+    if not root.exists():
+        raise HTTPException(status_code=404, detail="Search path not found")
+    files = [root] if root.is_file() else [item for item in root.rglob("*") if item.is_file()]
+    results: list[FileSearchResult] = []
+    for path in files:
+        if path.stat().st_size > 2 * 1024 * 1024:
+            continue
+        try:
+            lines = path.read_text(errors="strict").splitlines()
+        except UnicodeDecodeError:
+            continue
+        for index, line in enumerate(lines, start=1):
+            if search in line.lower():
+                results.append(
+                    FileSearchResult(
+                        path=relative_server_path(server, path),
+                        line=index,
+                        preview=line.strip()[:220],
+                        syntax=file_syntax(path),
+                    ),
+                )
+                if len(results) >= 100:
+                    return results
+    return results
+
+
+def list_server_files(server: StoredServer, relative_path: str = "") -> FileListPayload:
+    directory = server_child_path(server, relative_path)
+    if not directory.exists():
+        raise HTTPException(status_code=404, detail="Path not found")
+    if not directory.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+    entries = [file_entry(server, item) for item in sorted(directory.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))]
+    return FileListPayload(path=relative_server_path(server, directory) if directory != server_base_path(server) else "", entries=entries)
+
+
+def read_server_file(server: StoredServer, relative_path: str) -> FileContentPayload:
+    path = server_child_path(server, relative_path)
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    if path.stat().st_size > 2 * 1024 * 1024:
+        return FileContentPayload(
+            path=relative_server_path(server, path),
+            name=path.name,
+            content=base64.b64encode(path.read_bytes()).decode("ascii"),
+            encoding="base64",
+            syntax="binary",
+        )
+    try:
+        return FileContentPayload(
+            path=relative_server_path(server, path),
+            name=path.name,
+            content=path.read_text(),
+            encoding="text",
+            syntax=file_syntax(path),
+        )
+    except UnicodeDecodeError:
+        return FileContentPayload(
+            path=relative_server_path(server, path),
+            name=path.name,
+            content=base64.b64encode(path.read_bytes()).decode("ascii"),
+            encoding="base64",
+            syntax="binary",
+        )
+
+
+def write_server_file(server: StoredServer, request: FileWriteRequest) -> FileEntry:
+    path = server_child_path(server, request.path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if request.encoding == "base64":
+        data = base64.b64decode(request.content)
+        if len(data) > 128 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File is too large")
+        path.write_bytes(data)
+    else:
+        if len(request.content.encode("utf-8")) > 4 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Text file is too large")
+        path.write_text(request.content)
+    if server.managed:
+        apply_server_permissions(server)
+    append_action_log("server_file_write", server.id, relative_server_path(server, path))
+    return file_entry(server, path)
+
+
+def operate_server_file(server: StoredServer, request: FileOperationRequest) -> FileEntry | dict[str, bool]:
+    path = server_child_path(server, request.path)
+    root = server_base_path(server)
+    if request.action == "mkdir":
+        path.mkdir(parents=True, exist_ok=True)
+        append_action_log("server_file_mkdir", server.id, relative_server_path(server, path))
+        return file_entry(server, path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Path not found")
+    if request.action == "delete":
+        trash_dir = root / ".ksylian-trash"
+        trash_dir.mkdir(exist_ok=True)
+        target = ensure_child_path(trash_dir, f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{path.name}")
+        shutil.move(str(path), str(target))
+        append_action_log("server_file_delete", server.id, relative_server_path(server, path))
+        return {"ok": True}
+    if request.action in {"move", "rename"}:
+        if not request.target_path.strip():
+            raise HTTPException(status_code=400, detail="Target path is required")
+        target = server_child_path(server, request.target_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(target))
+        append_action_log("server_file_move", server.id, f"{relative_server_path(server, path)} -> {relative_server_path(server, target)}")
+        return file_entry(server, target)
+    if request.action == "extract":
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as archive:
+                for member in archive.infolist():
+                    destination = ensure_child_path(path.parent, *Path(member.filename).parts)
+                    if member.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                    else:
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        with archive.open(member) as source, destination.open("wb") as output:
+                            shutil.copyfileobj(source, output)
+        elif path.name.endswith(".tar.gz"):
+            with tarfile.open(path, "r:gz") as archive:
+                for member in archive.getmembers():
+                    destination = ensure_child_path(path.parent, *Path(member.name).parts)
+                    if member.isdir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                    else:
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        source = archive.extractfile(member)
+                        if source is not None:
+                            with destination.open("wb") as output:
+                                shutil.copyfileobj(source, output)
+        else:
+            raise HTTPException(status_code=400, detail="Only ZIP and TAR.GZ archives can be extracted")
+        append_action_log("server_file_extract", server.id, relative_server_path(server, path))
+        return file_entry(server, path.parent)
+    raise HTTPException(status_code=400, detail="Unsupported file action")
+
+
+def normalize_dependency(value: Any) -> list[ModDependency]:
+    dependencies: list[ModDependency] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(item, str):
+                dependencies.append(ModDependency(id=str(key), version=item))
+            elif isinstance(item, dict):
+                dependencies.append(
+                    ModDependency(
+                        id=str(key),
+                        version=str(item.get("version") or item.get("versionRange") or ""),
+                        required=str(item.get("type") or "").lower() != "optional",
+                    ),
+                )
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                dependencies.append(
+                    ModDependency(
+                        id=str(item.get("modId") or item.get("id") or ""),
+                        version=str(item.get("versionRange") or item.get("version") or ""),
+                        required=not bool(item.get("optional", False)),
+                    ),
+                )
+    return [dependency for dependency in dependencies if dependency.id]
+
+
+def mod_metadata_from_fabric(data: dict[str, Any]) -> dict[str, Any]:
+    environment = str(data.get("environment") or "*")
+    side = "both"
+    if environment == "client":
+        side = "client"
+    elif environment == "server":
+        side = "server"
+    return {
+        "id": str(data.get("id") or ""),
+        "name": str(data.get("name") or data.get("id") or ""),
+        "version": str(data.get("version") or ""),
+        "loader": "fabric",
+        "side": side,
+        "dependencies": normalize_dependency(data.get("depends")),
+    }
+
+
+def mod_metadata_from_toml(data: dict[str, Any], loader: Literal["forge", "neoforge"]) -> dict[str, Any]:
+    mods = data.get("mods")
+    first = mods[0] if isinstance(mods, list) and mods else {}
+    mod_id = str(first.get("modId") or first.get("modid") or "") if isinstance(first, dict) else ""
+    dependencies = normalize_dependency(data.get("dependencies", {}).get(mod_id) if isinstance(data.get("dependencies"), dict) else [])
+    return {
+        "id": mod_id,
+        "name": str(first.get("displayName") or first.get("display_name") or mod_id) if isinstance(first, dict) else mod_id,
+        "version": str(first.get("version") or "") if isinstance(first, dict) else "",
+        "loader": loader,
+        "side": "both",
+        "dependencies": dependencies,
+    }
+
+
+def parse_mod_toml_fallback(content: str) -> dict[str, Any]:
+    mod_match = re.search(r"\[\[mods]](?P<body>.*?)(?:\n\[|\Z)", content, re.DOTALL)
+    body = mod_match.group("body") if mod_match else content
+
+    def find_string(key: str) -> str:
+        match = re.search(rf"^\s*{re.escape(key)}\s*=\s*[\"']([^\"']+)[\"']", body, re.MULTILINE)
+        return match.group(1).strip() if match else ""
+
+    mod_id = find_string("modId") or find_string("modid")
+    dependencies: list[dict[str, str]] = []
+    for block in re.finditer(r"\[\[dependencies\.[^\]]+]](?P<body>.*?)(?:\n\[|\Z)", content, re.DOTALL):
+        dep_body = block.group("body")
+        dep_id = re.search(r"^\s*modId\s*=\s*[\"']([^\"']+)[\"']", dep_body, re.MULTILINE)
+        dep_version = re.search(r"^\s*versionRange\s*=\s*[\"']([^\"']+)[\"']", dep_body, re.MULTILINE)
+        if dep_id:
+            dependencies.append(
+                {
+                    "modId": dep_id.group(1).strip(),
+                    "versionRange": dep_version.group(1).strip() if dep_version else "",
+                },
+            )
+
+    return {
+        "mods": [
+            {
+                "modId": mod_id,
+                "displayName": find_string("displayName") or mod_id,
+                "version": find_string("version"),
+            },
+        ],
+        "dependencies": {mod_id: dependencies} if mod_id else {},
+    }
+
+
+def read_mod_metadata(path: Path) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "id": path.stem.removesuffix(".jar"),
+        "name": path.stem.removesuffix(".jar"),
+        "version": "",
+        "loader": "unknown",
+        "side": "unknown",
+        "dependencies": [],
+    }
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+            if "fabric.mod.json" in names:
+                data = json.loads(archive.read("fabric.mod.json").decode("utf-8"))
+                if isinstance(data, dict):
+                    metadata.update(mod_metadata_from_fabric(data))
+            for toml_name, loader in (
+                ("META-INF/neoforge.mods.toml", "neoforge"),
+                ("META-INF/mods.toml", "forge"),
+            ):
+                if toml_name in names:
+                    content = archive.read(toml_name).decode("utf-8")
+                    data = tomllib.loads(content) if tomllib is not None else parse_mod_toml_fallback(content)
+                    if isinstance(data, dict):
+                        metadata.update(mod_metadata_from_toml(data, loader))
+                    break
+    except (OSError, zipfile.BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        pass
+    return metadata
+
+
+def scan_installed_mods(server: StoredServer) -> list[InstalledModItem]:
+    mods_dir = server_child_path(server, "mods")
+    if not mods_dir.exists():
+        return []
+    candidates = sorted(
+        [path for path in mods_dir.iterdir() if path.is_file() and (path.name.endswith(".jar") or path.name.endswith(".jar.disabled"))],
+        key=lambda item: item.name.lower(),
+    )
+    raw_items: list[InstalledModItem] = []
+    for path in candidates:
+        enabled = path.name.endswith(".jar")
+        metadata = read_mod_metadata(path)
+        warnings: list[str] = []
+        if metadata["loader"] == "unknown":
+            warnings.append("Неизвестный JAR: metadata не найдена")
+        if metadata["side"] == "client":
+            warnings.append("Похоже на client-only мод")
+        raw_items.append(
+            InstalledModItem(
+                id=str(metadata["id"] or path.stem),
+                name=str(metadata["name"] or path.stem),
+                version=str(metadata["version"] or ""),
+                loader=metadata["loader"],
+                side=metadata["side"],
+                filename=path.name,
+                path=relative_server_path(server, path),
+                size=format_bytes(path.stat().st_size),
+                enabled=enabled,
+                sha1=file_digest(path, "sha1"),
+                sha256=file_digest(path, "sha256"),
+                sha512=file_digest(path, "sha512"),
+                dependencies=metadata["dependencies"],
+                warnings=warnings,
+            ),
+        )
+    counts: dict[str, int] = {}
+    versions: dict[str, set[str]] = {}
+    for item in raw_items:
+        counts[item.id] = counts.get(item.id, 0) + 1
+        versions.setdefault(item.id, set()).add(item.version)
+    for item in raw_items:
+        item.duplicate = counts.get(item.id, 0) > 1
+        item.multiple_versions = len(versions.get(item.id, set())) > 1
+        if server.type in {"fabric", "forge", "neoforge"} and item.loader not in {server.type, "unknown"}:
+            item.warnings.append(f"Загрузчик {item.loader} не совпадает с сервером {server.type}")
+        if item.loader == "unknown":
+            item.warnings.append("Нельзя проверить совместимость загрузчика")
+        installed_ids = set(counts)
+        for dependency in item.dependencies:
+            if dependency.required and dependency.id not in installed_ids and dependency.id not in {"minecraft", "java", "fabricloader", "forge", "neoforge"}:
+                item.warnings.append(f"Не найдена зависимость {dependency.id}")
+        if item.duplicate:
+            item.warnings.append("Найден дубликат mod ID")
+        if item.multiple_versions:
+            item.warnings.append("Найдено несколько версий одного мода")
+    return raw_items
+
+
+def install_mod(server: StoredServer, request: ModInstallRequest) -> InstalledModItem:
+    filename = Path(request.filename).name
+    if not filename.endswith(".jar"):
+        raise HTTPException(status_code=400, detail="Only .jar mods can be installed")
+    mods_dir = server_child_path(server, "mods")
+    mods_dir.mkdir(exist_ok=True)
+    data = base64.b64decode(request.content)
+    if len(data) > 128 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Mod file is too large")
+    destination = ensure_child_path(mods_dir, filename)
+    destination.write_bytes(data)
+    if request.pinned:
+        (mods_dir / ".ksylian-pins.json").write_text(json.dumps({filename: request.release_channel}, ensure_ascii=False, indent=2))
+    if server.managed:
+        apply_server_permissions(server)
+    append_action_log("server_mod_install", server.id, filename)
+    return next(item for item in scan_installed_mods(server) if item.filename == filename)
+
+
+def operate_mod(server: StoredServer, request: ModOperationRequest) -> dict[str, bool]:
+    path = server_child_path(server, request.path)
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Mod not found")
+    if request.action == "delete":
+        operate_server_file(server, FileOperationRequest(action="delete", path=relative_server_path(server, path)))
+    elif request.action == "disable":
+        if path.name.endswith(".jar.disabled"):
+            return {"ok": True}
+        target = path.with_name(f"{path.name}.disabled")
+        shutil.move(str(path), str(target))
+    elif request.action == "enable":
+        if not path.name.endswith(".jar.disabled"):
+            return {"ok": True}
+        target = path.with_name(path.name.removesuffix(".disabled"))
+        shutil.move(str(path), str(target))
+    elif request.action == "pin":
+        pins_path = server_child_path(server, "mods/.ksylian-pins.json")
+        pins: dict[str, bool] = {}
+        if pins_path.exists():
+            try:
+                pins = json.loads(pins_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                pins = {}
+        pins[path.name] = True
+        pins_path.write_text(json.dumps(pins, ensure_ascii=False, indent=2))
+    elif request.action == "update":
+        if not request.content:
+            raise HTTPException(status_code=400, detail="Updated mod content is required")
+        filename = Path(request.filename or path.name.removesuffix(".disabled")).name
+        if not filename.endswith(".jar"):
+            raise HTTPException(status_code=400, detail="Updated mod must be a .jar")
+        target = path.with_name(filename)
+        data = base64.b64decode(request.content)
+        if len(data) > 128 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Mod file is too large")
+        path.unlink(missing_ok=True)
+        target.write_bytes(data)
+    append_action_log(f"server_mod_{request.action}", server.id, relative_server_path(server, path))
+    return {"ok": True}
+
+
+def bulk_install_mods(server: StoredServer, request: ModBulkInstallRequest) -> list[InstalledModItem]:
+    if len(request.items) > 50:
+        raise HTTPException(status_code=413, detail="Too many mods in one request")
+    installed: list[InstalledModItem] = []
+    for item in request.items:
+        installed.append(install_mod(server, item))
+    append_action_log("server_mod_bulk_install", server.id, str(len(installed)))
+    return installed
+
+
+def bulk_operate_mods(server: StoredServer, request: ModBulkActionRequest) -> dict[str, int]:
+    if len(request.items) > 100:
+        raise HTTPException(status_code=413, detail="Too many mod operations in one request")
+    completed = 0
+    for item in request.items:
+        if not item.path:
+            continue
+        operation = ModOperationRequest(
+            action=request.action,
+            path=item.path,
+            filename=item.filename,
+            content=item.content,
+            release_channel=item.release_channel,
+        )
+        operate_mod(server, operation)
+        completed += 1
+    append_action_log(f"server_mod_bulk_{request.action}", server.id, str(completed))
+    return {"completed": completed}
 
 
 def validate_update_target(target_version: str) -> str:
@@ -511,6 +1420,8 @@ def server_type_label(server_type: str) -> str:
         return "Fabric"
     if server_type == "forge":
         return "Forge"
+    if server_type == "neoforge":
+        return "NeoForge"
     return server_type
 
 
@@ -645,6 +1556,7 @@ def download_file(
     md5: str = "",
     sha1: str = "",
     sha256: str = "",
+    sha512: str = "",
     minimum_size: int = 1024,
 ) -> None:
     if not is_relative_path(destination, SERVER_ROOT):
@@ -666,6 +1578,8 @@ def download_file(
                 raise OSError("downloaded file sha1 checksum mismatch")
             if sha256 and file_digest(temporary, "sha256").lower() != sha256.lower():
                 raise OSError("downloaded file sha256 checksum mismatch")
+            if sha512 and file_digest(temporary, "sha512").lower() != sha512.lower():
+                raise OSError("downloaded file sha512 checksum mismatch")
             temporary.replace(destination)
             return
         except urllib.error.HTTPError as error:
@@ -753,15 +1667,43 @@ def latest_fabric_component(path: str, label: str) -> str:
     raise HTTPException(status_code=404, detail=f"Fabric {label} version was not found")
 
 
-def download_fabric_server_jar(version: str, destination: Path) -> None:
+def fabric_loader_versions(minecraft_version: str = "") -> list[str]:
+    path = f"/versions/loader/{minecraft_version}" if minecraft_version else "/versions/loader"
+    items = request_json(f"{FABRIC_META_API_URL}{path}")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=502, detail="Fabric loader metadata is invalid")
+    versions: list[str] = []
+    for item in items:
+        loader = item.get("loader") if isinstance(item, dict) and minecraft_version else item
+        if isinstance(loader, dict) and loader.get("version"):
+            versions.append(str(loader["version"]))
+    return list(dict.fromkeys(versions))
+
+
+def fabric_installer_versions() -> list[str]:
+    items = request_json(f"{FABRIC_META_API_URL}/versions/installer")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=502, detail="Fabric installer metadata is invalid")
+    return [str(item["version"]) for item in items if isinstance(item, dict) and item.get("version")]
+
+
+def download_fabric_server_jar(
+    version: str,
+    destination: Path,
+    loader_version: str = "",
+    installer_version: str = "",
+) -> None:
     loaders = request_json(f"{FABRIC_META_API_URL}/versions/loader/{version}")
     if not isinstance(loaders, list) or not loaders:
         raise HTTPException(status_code=404, detail=f"Fabric loader for Minecraft {version} was not found")
 
-    loader_version = ""
+    selected_loader_version = loader_version.strip()
+    if selected_loader_version and selected_loader_version not in fabric_loader_versions(version):
+        raise HTTPException(status_code=404, detail=f"Fabric loader {selected_loader_version} for Minecraft {version} was not found")
+    loader_version = selected_loader_version
     for item in loaders:
         loader = item.get("loader") if isinstance(item, dict) else None
-        if isinstance(loader, dict) and loader.get("stable") is True and loader.get("version"):
+        if not loader_version and isinstance(loader, dict) and loader.get("stable") is True and loader.get("version"):
             loader_version = str(loader["version"])
             break
     if not loader_version:
@@ -770,11 +1712,37 @@ def download_fabric_server_jar(version: str, destination: Path) -> None:
     if not loader_version:
         raise HTTPException(status_code=404, detail=f"Fabric loader for Minecraft {version} was not found")
 
-    installer_version = latest_fabric_component("/versions/installer", "installer")
+    installer_versions = fabric_installer_versions()
+    selected_installer_version = installer_version.strip()
+    if selected_installer_version and selected_installer_version not in installer_versions:
+        raise HTTPException(status_code=404, detail=f"Fabric installer {selected_installer_version} was not found")
+    installer_version = selected_installer_version or latest_fabric_component("/versions/installer", "installer")
     download_file(
         f"{FABRIC_META_API_URL}/versions/loader/{version}/{loader_version}/{installer_version}/server/jar",
         destination,
     )
+
+
+def install_fabric_api(server: StoredServer) -> None:
+    mods_dir = server_base_path(server) / "mods"
+    mods_dir.mkdir(parents=True, exist_ok=True)
+    query = urllib.parse.urlencode({"loaders": '["fabric"]', "game_versions": json.dumps([server.version])})
+    versions = request_json(f"{MODRINTH_API_URL}/project/fabric-api/version?{query}")
+    if not isinstance(versions, list) or not versions:
+        raise HTTPException(status_code=404, detail=f"Fabric API for Minecraft {server.version} was not found")
+    selected = next((item for item in versions if isinstance(item, dict) and item.get("version_type") == "release"), None)
+    selected = selected or next((item for item in versions if isinstance(item, dict)), None)
+    files = selected.get("files") if isinstance(selected, dict) else None
+    primary = next((item for item in files if isinstance(item, dict) and item.get("primary")), None) if isinstance(files, list) else None
+    file_item = primary or (files[0] if isinstance(files, list) and files else None)
+    if not isinstance(file_item, dict):
+        raise HTTPException(status_code=404, detail="Fabric API download was not found")
+    filename = Path(str(file_item.get("filename") or "fabric-api.jar")).name
+    url = str(file_item.get("url") or "")
+    sha512 = str(file_item.get("hashes", {}).get("sha512") or "")
+    if not url:
+        raise HTTPException(status_code=404, detail="Fabric API download URL was not found")
+    download_file(url, mods_dir / filename, sha512=sha512)
 
 
 def forge_versions() -> list[str]:
@@ -786,11 +1754,42 @@ def forge_versions() -> list[str]:
     return [item.text.strip() for item in root.findall(".//version") if item.text and item.text.strip()]
 
 
-def latest_forge_version(minecraft_version: str) -> str:
+def latest_forge_version(minecraft_version: str, selected_version: str = "") -> str:
+    if selected_version.strip():
+        versions = forge_versions()
+        if selected_version.strip() not in versions:
+            raise HTTPException(status_code=404, detail=f"Forge build {selected_version} was not found")
+        return selected_version.strip()
     prefix = f"{minecraft_version}-"
     matches = [version for version in forge_versions() if version.startswith(prefix)]
     if not matches:
         raise HTTPException(status_code=404, detail=f"Forge build for Minecraft {minecraft_version} was not found")
+    return matches[-1]
+
+
+def neoforge_versions() -> list[str]:
+    metadata = request_text(f"{NEOFORGE_MAVEN_URL}/maven-metadata.xml")
+    try:
+        root = ET.fromstring(metadata)
+    except ET.ParseError as error:
+        raise HTTPException(status_code=502, detail="NeoForge metadata is invalid") from error
+    return [item.text.strip() for item in root.findall(".//version") if item.text and item.text.strip()]
+
+
+def latest_neoforge_version(minecraft_version: str, selected_version: str = "") -> str:
+    versions = neoforge_versions()
+    if selected_version.strip():
+        if selected_version.strip() not in versions:
+            raise HTTPException(status_code=404, detail=f"NeoForge build {selected_version} was not found")
+        return selected_version.strip()
+    # NeoForge 1.20.2+ versions are commonly published as 20.2.x, 20.4.x, etc.
+    version = minecraft_version_key(minecraft_version)
+    prefix = f"{version[1]}.{version[2]}." if version[0] == 1 and version[1] >= 20 else minecraft_version
+    matches = [item for item in versions if item.startswith(prefix)]
+    if not matches:
+        matches = [item for item in versions if minecraft_version in item]
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"NeoForge build for Minecraft {minecraft_version} was not found")
     return matches[-1]
 
 
@@ -863,7 +1862,7 @@ def java_binary(minecraft_version: str = "", selected_runtime: str = "auto") -> 
 
 def install_forge_server(server: StoredServer) -> list[str]:
     server_path = server_base_path(server)
-    forge_version = latest_forge_version(server.version)
+    forge_version = latest_forge_version(server.version, server.loader_version)
     installer = server_path / f"forge-{forge_version}-installer.jar"
     download_file(f"{FORGE_MAVEN_URL}/{forge_version}/forge-{forge_version}-installer.jar", installer)
 
@@ -893,33 +1892,129 @@ def install_forge_server(server: StoredServer) -> list[str]:
     raise HTTPException(status_code=502, detail="Forge installer did not produce a runnable server")
 
 
-def provision_server_files(server: StoredServer) -> StoredServer:
+def install_neoforge_server(server: StoredServer) -> list[str]:
+    server_path = server_base_path(server)
+    neoforge_version = latest_neoforge_version(server.version, server.loader_version)
+    installer = server_path / f"neoforge-{neoforge_version}-installer.jar"
+    download_file(f"{NEOFORGE_MAVEN_URL}/{neoforge_version}/neoforge-{neoforge_version}-installer.jar", installer)
+
     java = java_binary(server.version, server.java_runtime)
-    destination = server_base_path(server) / "server.jar"
-    if server.type == "vanilla":
+    min_ram = normalize_ram(server.min_ram, "1G")
+    max_ram = normalize_ram(server.max_ram, "2G")
+    result = run_in([java, "-jar", str(installer), "--installServer"], cwd=server_path, timeout=600)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "NeoForge installer failed"
+        raise HTTPException(status_code=502, detail=detail)
+
+    unix_args = server_path / "libraries" / "net" / "neoforged" / "neoforge" / neoforge_version / "unix_args.txt"
+    if unix_args.exists():
+        return [
+            java,
+            f"-Xms{min_ram}",
+            f"-Xmx{max_ram}",
+            *server.jvm_args,
+            f"@libraries/net/neoforged/neoforge/{neoforge_version}/unix_args.txt",
+            "nogui",
+        ]
+
+    neoforge_jar = next(server_path.glob(f"neoforge-{neoforge_version}*.jar"), None)
+    if neoforge_jar:
+        return [java, f"-Xms{min_ram}", f"-Xmx{max_ram}", *server.jvm_args, "-jar", neoforge_jar.name, "nogui"]
+
+    raise HTTPException(status_code=502, detail="NeoForge installer did not produce a runnable server")
+
+
+class ServerLoader:
+    loader_type = "vanilla"
+
+    def versions(self) -> list[str]:
+        return []
+
+    def install(self, server: StoredServer) -> StoredServer:
+        return server
+
+    def update(self, server: StoredServer) -> StoredServer:
+        return self.install(server)
+
+    def required_java(self, server: StoredServer) -> int:
+        return required_java_major(server.version)
+
+    def command(self, server: StoredServer) -> list[str]:
+        return server.start_command
+
+    def installed_version(self, server: StoredServer) -> str:
+        return server.version
+
+
+class JarServerLoader(ServerLoader):
+    def __init__(self, loader_type: str, downloader: Any):
+        self.loader_type = loader_type
+        self.downloader = downloader
+
+    def install(self, server: StoredServer) -> StoredServer:
+        java = java_binary(server.version, server.java_runtime)
+        destination = server_base_path(server) / "server.jar"
         if not destination.exists():
-            download_vanilla_server_jar(server.version, destination)
+            self.downloader(server.version, destination)
         server.start_command = start_command_for_server(server, java)
         return server
-    if server.type == "paper":
+
+
+class FabricLoader(JarServerLoader):
+    def __init__(self):
+        super().__init__("fabric", download_fabric_server_jar)
+
+    def command(self, server: StoredServer) -> list[str]:
+        return default_start_command()
+
+    def install(self, server: StoredServer) -> StoredServer:
+        destination = server_base_path(server) / "server.jar"
         if not destination.exists():
-            download_paper_server_jar(server.version, destination)
-        server.start_command = start_command_for_server(server, java)
-        return server
-    if server.type == "purpur":
-        if not destination.exists():
-            download_purpur_server_jar(server.version, destination)
-        server.start_command = start_command_for_server(server, java)
-        return server
-    if server.type == "fabric":
-        if not destination.exists():
-            download_fabric_server_jar(server.version, destination)
+            download_fabric_server_jar(server.version, destination, server.loader_version, server.installer_version)
+        if server.install_fabric_api:
+            install_fabric_api(server)
         server.start_command = default_start_command()
         return server
-    if server.type == "forge":
+
+
+class ForgeLoader(ServerLoader):
+    loader_type = "forge"
+
+    def versions(self) -> list[str]:
+        return forge_versions()
+
+    def install(self, server: StoredServer) -> StoredServer:
         if not server.start_command:
             server.start_command = install_forge_server(server)
         return server
+
+
+class NeoForgeLoader(ServerLoader):
+    loader_type = "neoforge"
+
+    def versions(self) -> list[str]:
+        return neoforge_versions()
+
+    def install(self, server: StoredServer) -> StoredServer:
+        if not server.start_command:
+            server.start_command = install_neoforge_server(server)
+        return server
+
+
+SERVER_LOADERS: dict[str, ServerLoader] = {
+    "vanilla": JarServerLoader("vanilla", download_vanilla_server_jar),
+    "paper": JarServerLoader("paper", download_paper_server_jar),
+    "purpur": JarServerLoader("purpur", download_purpur_server_jar),
+    "fabric": FabricLoader(),
+    "forge": ForgeLoader(),
+    "neoforge": NeoForgeLoader(),
+}
+
+
+def provision_server_files(server: StoredServer) -> StoredServer:
+    loader = SERVER_LOADERS.get(server.type)
+    if loader:
+        return loader.install(server)
     raise HTTPException(status_code=400, detail=f"Server type {server.type} cannot be provisioned")
 
 
@@ -930,6 +2025,8 @@ def update_server_files(server: StoredServer) -> StoredServer:
     if server.type in {"vanilla", "paper", "purpur", "fabric"}:
         (server_path / "server.jar").unlink(missing_ok=True)
     if server.type == "forge":
+        server.start_command = []
+    if server.type == "neoforge":
         server.start_command = []
     return ensure_server_provisioned(server)
 
@@ -1612,6 +2709,9 @@ def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None
         java_runtime=payload.java_runtime if payload.java_runtime in {"auto", "8", "17", "21"} else "auto",
         jvm_args=normalize_jvm_args(payload.jvm_args),
         cpu_limit=normalize_cpu_limit(payload.cpu_limit),
+        loader_version=payload.loader_version.strip(),
+        installer_version=payload.installer_version.strip(),
+        install_fabric_api=payload.install_fabric_api if payload.type == "fabric" else False,
     )
     ensure_disk_space_for_server(server)
     store[server.id] = server
@@ -1619,6 +2719,26 @@ def create_server(payload: CreateAgentServerRequest, x_ksylian_token: str | None
     append_action_log("server_create_queued", server.id, f"{server.type} {server.version}")
     threading.Thread(target=provision_server_in_background, args=(server.id,), daemon=True).start()
     return to_agent_server(server.id)
+
+
+@app.get("/loaders/{loader_type}/versions", response_model=list[str])
+def loader_versions(
+    loader_type: Literal["forge", "neoforge", "fabric", "vanilla", "paper", "purpur"],
+    x_ksylian_token: str | None = Header(default=None),
+) -> list[str]:
+    require_token(x_ksylian_token)
+    loader = SERVER_LOADERS.get(loader_type)
+    if loader is None:
+        raise HTTPException(status_code=404, detail="Loader not found")
+    if loader_type == "fabric":
+        return fabric_loader_versions()
+    return loader.versions()
+
+
+@app.get("/loaders/fabric/installers", response_model=list[str])
+def fabric_installers(x_ksylian_token: str | None = Header(default=None)) -> list[str]:
+    require_token(x_ksylian_token)
+    return fabric_installer_versions()
 
 
 @app.get("/monitoring", response_model=HostMonitoring)
@@ -1805,18 +2925,133 @@ def update_server_config(
     return ServerConfigPayload(content=content)
 
 
-@app.post("/servers/{server_id}/actions/{action}", response_model=AgentActionResult)
-def action(
+@app.get("/servers/{server_id}/files", response_model=FileListPayload)
+def server_files(
     server_id: str,
-    action: Literal["start", "restart", "stop", "kill", "update", "backup"],
+    path: str = "",
+    x_ksylian_token: str | None = Header(default=None),
+) -> FileListPayload:
+    require_token(x_ksylian_token)
+    return list_server_files(load_server_or_404(server_id), path)
+
+
+@app.get("/servers/{server_id}/files/content", response_model=FileContentPayload)
+def server_file_content(
+    server_id: str,
+    path: str,
+    x_ksylian_token: str | None = Header(default=None),
+) -> FileContentPayload:
+    require_token(x_ksylian_token)
+    return read_server_file(load_server_or_404(server_id), path)
+
+
+@app.get("/servers/{server_id}/files/search", response_model=list[FileSearchResult])
+def server_file_search(
+    server_id: str,
+    query: str,
+    path: str = "",
+    x_ksylian_token: str | None = Header(default=None),
+) -> list[FileSearchResult]:
+    require_token(x_ksylian_token)
+    return search_server_files(load_server_or_404(server_id), query, path)
+
+
+@app.put("/servers/{server_id}/files", response_model=FileEntry)
+def server_file_write(
+    server_id: str,
+    payload: FileWriteRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> FileEntry:
+    require_token(x_ksylian_token)
+    return write_server_file(load_server_or_404(server_id), payload)
+
+
+@app.post("/servers/{server_id}/files/actions")
+def server_file_action(
+    server_id: str,
+    payload: FileOperationRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> FileEntry | dict[str, bool]:
+    require_token(x_ksylian_token)
+    return operate_server_file(load_server_or_404(server_id), payload)
+
+
+@app.get("/servers/{server_id}/mods", response_model=list[InstalledModItem])
+def server_mods(server_id: str, x_ksylian_token: str | None = Header(default=None)) -> list[InstalledModItem]:
+    require_token(x_ksylian_token)
+    return scan_installed_mods(load_server_or_404(server_id))
+
+
+@app.post("/servers/{server_id}/mods", response_model=InstalledModItem)
+def server_mod_install(
+    server_id: str,
+    payload: ModInstallRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> InstalledModItem:
+    require_token(x_ksylian_token)
+    return install_mod(load_server_or_404(server_id), payload)
+
+
+@app.post("/servers/{server_id}/mods/bulk", response_model=list[InstalledModItem])
+def server_mod_bulk_install(
+    server_id: str,
+    payload: ModBulkInstallRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> list[InstalledModItem]:
+    require_token(x_ksylian_token)
+    return bulk_install_mods(load_server_or_404(server_id), payload)
+
+
+@app.post("/servers/{server_id}/mods/actions")
+def server_mod_action(
+    server_id: str,
+    payload: ModOperationRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> dict[str, bool]:
+    require_token(x_ksylian_token)
+    return operate_mod(load_server_or_404(server_id), payload)
+
+
+@app.post("/servers/{server_id}/mods/bulk-actions")
+def server_mod_bulk_action(
+    server_id: str,
+    payload: ModBulkActionRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> dict[str, int]:
+    require_token(x_ksylian_token)
+    return bulk_operate_mods(load_server_or_404(server_id), payload)
+
+
+@app.post("/servers/{server_id}/backups", response_model=BackupItem)
+def server_backup(
+    server_id: str,
+    payload: BackupRequest,
+    x_ksylian_token: str | None = Header(default=None),
+) -> BackupItem:
+    require_token(x_ksylian_token)
+    return create_backup_archive(load_server_or_404(server_id), payload)
+
+
+@app.post("/servers/{server_id}/restore", response_model=AgentActionResult)
+def server_restore(
+    server_id: str,
+    payload: RestoreRequest,
     x_ksylian_token: str | None = Header(default=None),
 ) -> AgentActionResult:
     require_token(x_ksylian_token)
-    config = load_server_store().get(server_id)
-    if config is None:
-        raise HTTPException(status_code=404, detail="Server not found")
+    return restore_backup(load_server_or_404(server_id), payload)
 
-    if action in {"start", "restart", "update"}:
+
+@app.post("/servers/{server_id}/actions/{action}", response_model=AgentActionResult)
+def action(
+    server_id: str,
+    action: Literal["start", "restart", "stop", "kill", "update", "rollback", "backup"],
+    x_ksylian_token: str | None = Header(default=None),
+) -> AgentActionResult:
+    require_token(x_ksylian_token)
+    config = load_server_or_404(server_id)
+
+    if action in {"start", "restart", "update", "rollback"}:
         if server_is_installing(config):
             raise HTTPException(status_code=409, detail="Server is still installing")
         if action != "update":
@@ -1826,6 +3061,11 @@ def action(
         server_runtime_states[server_id] = "updating"
         was_running = service_state(config.service) == "running"
         try:
+            create_backup_archive(
+                config,
+                BackupRequest(mode="stopped" if was_running else "live", parts=["world", "mods", "config", "root"], description="Before server file update"),
+                reason="pre-update",
+            )
             if was_running:
                 stop_result = run(["systemctl", "stop", config.service], timeout=60)
                 if stop_result.returncode != 0:
@@ -1842,6 +3082,9 @@ def action(
             append_action_log("server_update", server_id, message)
         finally:
             server_runtime_states.pop(server_id, None)
+    elif action == "rollback":
+        result = rollback_last_update(config)
+        message = result.message
     elif action in {"start", "restart", "stop", "kill"}:
         command = ["systemctl", "kill", config.service] if action == "kill" else ["systemctl", action, config.service]
         result = run(command, timeout=60)
@@ -1853,23 +3096,8 @@ def action(
         message = f"{config.name}: {action} completed"
         append_action_log(f"server_{action}", server_id, message)
     else:
-        server_runtime_states[server_id] = "backing_up"
-        source = server_base_path(config) / "world" if config.managed else Path(config.backup_path)
-        try:
-            if not source.exists():
-                raise HTTPException(status_code=404, detail=f"Backup source not found: {source}")
-
-            BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            archive = BACKUP_DIR / f"{server_id}-{stamp}.tar.gz"
-
-            with tarfile.open(archive, "w:gz") as tar:
-                tar.add(source, arcname=source.name)
-
-            message = f"{config.name}: backup created at {archive}"
-            append_action_log("server_backup", server_id, str(archive))
-        finally:
-            server_runtime_states.pop(server_id, None)
+        backup = create_backup_archive(config, BackupRequest(mode="live", parts=["world", "mods", "config", "root"]))
+        message = f"{config.name}: backup created at {backup.name}"
 
     return AgentActionResult(ok=True, message=message, server=to_agent_server(server_id))
 
@@ -1907,21 +3135,12 @@ def delete_server(server_id: str, x_ksylian_token: str | None = Header(default=N
 
 
 @app.get("/backups")
-def backups(x_ksylian_token: str | None = Header(default=None)) -> list[dict[str, str]]:
+def backups(x_ksylian_token: str | None = Header(default=None)) -> list[BackupItem]:
     require_token(x_ksylian_token)
     if not BACKUP_DIR.exists():
         return []
 
-    items = []
+    items: list[BackupItem] = []
     for path in sorted(BACKUP_DIR.glob("*.tar.gz"), key=lambda item: item.stat().st_mtime, reverse=True):
-        server_id = path.name.split("-", 1)[0]
-        items.append(
-            {
-                "id": path.stem,
-                "name": path.name,
-                "size": folder_size(path),
-                "created": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
-                "server_id": server_id,
-            }
-        )
+        items.append(backup_to_item(path))
     return items

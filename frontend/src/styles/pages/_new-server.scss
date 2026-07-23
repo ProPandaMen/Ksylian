@@ -182,6 +182,10 @@
   font-weight: 700;
 }
 
+.new-server-fields .new-server-checkbox-field {
+  grid-template-columns: minmax(160px, 0.24fr) minmax(0, 1fr);
+}
+
 .new-server-fields .new-server-field-wide {
   grid-template-columns: minmax(160px, 0.24fr) minmax(0, 1fr);
 }
@@ -212,6 +216,14 @@
 .new-server-fields select:disabled {
   color: var(--app-muted);
   cursor: wait;
+}
+
+.new-server-fields .new-server-checkbox-field input {
+  justify-self: start;
+  width: 22px;
+  min-height: 22px;
+  padding: 0;
+  accent-color: var(--app-accent);
 }
 
 .version-filter-row {

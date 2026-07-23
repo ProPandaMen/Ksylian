@@ -16,6 +16,9 @@ const newServer = ref<NewServerDraft>({
   java_runtime: "auto",
   jvm_args: "",
   cpu_limit: 100,
+  loader_version: "",
+  installer_version: "",
+  install_fabric_api: false,
 });
 
 async function createServer() {
@@ -33,6 +36,9 @@ async function createServer() {
     java_runtime: "auto",
     jvm_args: "",
     cpu_limit: 100,
+    loader_version: "",
+    installer_version: "",
+    install_fabric_api: false,
   };
   await router.push("/servers");
 }

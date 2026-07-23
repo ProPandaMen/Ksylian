@@ -3,13 +3,21 @@ import { requestJson } from "../services/api";
 import type {
   AgentStatus,
   BackupItem,
+  BackupRequest,
   CrashReportItem,
   DashboardPayload,
+  FileContentPayload,
+  FileEntry,
+  FileSearchResult,
   FileItem,
+  FileOperationRequest,
+  FileWriteRequest,
   GameServer,
   HostMonitoring,
+  InstalledModItem,
   MonitoringHistoryPoint,
   ModItem,
+  ModInstallRequest,
   NewServerDraft,
   ServerConfigPayload,
   ServerState,
@@ -42,6 +50,7 @@ export const serverTypeLabels: Record<NewServerDraft["type"], string> = {
   purpur: "Purpur",
   fabric: "Fabric",
   forge: "Forge",
+  neoforge: "NeoForge",
 };
 
 const defaultAgentStatus: AgentStatus = {
@@ -70,10 +79,18 @@ const selectedServerId = ref("");
 const selectedServerLogs = ref<string[]>(emptyLogs);
 const selectedServerCrashReports = ref<CrashReportItem[]>(emptyCrashReports);
 const selectedServerConfig = ref("");
+const selectedServerFiles = ref<FileEntry[]>([]);
+const selectedServerFilePath = ref("");
+const selectedServerFileContent = ref<FileContentPayload | null>(null);
+const selectedServerFileSearchResults = ref<FileSearchResult[]>([]);
+const selectedServerMods = ref<InstalledModItem[]>([]);
 const isLogLoading = ref(false);
 const isCrashReportLoading = ref(false);
 const isConfigLoading = ref(false);
 const isConfigSaving = ref(false);
+const isFileLoading = ref(false);
+const isFileSaving = ref(false);
+const isModLoading = ref(false);
 const curseForgeApiKey = ref("");
 const agentStatus = ref<AgentStatus>(defaultAgentStatus);
 const settings = ref<SettingsPayload>({
@@ -312,6 +329,323 @@ async function loadServerConfig(serverId = selectedServerId.value) {
   }
 }
 
+async function loadServerFiles(serverId = selectedServerId.value, path = selectedServerFilePath.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    selectedServerFiles.value = [];
+    return;
+  }
+
+  selectedServerId.value = serverId;
+  isFileLoading.value = true;
+  try {
+    const query = new URLSearchParams({ path });
+    const payload = await requestJson<{ path: string; entries: FileEntry[] }>(`/api/servers/${serverId}/files?${query}`);
+    selectedServerFilePath.value = payload.path;
+    selectedServerFiles.value = payload.entries;
+  } catch (error) {
+    showToast("Не удалось загрузить файлы сервера", "error");
+    selectedServerFiles.value = [];
+    console.error(error);
+  } finally {
+    isFileLoading.value = false;
+  }
+}
+
+async function openServerFile(path: string, serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    return;
+  }
+  isFileLoading.value = true;
+  try {
+    const query = new URLSearchParams({ path });
+    selectedServerFileContent.value = await requestJson<FileContentPayload>(`/api/servers/${serverId}/files/content?${query}`);
+  } catch (error) {
+    showToast("Не удалось открыть файл", "error");
+    console.error(error);
+  } finally {
+    isFileLoading.value = false;
+  }
+}
+
+async function searchServerFiles(query: string, serverId = selectedServerId.value, path = selectedServerFilePath.value) {
+  const { showToast } = useToasts();
+  if (!serverId || query.trim().length < 2) {
+    selectedServerFileSearchResults.value = [];
+    return;
+  }
+  isFileLoading.value = true;
+  try {
+    const params = new URLSearchParams({ query: query.trim(), path });
+    selectedServerFileSearchResults.value = await requestJson<FileSearchResult[]>(`/api/servers/${serverId}/files/search?${params}`);
+  } catch (error) {
+    showToast("Не удалось выполнить поиск по файлам", "error");
+    selectedServerFileSearchResults.value = [];
+    console.error(error);
+  } finally {
+    isFileLoading.value = false;
+  }
+}
+
+async function saveServerFile(content: string, serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  const file = selectedServerFileContent.value;
+  if (!serverId || !file || file.encoding !== "text") {
+    return;
+  }
+  isFileSaving.value = true;
+  try {
+    const payload: FileWriteRequest = { path: file.path, content, encoding: "text" };
+    await requestJson<FileEntry>(`/api/servers/${serverId}/files`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    selectedServerFileContent.value = { ...file, content };
+    await loadServerFiles(serverId);
+    showToast("Файл сохранён", "success");
+  } catch (error) {
+    showToast("Не удалось сохранить файл", "error");
+    console.error(error);
+  } finally {
+    isFileSaving.value = false;
+  }
+}
+
+async function uploadServerFile(file: File, serverId = selectedServerId.value, path = selectedServerFilePath.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    return;
+  }
+  isFileSaving.value = true;
+  try {
+    const content = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        resolve(result.split(",", 2)[1] || "");
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const payload: FileWriteRequest = {
+      path: [path, file.name].filter(Boolean).join("/"),
+      content,
+      encoding: "base64",
+    };
+    await requestJson<FileEntry>(`/api/servers/${serverId}/files`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    await loadServerFiles(serverId, path);
+    showToast("Файл загружен", "success");
+  } catch (error) {
+    showToast("Не удалось загрузить файл", "error");
+    console.error(error);
+  } finally {
+    isFileSaving.value = false;
+  }
+}
+
+async function runFileAction(action: FileOperationRequest["action"], path: string, targetPath = "", serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    return;
+  }
+  try {
+    await requestJson(`/api/servers/${serverId}/files/actions`, {
+      method: "POST",
+      body: JSON.stringify({ action, path, target_path: targetPath }),
+    });
+    await loadServerFiles(serverId);
+    showToast("Файловая операция выполнена", "success");
+  } catch (error) {
+    showToast("Не удалось выполнить файловую операцию", "error");
+    console.error(error);
+  }
+}
+
+async function loadServerMods(serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    selectedServerMods.value = [];
+    return;
+  }
+  isModLoading.value = true;
+  try {
+    selectedServerMods.value = await requestJson<InstalledModItem[]>(`/api/servers/${serverId}/mods`);
+  } catch (error) {
+    showToast("Не удалось просканировать моды", "error");
+    selectedServerMods.value = [];
+    console.error(error);
+  } finally {
+    isModLoading.value = false;
+  }
+}
+
+async function runModAction(action: "delete" | "disable" | "enable" | "pin", path: string, serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    return;
+  }
+  try {
+    await requestJson(`/api/servers/${serverId}/mods/actions`, {
+      method: "POST",
+      body: JSON.stringify({ action, path }),
+    });
+    await loadServerMods(serverId);
+    showToast("Операция с модом выполнена", "success");
+  } catch (error) {
+    showToast("Не удалось выполнить операцию с модом", "error");
+    console.error(error);
+  }
+}
+
+async function readFileAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || "").split(",", 2)[1] || "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function installServerMods(modFiles: File[], serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId || !modFiles.length) {
+    return;
+  }
+  isModLoading.value = true;
+  try {
+    const items: ModInstallRequest[] = await Promise.all(modFiles.map(async (file) => ({
+      filename: file.name,
+      content: await readFileAsBase64(file),
+      encoding: "base64",
+      pinned: false,
+      release_channel: "release",
+    })));
+    await requestJson(`/api/servers/${serverId}/mods/bulk`, {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    });
+    await loadServerMods(serverId);
+    showToast("Моды установлены", "success");
+  } catch (error) {
+    showToast("Не удалось установить моды", "error");
+    console.error(error);
+  } finally {
+    isModLoading.value = false;
+  }
+}
+
+async function updateServerMod(path: string, file: File, serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    return;
+  }
+  isModLoading.value = true;
+  try {
+    await requestJson(`/api/servers/${serverId}/mods/actions`, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "update",
+        path,
+        filename: file.name,
+        content: await readFileAsBase64(file),
+        release_channel: "release",
+      }),
+    });
+    await loadServerMods(serverId);
+    showToast("Мод обновлён", "success");
+  } catch (error) {
+    showToast("Не удалось обновить мод", "error");
+    console.error(error);
+  } finally {
+    isModLoading.value = false;
+  }
+}
+
+async function bulkUpdateServerMods(modFiles: File[], serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId || !modFiles.length) {
+    return;
+  }
+  const installedByName = new Map(
+    selectedServerMods.value.map((mod) => [mod.filename.replace(/\.disabled$/i, ""), mod.path]),
+  );
+  const matchedFiles = modFiles.filter((file) => installedByName.has(file.name));
+  if (!matchedFiles.length) {
+    showToast("Не найдено совпадений с установленными модами", "error");
+    return;
+  }
+  isModLoading.value = true;
+  try {
+    await requestJson(`/api/servers/${serverId}/mods/bulk-actions`, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "update",
+        items: await Promise.all(matchedFiles.map(async (file) => ({
+          action: "update",
+          path: installedByName.get(file.name) || "",
+          filename: file.name,
+          content: await readFileAsBase64(file),
+          release_channel: "release",
+        }))),
+      }),
+    });
+    await loadServerMods(serverId);
+    showToast(`Моды обновлены: ${matchedFiles.length}`, "success");
+  } catch (error) {
+    showToast("Не удалось массово обновить моды", "error");
+    console.error(error);
+  } finally {
+    isModLoading.value = false;
+  }
+}
+
+async function runBulkModAction(action: "delete" | "disable" | "enable" | "pin", serverId = selectedServerId.value) {
+  const { showToast } = useToasts();
+  if (!serverId || !selectedServerMods.value.length) {
+    return;
+  }
+  try {
+    await requestJson(`/api/servers/${serverId}/mods/bulk-actions`, {
+      method: "POST",
+      body: JSON.stringify({
+        action,
+        items: selectedServerMods.value.map((mod) => ({ action, path: mod.path })),
+      }),
+    });
+    await loadServerMods(serverId);
+    showToast("Массовая операция выполнена", "success");
+  } catch (error) {
+    showToast("Не удалось выполнить массовую операцию", "error");
+    console.error(error);
+  }
+}
+
+async function createServerBackup(serverId = selectedServerId.value, payload?: BackupRequest) {
+  const { showToast } = useToasts();
+  if (!serverId) {
+    return;
+  }
+  try {
+    const backup = await requestJson<BackupItem>(`/api/backups?server_id=${encodeURIComponent(serverId)}`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {
+        mode: "live",
+        parts: ["world", "mods", "config", "root"],
+        description: "Manual backup",
+      }),
+    });
+    backups.value = [backup, ...backups.value.filter((item) => item.id !== backup.id)];
+    showToast("Бэкап создан", "success");
+  } catch (error) {
+    showToast("Не удалось создать бэкап", "error");
+    console.error(error);
+  }
+}
+
 async function saveServerConfig() {
   const { showToast } = useToasts();
   if (!selectedServerId.value) {
@@ -334,7 +668,7 @@ async function saveServerConfig() {
   }
 }
 
-async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "backup") {
+async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "rollback" | "backup") {
   const { showToast } = useToasts();
   try {
     await requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" });
@@ -361,6 +695,9 @@ async function createServer(newServer: NewServerDraft) {
         java_runtime: newServer.java_runtime,
         jvm_args: newServer.jvm_args,
         cpu_limit: newServer.cpu_limit,
+        loader_version: newServer.loader_version,
+        installer_version: newServer.installer_version,
+        install_fabric_api: newServer.install_fabric_api,
         address: "",
       }),
     });
@@ -485,10 +822,18 @@ export function useDashboardStore() {
     selectedServerLogs,
     selectedServerCrashReports,
     selectedServerConfig,
+    selectedServerFiles,
+    selectedServerFilePath,
+    selectedServerFileContent,
+    selectedServerFileSearchResults,
+    selectedServerMods,
     isLogLoading,
     isCrashReportLoading,
     isConfigLoading,
     isConfigSaving,
+    isFileLoading,
+    isFileSaving,
+    isModLoading,
     curseForgeApiKey,
     agentStatus,
     settings,
@@ -510,6 +855,19 @@ export function useDashboardStore() {
     refreshServerLogs,
     loadServerCrashReports,
     loadServerConfig,
+    loadServerFiles,
+    openServerFile,
+    searchServerFiles,
+    saveServerFile,
+    uploadServerFile,
+    runFileAction,
+    loadServerMods,
+    runModAction,
+    installServerMods,
+    updateServerMod,
+    bulkUpdateServerMods,
+    runBulkModAction,
+    createServerBackup,
     saveServerConfig,
     runServerAction,
     createServer,
