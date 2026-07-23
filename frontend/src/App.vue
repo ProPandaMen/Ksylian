@@ -17,7 +17,6 @@ const auth = useAuthStore();
 const appVersionLabel = __APP_VERSION__.startsWith("v") || __APP_VERSION__ === "dev"
   ? __APP_VERSION__
   : `v${__APP_VERSION__}`;
-const buildLabel = `${appVersionLabel} · ${__BUILD_SHA__}`;
 
 const activeTab = computed<TabId>(() => {
   if (route.name === "users") {
@@ -134,6 +133,7 @@ watch(
       :active-tab="activeTab"
       :nav-items="visibleNavItems"
       :user="auth.user.value"
+      :version-label="appVersionLabel"
       @select="selectTab"
       @logout="logout"
     />
@@ -194,6 +194,5 @@ watch(
     </section>
 
     <ToastStack />
-    <span class="build-badge">{{ buildLabel }}</span>
   </main>
 </template>

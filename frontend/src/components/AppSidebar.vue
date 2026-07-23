@@ -8,6 +8,7 @@ defineProps<{
   activeTab: TabId;
   navItems: Array<{ id: TabId; label: string; icon: Component; disabled?: boolean }>;
   user: AuthUser | null;
+  versionLabel: string;
 }>();
 
 const emit = defineEmits<{
@@ -23,7 +24,7 @@ const emit = defineEmits<{
         <img :src="catLogo" alt="" />
       </div>
       <div>
-        <strong>Ksylian</strong>
+        <strong>Ksylian <span class="brand-version">{{ versionLabel }}</span></strong>
         <span>server panel</span>
       </div>
     </div>
