@@ -48,7 +48,6 @@
   .monitor-block.charts-memory,
   .monitor-block.charts-disk,
   .monitor-block.charts-temperatureSwap,
-  .monitor-block.insights,
   .monitor-block.disks,
   .monitor-block.services,
   .monitor-block.processes {
@@ -353,7 +352,6 @@
   .disk-card-main,
   .service-card-main {
     align-items: flex-start;
-    flex-direction: column;
   }
 
   .disk-card-stats,

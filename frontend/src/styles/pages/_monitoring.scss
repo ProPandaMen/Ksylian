@@ -49,7 +49,6 @@
 }
 
 .monitor-block.host,
-.monitor-block.insights,
 .monitor-block.processes {
   grid-column: 1 / -1;
 }
@@ -61,10 +60,13 @@
 .monitor-block.charts-cpu,
 .monitor-block.charts-memory,
 .monitor-block.charts-disk,
-.monitor-block.charts-temperatureSwap,
 .monitor-block.disks,
 .monitor-block.services {
   grid-column: span 2;
+}
+
+.monitor-block.charts-temperatureSwap {
+  grid-column: 1 / -1;
 }
 
 .monitor-layout-grid.editing .monitor-block {
@@ -119,15 +121,48 @@
 .monitor-hero-main {
   display: grid;
   align-content: center;
-  gap: 10px;
+  gap: 14px;
   padding: 22px;
 }
 
-.monitor-hero-main h2 {
+.monitor-host-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+}
+
+.monitor-host-title h2 {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: clamp(1.5rem, 2vw, 2.15rem);
   line-height: 1;
+}
+
+.monitor-host-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.monitor-host-facts span {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  color: var(--app-muted);
+  background: color-mix(in srgb, var(--app-surface-soft) 70%, transparent);
+}
+
+.monitor-host-facts strong {
+  color: var(--app-text);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .monitor-hero-main p,
@@ -145,7 +180,7 @@
 
 .monitor-summary-card {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr) max-content;
   gap: 8px 10px;
   align-content: start;
   min-height: 128px;
@@ -177,12 +212,16 @@
   line-height: 1;
 }
 
+.summary-alert-icon {
+  color: var(--summary-tone, var(--app-warning));
+}
+
 .monitor-summary-card small {
   grid-column: 1 / -1;
 }
 
 .monitor-summary-card.ok {
-  --summary-tone: #237069;
+  --summary-tone: var(--app-accent);
 }
 
 .monitor-summary-card.warning {
@@ -268,7 +307,8 @@
   font-weight: 800;
 }
 
-.monitor-status {
+.monitor-status,
+.monitor-alert-badge {
   min-height: 28px;
   padding: 6px 10px;
   border-radius: 999px;
@@ -277,17 +317,26 @@
   white-space: nowrap;
 }
 
-.monitor-status.ok {
-  color: #237069;
-  background: color-mix(in srgb, var(--app-success) 16%, var(--app-surface));
+.monitor-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.monitor-status.warning {
+.monitor-status.ok,
+.monitor-alert-badge.ok {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent-light) 12%, var(--app-surface));
+}
+
+.monitor-status.warning,
+.monitor-alert-badge.warning {
   color: #8c611d;
   background: color-mix(in srgb, var(--app-warning) 16%, var(--app-surface));
 }
 
-.monitor-status.danger {
+.monitor-status.danger,
+.monitor-alert-badge.danger {
   color: var(--app-danger);
   background: color-mix(in srgb, var(--app-danger) 14%, var(--app-surface));
 }
@@ -343,7 +392,7 @@
 }
 
 .metric-chart-card.ok {
-  --chart-tone: #237069;
+  --chart-tone: var(--app-accent);
 }
 
 .metric-chart-card.warning {
@@ -706,7 +755,7 @@
 .service-card-main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   min-width: 0;
   gap: 12px;
 }
@@ -745,6 +794,29 @@
   flex: 0 0 auto;
   color: var(--row-tone, var(--app-accent));
   font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.disk-donut {
+  --disk-free: calc(100% - var(--disk-used));
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 76px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--app-surface) 0 48%, transparent 49%),
+    conic-gradient(var(--row-tone, var(--app-accent)) 0 var(--disk-used), color-mix(in srgb, var(--app-surface-soft) 72%, white) var(--disk-used) 100%);
+  box-shadow:
+    inset 3px 3px 7px color-mix(in srgb, var(--app-inset-dark) 70%, transparent),
+    inset -3px -3px 7px color-mix(in srgb, var(--app-inset-light) 62%, transparent);
+}
+
+.disk-donut span {
+  color: var(--row-tone, var(--app-accent));
+  font-size: 0.86rem;
   font-weight: 900;
 }
 
@@ -858,7 +930,7 @@
 
 .process-row {
   display: grid;
-  grid-template-columns: 74px minmax(120px, 1fr) 72px 72px;
+  grid-template-columns: minmax(70px, 0.12fr) minmax(180px, 1fr) minmax(80px, 0.12fr) minmax(80px, 0.12fr);
   gap: 10px;
   align-items: center;
   min-height: 48px;
@@ -890,6 +962,12 @@
   font-weight: 800;
 }
 
+.process-row.head span:nth-child(3),
+.process-row.head span:nth-child(4),
+.process-metric {
+  text-align: right;
+}
+
 .process-row strong,
 .process-row span,
 .process-row small {
@@ -910,8 +988,4 @@
 
 .process-row small {
   grid-column: 2 / -1;
-}
-
-.process-metric {
-  text-align: right;
 }

@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
-  CheckCircle2,
   Cpu,
   Gauge,
   GripVertical,
@@ -51,7 +50,6 @@ type BlockId =
   | "charts.memory"
   | "charts.disk"
   | "charts.temperatureSwap"
-  | "insights"
   | "disks"
   | "services"
   | "processes";
@@ -69,11 +67,11 @@ const defaultBlocks: BlockId[] = [
   "charts.memory",
   "charts.disk",
   "charts.temperatureSwap",
-  "insights",
+  "processes",
   "disks",
   "services",
-  "processes",
 ];
+const layoutVersion = 2;
 const blockLabels: Record<BlockId, string> = {
   host: "Хост",
   summary: "Сводка",
@@ -81,7 +79,6 @@ const blockLabels: Record<BlockId, string> = {
   "charts.memory": "RAM",
   "charts.disk": "Диски",
   "charts.temperatureSwap": "Температура и Swap",
-  insights: "Инсайты",
   disks: "Детали дисков",
   services: "Сервисы",
   processes: "Процессы",
@@ -107,8 +104,8 @@ function sanitizeBlocks(blocks: string[] | undefined | null): BlockId[] {
 }
 
 function applyPreferences() {
-  const stored = auth.preferences.value.monitoring_layout?.blocks;
-  savedBlocks.value = sanitizeBlocks(stored);
+  const storedLayout = auth.preferences.value.monitoring_layout;
+  savedBlocks.value = storedLayout?.version === layoutVersion ? sanitizeBlocks(storedLayout.blocks) : [...defaultBlocks];
   if (!isEditingLayout.value) {
     draftBlocks.value = [...savedBlocks.value];
   }
@@ -134,7 +131,7 @@ async function saveLayout() {
   savedBlocks.value = sanitizeBlocks(draftBlocks.value);
   await auth.updatePreferences({
     monitoring_layout: {
-      version: 1,
+      version: layoutVersion,
       blocks: savedBlocks.value,
     },
   });
@@ -146,7 +143,7 @@ async function resetLayout() {
   savedBlocks.value = [...defaultBlocks];
   await auth.updatePreferences({
     monitoring_layout: {
-      version: 1,
+      version: layoutVersion,
       blocks: defaultBlocks,
     },
   });
@@ -201,10 +198,6 @@ function freeLabel(disk: DiskUsage) {
   return `${Math.round(freeBytes / 1024)} KB`;
 }
 
-function diskBarStyle(percent: number) {
-  return { "--disk-used": `${clampPercent(percent)}%` };
-}
-
 function metricTone(percent: number) {
   if (percent >= 90) {
     return "danger";
@@ -213,6 +206,10 @@ function metricTone(percent: number) {
     return "warning";
   }
   return "ok";
+}
+
+function hasAttention() {
+  return props.monitoringStatus.tone !== "ok" || monitoringAlerts.value.length > 0;
 }
 
 function mainDisk(disks: DiskUsage[]) {
@@ -354,9 +351,13 @@ function diskContext(point: MonitoringHistoryPoint) {
   return disk ? [`${disk.mount}: ${(disk.used / 1024 ** 3).toFixed(1)} GB занято`] : [];
 }
 
-function windowLabel(window: MonitoringWindow) {
-  return windows.find((item) => item.id === window)?.label || "1 час";
+function diskDonutStyle(disk: DiskUsage) {
+  return {
+    "--disk-used": `${clampPercent(disk.percent)}%`,
+  };
 }
+
+const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight) => insight.tone !== "ok"));
 </script>
 
 <template>
@@ -375,7 +376,6 @@ function windowLabel(window: MonitoringWindow) {
       </div>
       <div class="monitor-toolbar-actions">
         <span>{{ historyMeta.points.length }} точек · шаг {{ historyMeta.sample_seconds }} сек</span>
-        <button class="ghost-button compact" type="button" :disabled="isHistoryLoading" @click="emit('refresh-history')">Обновить историю</button>
         <button v-if="!isEditingLayout" class="ghost-button compact" type="button" @click="startLayoutEdit">
           <SlidersHorizontal :size="16" />
           Настроить
@@ -420,33 +420,46 @@ function windowLabel(window: MonitoringWindow) {
         </div>
 
         <section v-if="block === 'host'" class="monitor-hero-main" aria-label="Сводка мониторинга">
-          <span class="monitor-status" :class="monitoringStatus.tone">{{ monitoringStatus.label }}</span>
-          <h2>{{ monitoring.hostname }}</h2>
-          <p>Работает {{ monitoring.uptime }} · {{ compactIps(monitoring.ip_addresses) }} · снято {{ monitoring.collected_at || 'только что' }}</p>
+          <div class="monitor-host-title">
+            <h2>{{ monitoring.hostname }}</h2>
+            <span v-if="hasAttention()" class="monitor-alert-badge" :class="monitoringStatus.tone">
+              <AlertTriangle :size="16" />
+              {{ monitoringAlerts.length || '!' }}
+            </span>
+          </div>
+          <div class="monitor-host-facts" aria-label="Информация о хосте">
+            <span><strong>Uptime</strong>{{ monitoring.uptime }}</span>
+            <span><strong>IP</strong>{{ compactIps(monitoring.ip_addresses) }}</span>
+            <span><strong>Снимок</strong>{{ monitoring.collected_at || 'только что' }}</span>
+          </div>
         </section>
 
         <section v-else-if="block === 'summary'" class="monitor-summary-grid" aria-label="Ключевые показатели">
           <article class="monitor-summary-card" :class="metricTone(monitoring.cpu_percent)">
             <Cpu :size="18" />
             <span>CPU</span>
+            <AlertTriangle v-if="metricTone(monitoring.cpu_percent) !== 'ok'" class="summary-alert-icon" :size="16" />
             <strong>{{ monitoring.cpu_percent }}%</strong>
             <small>{{ monitoring.cpu_cores }} ядер · load {{ monitoring.load_average.join(' / ') }}</small>
           </article>
           <article class="monitor-summary-card" :class="metricTone(monitoring.memory.percent)">
             <MemoryStick :size="18" />
             <span>RAM</span>
+            <AlertTriangle v-if="metricTone(monitoring.memory.percent) !== 'ok'" class="summary-alert-icon" :size="16" />
             <strong>{{ monitoring.memory.percent }}%</strong>
             <small>{{ monitoring.memory.used_label }} / {{ monitoring.memory.total_label }}</small>
           </article>
           <article class="monitor-summary-card" :class="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'">
             <HardDrive :size="18" />
             <span>Диск</span>
+            <AlertTriangle v-if="mainDisk(monitoring.disks) && metricTone(mainDisk(monitoring.disks)!.percent) !== 'ok'" class="summary-alert-icon" :size="16" />
             <strong>{{ mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a' }}</strong>
             <small>{{ mainDisk(monitoring.disks)?.mount || 'mount points не найдены' }}</small>
           </article>
           <article class="monitor-summary-card" :class="monitoring.services.length && runningServices(monitoring) === monitoring.services.length ? 'ok' : 'warning'">
             <ServerCog :size="18" />
             <span>Сервисы</span>
+            <AlertTriangle v-if="monitoring.services.length && runningServices(monitoring) !== monitoring.services.length" class="summary-alert-icon" :size="16" />
             <strong>{{ serviceHealthLabel(monitoring) }}</strong>
             <small>{{ servicesAnalytics.detail }}</small>
           </article>
@@ -509,25 +522,6 @@ function windowLabel(window: MonitoringWindow) {
           />
         </section>
 
-        <section v-else-if="block === 'insights'" class="monitor-section compact" aria-label="Что требует внимания">
-          <div class="monitor-section-head">
-            <div>
-              <h3>Требует внимания</h3>
-              <p>{{ windowLabel(selectedWindow) }} · автоматическая интерпретация</p>
-            </div>
-          </div>
-          <div class="monitor-insight-list">
-            <article v-for="insight in monitoringInsights" :key="`${insight.title}-${insight.detail}`" class="monitor-insight-card" :class="insight.tone">
-              <CheckCircle2 v-if="insight.tone === 'ok'" :size="18" />
-              <AlertTriangle v-else :size="18" />
-              <div>
-                <strong>{{ insight.title }}</strong>
-                <span>{{ insight.detail }}</span>
-              </div>
-            </article>
-          </div>
-        </section>
-
         <section v-else-if="block === 'disks'" class="monitor-section" aria-label="Диски">
           <div class="monitor-section-head">
             <div>
@@ -538,13 +532,14 @@ function windowLabel(window: MonitoringWindow) {
           <div class="disk-list">
             <article v-for="disk in monitoring.disks" :key="disk.mount" class="disk-card" :class="metricTone(disk.percent)">
               <div class="disk-card-main">
+                <div class="disk-donut" :style="diskDonutStyle(disk)" aria-hidden="true">
+                  <span>{{ clampPercent(disk.percent) }}%</span>
+                </div>
                 <div class="disk-card-title">
                   <strong>{{ disk.mount }}</strong>
                   <span>{{ disk.filesystem }}</span>
                 </div>
-                <strong class="disk-card-percent">{{ clampPercent(disk.percent) }}%</strong>
               </div>
-              <div class="disk-bar" :style="diskBarStyle(disk.percent)" aria-hidden="true"><span></span></div>
               <dl class="disk-card-stats">
                 <div><dt>Занято</dt><dd>{{ disk.used_label }}</dd></div>
                 <div><dt>Свободно</dt><dd>{{ freeLabel(disk) }}</dd></div>
