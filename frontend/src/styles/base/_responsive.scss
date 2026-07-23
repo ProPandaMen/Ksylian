@@ -46,8 +46,8 @@
   .monitor-block.summary,
   .monitor-block.charts-cpu,
   .monitor-block.charts-memory,
-  .monitor-block.charts-disk,
-  .monitor-block.charts-temperatureSwap,
+  .monitor-block.charts-temperature,
+  .monitor-block.charts-swap,
   .monitor-block.disk,
   .monitor-block.services,
   .monitor-block.processes {
@@ -325,10 +325,6 @@
 
   .monitor-toolbar-actions {
     display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .monitor-combo-charts {
     grid-template-columns: 1fr;
   }
 

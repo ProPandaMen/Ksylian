@@ -63,16 +63,13 @@
 
 .monitor-block.charts-cpu,
 .monitor-block.charts-memory,
-.monitor-block.charts-disk,
+.monitor-block.charts-temperature,
+.monitor-block.charts-swap,
 .monitor-block.disk {
   grid-column: span 2;
 }
 
 .monitor-block.services {
-  grid-column: 1 / -1;
-}
-
-.monitor-block.charts-temperatureSwap {
   grid-column: 1 / -1;
 }
 
@@ -376,12 +373,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding-top: 14px;
-}
-
-.monitor-combo-charts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
 }
 
 .metric-chart-card {

@@ -48,8 +48,8 @@ type StaticBlockId =
   | "summary"
   | "charts.cpu"
   | "charts.memory"
-  | "charts.disk"
-  | "charts.temperatureSwap"
+  | "charts.temperature"
+  | "charts.swap"
   | "services"
   | "processes";
 type DiskBlockId = `disk:${string}`;
@@ -61,14 +61,14 @@ const windows: Array<{ id: MonitoringWindow; label: string }> = [
   { id: "6h", label: "6 часов" },
   { id: "24h", label: "24 часа" },
 ];
-const layoutVersion = 3;
+const layoutVersion = 4;
 const blockLabels: Record<StaticBlockId, string> = {
   host: "Хост",
   summary: "Сводка",
   "charts.cpu": "CPU",
   "charts.memory": "RAM",
-  "charts.disk": "Диски",
-  "charts.temperatureSwap": "Температура и Swap",
+  "charts.temperature": "Температура",
+  "charts.swap": "Swap",
   services: "Сервисы",
   processes: "Процессы",
 };
@@ -86,8 +86,8 @@ const defaultBlocks = computed<BlockId[]>(() => [
   "summary",
   "charts.cpu",
   "charts.memory",
-  "charts.disk",
-  "charts.temperatureSwap",
+  "charts.temperature",
+  "charts.swap",
   "processes",
   ...diskBlocks.value,
   "services",
@@ -181,6 +181,28 @@ function reorderDraggedBlock(target: BlockId) {
   draftBlocks.value = next;
 }
 
+function autoScrollDuringDrag(event: DragEvent) {
+  if (!draggedBlock.value) {
+    return;
+  }
+  const edgeSize = 110;
+  const maxStep = 26;
+  const { clientY } = event;
+  const viewportHeight = window.innerHeight;
+  if (clientY < edgeSize) {
+    const ratio = (edgeSize - clientY) / edgeSize;
+    window.scrollBy({ top: -Math.ceil(maxStep * ratio), behavior: "auto" });
+  } else if (clientY > viewportHeight - edgeSize) {
+    const ratio = (clientY - (viewportHeight - edgeSize)) / edgeSize;
+    window.scrollBy({ top: Math.ceil(maxStep * ratio), behavior: "auto" });
+  }
+}
+
+function dragOverBlock(target: BlockId, event: DragEvent) {
+  autoScrollDuringDrag(event);
+  reorderDraggedBlock(target);
+}
+
 function dropBlock(target: BlockId) {
   reorderDraggedBlock(target);
   draggedBlock.value = null;
@@ -265,15 +287,6 @@ function temperatureTone() {
 
 function hasAttention() {
   return props.monitoringStatus.tone !== "ok" || monitoringAlerts.value.length > 0;
-}
-
-function mainDisk(disks: DiskUsage[]) {
-  return disks.find((disk) => disk.mount === "/") || disks[0] || null;
-}
-
-function mainDiskPoint(point: MonitoringHistoryPoint) {
-  const root = point.disks?.find((disk) => disk.mount === "/") || point.disks?.[0];
-  return root?.percent ?? null;
 }
 
 function runningServices(monitoring: HostMonitoring) {
@@ -401,11 +414,6 @@ function memoryContext(point: MonitoringHistoryPoint) {
   return [`RAM ${point.memory}%`];
 }
 
-function diskContext(point: MonitoringHistoryPoint) {
-  const disk = point.disks?.find((item) => item.mount === "/") || point.disks?.[0];
-  return disk ? [`${disk.mount}: ${(disk.used / 1024 ** 3).toFixed(1)} GB занято`] : [];
-}
-
 function diskDonutStyle(disk: DiskUsage) {
   return {
     "--disk-used": `${clampPercent(disk.percent)}%`,
@@ -452,14 +460,14 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
       </div>
     </section>
 
-    <section class="monitor-layout-grid" :class="{ editing: isEditingLayout }">
+    <section class="monitor-layout-grid" :class="{ editing: isEditingLayout }" @dragover.prevent="autoScrollDuringDrag">
       <div
         v-for="block in visibleBlocks"
         :key="block"
         :class="blockClass(block)"
         :draggable="isEditingLayout"
         @dragstart="startDrag(block, $event)"
-        @dragover.prevent="reorderDraggedBlock(block)"
+        @dragover.prevent="dragOverBlock(block, $event)"
         @dragenter.prevent="reorderDraggedBlock(block)"
         @drop="dropBlock(block)"
         @dragend="endDrag"
@@ -547,37 +555,27 @@ const monitoringAlerts = computed(() => monitoringInsights.value.filter((insight
         />
 
         <MetricChart
-          v-else-if="block === 'charts.disk'"
-          title="Диск"
-          unit="%"
+          v-else-if="block === 'charts.temperature'"
+          title="Температура"
+          unit="°C"
           :points="historyPoints"
-          :value-for-point="mainDiskPoint"
-          :tone="mainDisk(monitoring.disks) ? metricTone(mainDisk(monitoring.disks)!.percent) : 'ok'"
-          :current="mainDisk(monitoring.disks) ? `${clampPercent(mainDisk(monitoring.disks)!.percent)}%` : 'n/a'"
-          :summary="metricSummary(mainDiskPoint, '%')"
-          :context-for-point="diskContext"
+          :value-for-point="(point) => point.temperature"
+          :tone="temperatureTone()"
+          :current="monitoring.temperature"
+          :summary="metricSummary((point) => point.temperature, '°C')"
+          :max-value="100"
         />
 
-        <section v-else-if="block === 'charts.temperatureSwap'" class="monitor-combo-charts">
-          <MetricChart
-            title="Температура"
-            unit="°C"
-            :points="historyPoints"
-            :value-for-point="(point) => point.temperature"
-            :current="monitoring.temperature"
-            :summary="metricSummary((point) => point.temperature, '°C')"
-            :max-value="100"
-          />
-          <MetricChart
-            title="Swap"
-            unit="%"
-            :points="historyPoints"
-            :value-for-point="(point) => point.swap"
-            :tone="metricTone(monitoring.swap.percent)"
-            :current="`${monitoring.swap.percent}%`"
-            :summary="metricSummary((point) => point.swap, '%')"
-          />
-        </section>
+        <MetricChart
+          v-else-if="block === 'charts.swap'"
+          title="Swap"
+          unit="%"
+          :points="historyPoints"
+          :value-for-point="(point) => point.swap"
+          :tone="metricTone(monitoring.swap.percent)"
+          :current="`${monitoring.swap.percent}%`"
+          :summary="metricSummary((point) => point.swap, '%')"
+        />
 
         <section v-else-if="diskForBlock(block)" class="monitor-section disk-storage-card" :class="metricTone(diskForBlock(block)!.percent)" aria-label="Диск">
           <div class="disk-storage-visual">
