@@ -364,18 +364,21 @@
   display: grid;
   place-items: center;
   padding: 22px;
-  background: color-mix(in srgb, var(--app-surface-soft) 58%, transparent);
-  backdrop-filter: blur(12px);
+  background:
+    radial-gradient(circle at 26% 18%, color-mix(in srgb, var(--app-accent) 10%, transparent), transparent 32%),
+    color-mix(in srgb, var(--app-surface-soft) 64%, transparent);
+  backdrop-filter: blur(16px) saturate(1.05);
 }
 
 .project-modal {
   position: relative;
   display: grid;
-  gap: 14px;
-  width: min(720px, 100%);
+  gap: 16px;
+  width: min(820px, 100%);
   max-height: min(760px, calc(100vh - 44px));
   overflow: auto;
-  padding: 20px;
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--app-inset-light) 48%, transparent);
 }
 
 .modal-close-button {
@@ -396,9 +399,22 @@
   cursor: pointer;
 }
 
+.project-modal-hero {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--app-surface-raised) 54%, transparent);
+  box-shadow:
+    6px 6px 14px color-mix(in srgb, var(--app-shadow-dark) 60%, transparent),
+    -4px -4px 12px color-mix(in srgb, var(--app-shadow-light) 58%, transparent),
+    inset 1px 1px 0 var(--app-shadow-light-strong);
+}
+
 .project-details-head {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
   min-width: 0;
   padding-right: 48px;
@@ -412,31 +428,62 @@
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--app-text);
-  font-size: 1.45rem;
+  font-size: clamp(1.2rem, 2vw, 1.65rem);
   line-height: 1.1;
 }
 
-.project-details-head span,
 .project-summary {
   color: var(--app-muted);
+}
+
+.project-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.project-badges span {
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--app-muted);
+  background: color-mix(in srgb, var(--app-surface-soft) 70%, transparent);
+  font-size: 0.8rem;
+  font-weight: 850;
 }
 
 .project-summary {
   line-height: 1.55;
 }
 
+.project-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.project-controls label:only-child {
+  grid-column: 1 / -1;
+}
+
 .project-facts {
   display: grid;
-  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   margin: 0;
 }
 
 .project-facts div {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 12px;
-  padding: 10px 0;
-  border-top: 1px solid color-mix(in srgb, var(--app-muted) 16%, transparent);
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--app-surface-soft) 58%, transparent);
+  box-shadow:
+    inset 3px 3px 7px color-mix(in srgb, var(--app-inset-dark) 58%, transparent),
+    inset -3px -3px 7px color-mix(in srgb, var(--app-inset-light) 54%, transparent);
 }
 
 .project-facts dt,
@@ -446,6 +493,8 @@
 
 .project-facts dt {
   color: var(--app-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
 }
 
 .project-facts dd {
@@ -455,7 +504,10 @@
 }
 
 .project-actions {
+  align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
+  padding-top: 4px;
 }
 
 .project-actions a {

@@ -376,32 +376,39 @@ onBeforeUnmount(() => {
           <button class="modal-close-button" type="button" aria-label="Закрыть" @click="closeProject">
             <X :size="20" />
           </button>
-          <div class="project-details-head">
-            <img v-if="selectedProject.icon_url" :src="selectedProject.icon_url" alt="" />
-            <span v-else class="project-icon-fallback"><PackagePlus :size="24" /></span>
-            <div>
-              <h3>{{ selectedProject.name }}</h3>
-              <span>{{ selectedProject.downloads.toLocaleString() }} загрузок · {{ selectedProject.loaders.join(', ') || 'loader не указан' }}</span>
+          <div class="project-modal-hero">
+            <div class="project-details-head">
+              <img v-if="selectedProject.icon_url" :src="selectedProject.icon_url" alt="" />
+              <span v-else class="project-icon-fallback"><PackagePlus :size="24" /></span>
+              <div>
+                <h3>{{ selectedProject.name }}</h3>
+                <div class="project-badges">
+                  <span>{{ selectedProject.downloads.toLocaleString() }} загрузок</span>
+                  <span>{{ selectedProject.loaders.join(', ') || 'loader не указан' }}</span>
+                  <span>{{ selectedVersion || selectedProject.game_versions.slice(0, 2).join(', ') || 'версия не указана' }}</span>
+                </div>
+              </div>
             </div>
+            <p class="project-summary">{{ selectedProject.summary }}</p>
           </div>
 
-          <p class="project-summary">{{ selectedProject.summary }}</p>
+          <div class="project-controls">
+            <label v-if="kind === 'mods'">
+              Сервер
+              <select v-model="selectedServerId">
+                <option v-for="server in store.servers.value" :key="server.id" :value="server.id">{{ server.name }}</option>
+              </select>
+            </label>
 
-          <label v-if="kind === 'mods'">
-            Сервер
-            <select v-model="selectedServerId">
-              <option v-for="server in store.servers.value" :key="server.id" :value="server.id">{{ server.name }}</option>
-            </select>
-          </label>
-
-          <label>
-            Файл
-            <select v-model="selectedFile" :disabled="isFilesLoading">
-              <option v-for="file in files" :key="file.id" :value="file">
-                {{ file.display_name || file.file_name }}{{ file.restricted ? ' · restricted' : '' }}
-              </option>
-            </select>
-          </label>
+            <label>
+              Файл
+              <select v-model="selectedFile" :disabled="isFilesLoading">
+                <option v-for="file in files" :key="file.id" :value="file">
+                  {{ file.display_name || file.file_name }}{{ file.restricted ? ' · restricted' : '' }}
+                </option>
+              </select>
+            </label>
+          </div>
 
           <dl class="project-facts">
             <div>

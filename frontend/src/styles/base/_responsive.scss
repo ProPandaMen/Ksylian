@@ -448,6 +448,12 @@
     padding: 18px;
   }
 
+  .project-modal-hero,
+  .project-controls,
+  .project-facts {
+    grid-template-columns: 1fr;
+  }
+
   .project-actions,
   .project-actions .primary-button,
   .project-actions .ghost-button {
@@ -462,8 +468,7 @@
     border-radius: 12px;
   }
 
-  .project-facts div {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .project-badges {
+    gap: 6px;
   }
 }
