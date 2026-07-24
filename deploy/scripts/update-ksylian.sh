@@ -64,4 +64,12 @@ set_env_var "KSYLIAN_BUILD_SHA" "$SHA"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
 docker image prune -f >/dev/null || true
 
+if [[ "${EUID:-$(id -u)}" -eq 0 && -x "$APP_DIR/agent/install-agent.sh" ]]; then
+  log "Updating host agent"
+  (
+    cd "$APP_DIR/agent"
+    APP_DIR="${KSYLIAN_AGENT_APP_DIR:-/opt/ksylian-agent}" ./install-agent.sh
+  )
+fi
+
 log "Update to ${TARGET_VERSION} completed (${SHA})"
