@@ -18,7 +18,6 @@ def require_token(x_ksylian_token: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=503, detail="Agent token is not configured")
     if not x_ksylian_token or not secrets.compare_digest(x_ksylian_token, TOKEN):
         raise HTTPException(status_code=401, detail="Invalid agent token")
-    enforce_rate_limit("agent-api")
 
 
 def enforce_rate_limit(key: str) -> None:
@@ -68,5 +67,4 @@ def server_child_path(server: StoredServer, relative_path: str = "") -> Path:
 
 def relative_server_path(server: StoredServer, path: Path) -> str:
     return path.resolve().relative_to(server_base_path(server).resolve()).as_posix()
-
 

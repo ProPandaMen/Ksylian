@@ -22,6 +22,7 @@ from ksylian_agent_app.mod_sources import write_mod_source
 from ksylian_agent_app.players import normalize_player_name, parse_online_players, player_action_command
 from ksylian_agent_app.schemas import StoredServer
 from ksylian_agent_app.schemas import PlayerActionRequest
+import ksylian_agent_app.security as security_module
 from ksylian_agent_app.security import ensure_child_path, is_relative_path
 from ksylian_agent_app.storage import slugify
 
@@ -55,6 +56,25 @@ class PathSafetyTests(unittest.TestCase):
             self.assertTrue(is_relative_path(root / "server" / "world", root))
             with self.assertRaises(Exception):
                 ensure_child_path(root, "../outside")
+
+
+class AgentSecurityTests(unittest.TestCase):
+    def test_trusted_token_requests_are_not_rate_limited(self) -> None:
+        previous_token = security_module.TOKEN
+        previous_limit = security_module.RATE_LIMIT_REQUESTS
+        previous_buckets = security_module.rate_limit_buckets
+        security_module.TOKEN = "test-token"
+        security_module.RATE_LIMIT_REQUESTS = 1
+        security_module.rate_limit_buckets = {}
+
+        try:
+            security_module.require_token("test-token")
+            security_module.require_token("test-token")
+            security_module.require_token("test-token")
+        finally:
+            security_module.TOKEN = previous_token
+            security_module.RATE_LIMIT_REQUESTS = previous_limit
+            security_module.rate_limit_buckets = previous_buckets
 
 
 class ModMetadataTests(unittest.TestCase):
