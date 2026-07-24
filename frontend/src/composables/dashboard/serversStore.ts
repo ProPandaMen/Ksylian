@@ -175,7 +175,7 @@ export function useServerDashboardActions() {
     const { showToast } = useToasts();
     const server = servers.value.find((item) => item.id === serverId);
     const confirmed = window.confirm(
-      `Удалить ${server?.name ?? "сервер"} из панели? Сервис будет остановлен и отключен от автозапуска, файлы мира останутся на диске.`,
+      `Удалить ${server?.name ?? "сервер"}? Сервис будет остановлен, отключен от автозапуска, а файлы сервера будут удалены с диска.`,
     );
     if (!confirmed) {
       return;
@@ -184,7 +184,7 @@ export function useServerDashboardActions() {
     try {
       await serverRequests.delete(serverId);
       await loadDashboard();
-      showToast(`${server?.name ?? "Сервер"} удалён из панели`, "success");
+      showToast(`${server?.name ?? "Сервер"} удалён вместе с файлами`, "success");
     } catch (error) {
       showToast("Не удалось удалить сервер через agent", "error");
       console.error(error);

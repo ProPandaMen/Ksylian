@@ -10,7 +10,7 @@ from typing import Literal
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 
-from ..config import DATA_DIR
+from ..config import DATA_DIR, SERVER_ROOT
 from ..schemas import (
     AgentActionResult,
     AgentServer,
@@ -112,6 +112,15 @@ def create_servers_router(**deps) -> APIRouter:
     disabled_server_ids = deps["disabled_server_ids"]
     SERVER_LOADERS = deps["SERVER_LOADERS"]
     BACKUP_DIR = deps["BACKUP_DIR"]
+
+    def ensure_deletable_server_path(path: Path) -> Path:
+        resolved = path.resolve()
+        server_root = SERVER_ROOT.resolve()
+        if len(resolved.parts) < 4:
+            raise HTTPException(status_code=409, detail="Server path is too broad to delete safely")
+        if resolved in {resolved.parent, Path("/"), Path.home(), server_root, server_root.parent}:
+            raise HTTPException(status_code=409, detail="Server path is too broad to delete safely")
+        return resolved
 
     @router.get("/servers", response_model=list[AgentServer])
     def servers(x_ksylian_token: str | None = Header(default=None)) -> list[AgentServer]:
@@ -657,24 +666,21 @@ def create_servers_router(**deps) -> APIRouter:
             raise HTTPException(status_code=404, detail="Server not found")
 
         stop_result = run(["systemctl", "stop", config.service], timeout=60)
-        if stop_result.returncode != 0 and not (config.managed and systemctl_issue_can_be_ignored(stop_result)):
+        if stop_result.returncode != 0 and not systemctl_issue_can_be_ignored(stop_result):
             raise HTTPException(status_code=500, detail=stop_result.stderr.strip() or "Failed to stop service")
 
         disable_result = run(["systemctl", "disable", config.service], timeout=60)
-        if disable_result.returncode != 0 and not (config.managed and systemctl_issue_can_be_ignored(disable_result)):
+        if disable_result.returncode != 0 and not systemctl_issue_can_be_ignored(disable_result):
             raise HTTPException(status_code=500, detail=disable_result.stderr.strip() or "Failed to disable service")
 
         disabled = disabled_server_ids()
-        if config.managed:
-            unit_path = SYSTEMD_DIR / config.service
-            unit_path.unlink(missing_ok=True)
-            run(["systemctl", "daemon-reload"], timeout=30)
-            shutil.rmtree(server_base_path(config), ignore_errors=True)
-            store.pop(server_id, None)
-            disabled.discard(server_id)
-            save_server_store(store)
-        else:
-            disabled.add(server_id)
+        unit_path = SYSTEMD_DIR / config.service
+        unit_path.unlink(missing_ok=True)
+        run(["systemctl", "daemon-reload"], timeout=30)
+        shutil.rmtree(ensure_deletable_server_path(server_base_path(config)), ignore_errors=True)
+        store.pop(server_id, None)
+        disabled.discard(server_id)
+        save_server_store(store)
         save_disabled_server_ids(disabled)
         append_action_log("server_delete", server_id, config.name)
         return {"ok": True}

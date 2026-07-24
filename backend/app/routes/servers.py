@@ -177,7 +177,7 @@ def create_servers_router(
         if AGENT_URL:
             try:
                 result = agent_client.delete_server(server_id)
-                append_log(f"{server_id}: server stopped, disabled and hidden from panel")
+                append_log(f"{server_id}: server stopped, disabled and deleted with files")
                 return result
             except Exception as error:
                 append_log(f"agent delete failed for {server_id}: {error}")
