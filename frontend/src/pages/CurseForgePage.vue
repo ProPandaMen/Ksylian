@@ -3,6 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, Package
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDashboardStore } from "../composables/useDashboardStore";
+import { useToasts } from "../composables/useToasts";
 import { requestJson } from "../services/api";
 import type {
   CurseForgeFile,
@@ -10,11 +11,13 @@ import type {
   CurseForgeInstallResult,
   CurseForgeProject,
   CurseForgeSearchPayload,
+  GameServer,
   MinecraftVersionsPayload,
 } from "../types";
 
 const store = useDashboardStore();
 const router = useRouter();
+const { showToast } = useToasts();
 const kind = ref<"mods" | "modpacks">("modpacks");
 const query = ref("");
 const minecraftVersion = ref("");
@@ -40,6 +43,8 @@ const isSearching = ref(false);
 const isVersionsLoading = ref(false);
 const isFilesLoading = ref(false);
 const isInstalling = ref(false);
+const isCreatingFromModpack = ref(false);
+const modpackCreateStage = ref("");
 const errorMessage = ref("");
 const installMessage = ref("");
 
@@ -162,6 +167,24 @@ async function installSelectedFile() {
   }
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForServerReady(serverId: string) {
+  const deadline = Date.now() + 150000;
+  let latest: GameServer | undefined;
+  while (Date.now() < deadline) {
+    const servers = await requestJson<GameServer[]>("/api/servers");
+    latest = servers.find((server) => server.id === serverId);
+    if (latest && !["installing", "starting", "updating", "backing_up"].includes(latest.state)) {
+      return latest;
+    }
+    await delay(2500);
+  }
+  throw new Error(`Server ${serverId} was not ready in time`);
+}
+
 function selectProject(project: CurseForgeProject) {
   selectedProject.value = project;
 }
@@ -207,17 +230,55 @@ async function createServerFromModpack() {
     return;
   }
 
-  await router.push({
-    path: "/servers/new",
-    query: {
-      source: "curseforge",
-      project_id: String(selectedProject.value.id),
-      file_id: String(selectedFile.value.id),
-      name: selectedProject.value.name,
-      version: selectedVersion.value,
-      type: inferServerType(),
-    },
-  });
+  isCreatingFromModpack.value = true;
+  installMessage.value = "";
+  try {
+    modpackCreateStage.value = "Создаю сервер...";
+    const created = await requestJson<GameServer>("/api/servers", {
+      method: "POST",
+      body: JSON.stringify({
+        name: selectedProject.value.name,
+        type: inferServerType(),
+        pack: selectedProject.value.name,
+        version: selectedVersion.value || minecraftVersion.value || selectedProject.value.game_versions[0] || "1.20.1",
+        min_ram: "2G",
+        max_ram: "6G",
+        java_runtime: "auto",
+        jvm_args: "",
+        cpu_limit: 200,
+        loader_version: "",
+        installer_version: "",
+        install_fabric_api: inferServerType() === "fabric",
+        address: "",
+      }),
+    });
+
+    modpackCreateStage.value = "Готовлю сервер...";
+    await waitForServerReady(created.id);
+
+    modpackCreateStage.value = "Устанавливаю сборку...";
+    const result = await requestJson<CurseForgeInstallResult>("/api/curseforge/install", {
+      method: "POST",
+      body: JSON.stringify({
+        server_id: created.id,
+        project_id: selectedProject.value.id,
+        file_id: selectedFile.value.id,
+        include_dependencies: true,
+      }),
+    });
+    await store.loadDashboard(created.id);
+    await store.loadServerMods(created.id);
+    showToast(`Сервер ${created.name} создан по сборке`, "success");
+    installMessage.value = `${result.installed.length} файлов установлено, ${result.skipped.length} пропущено`;
+    await router.push(`/servers/${created.id}`);
+  } catch (error) {
+    installMessage.value = "Не удалось создать сервер по сборке";
+    showToast("Не удалось создать сервер по сборке", "error");
+    console.error(error);
+  } finally {
+    modpackCreateStage.value = "";
+    isCreatingFromModpack.value = false;
+  }
 }
 
 function closeVersionPickerOnOutsideClick(event: PointerEvent) {
@@ -440,11 +501,11 @@ onBeforeUnmount(() => {
               v-else
               class="primary-button"
               type="button"
-              :disabled="!selectedFile"
+              :disabled="!selectedFile || selectedFile.restricted || isCreatingFromModpack"
               @click="createServerFromModpack"
             >
               <Server :size="18" />
-              <span>{{ modalActionLabel }}</span>
+              <span>{{ modpackCreateStage || modalActionLabel }}</span>
             </button>
             <a v-if="selectedProject.website_url" class="ghost-button" :href="selectedProject.website_url" target="_blank" rel="noreferrer">
               <ExternalLink :size="18" />
