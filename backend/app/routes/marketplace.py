@@ -270,9 +270,26 @@ def create_marketplace_router(
         )
 
 
+    def index_installed_mods(server_id: str) -> dict[str, object]:
+        try:
+            return {mod.filename: mod for mod in agent_client.mods(server_id)}
+        except Exception:
+            return {}
+
+
+    def installed_curseforge_file(existing_mods: dict[str, object], file: CurseForgeFile) -> object | None:
+        existing = existing_mods.get(file.file_name)
+        expected_sha1 = file.hashes.get("sha1", "").lower()
+        if not existing or not expected_sha1:
+            return None
+        actual_sha1 = str(getattr(existing, "sha1", "")).lower()
+        return existing if actual_sha1 == expected_sha1 else None
+
+
     def install_curseforge_modpack(server_id: str, archive_bytes: bytes) -> tuple[list, list[str]]:
         installed = []
         skipped: list[str] = []
+        existing_mods = index_installed_mods(server_id)
         try:
             archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
         except zipfile.BadZipFile as error:
@@ -326,6 +343,18 @@ def create_marketplace_router(
                     current_item=child.file_name,
                     message=f"Скачиваю {done + 1} из {total_files}",
                 )
+                existing = installed_curseforge_file(existing_mods, child)
+                if existing:
+                    installed.append(existing)
+                    done += 1
+                    update_server_operation_progress(
+                        server_id,
+                        current=done,
+                        total=total_files,
+                        current_item=child.file_name,
+                        message=f"Уже установлен {done} из {total_files}",
+                    )
+                    continue
                 if child.restricted:
                     skipped.append(f"{child.file_name}: restricted download")
                     done += 1
@@ -338,7 +367,9 @@ def create_marketplace_router(
                     )
                     continue
                 try:
-                    installed.append(install_curseforge_jar(server_id, child, download_curseforge_file(child)))
+                    installed_mod = install_curseforge_jar(server_id, child, download_curseforge_file(child))
+                    installed.append(installed_mod)
+                    existing_mods[installed_mod.filename] = installed_mod
                 except Exception as error:
                     skipped.append(f"{child.file_name}: {error}")
                 done += 1
@@ -360,16 +391,29 @@ def create_marketplace_router(
                 message=f"Устанавливаю {done + 1} из {total_files}",
             )
             try:
-                installed.append(
-                    agent_client.install_mod(
+                content = archive.read(name)
+                existing = existing_mods.get(jar_name)
+                if existing and str(getattr(existing, "sha1", "")).lower() == hashlib.sha1(content).hexdigest():
+                    installed.append(existing)
+                    done += 1
+                    update_server_operation_progress(
                         server_id,
-                        ModInstallRequest(
-                            filename=jar_name,
-                            content=base64.b64encode(archive.read(name)).decode("ascii"),
-                            source="curseforge",
-                        ),
+                        current=done,
+                        total=total_files,
+                        current_item=jar_name,
+                        message=f"Уже установлен {done} из {total_files}",
+                    )
+                    continue
+                installed_mod = agent_client.install_mod(
+                    server_id,
+                    ModInstallRequest(
+                        filename=jar_name,
+                        content=base64.b64encode(content).decode("ascii"),
+                        source="curseforge",
                     ),
                 )
+                installed.append(installed_mod)
+                existing_mods[installed_mod.filename] = installed_mod
             except Exception as error:
                 skipped.append(f"{jar_name}: {error}")
             done += 1
@@ -429,11 +473,14 @@ def create_marketplace_router(
                 queue.extend(curseforge_dependencies(payload.project_id, payload.file_id))
             update_server_operation_progress(
                 payload.server_id,
+                current=0,
                 total=len(queue),
+                current_item="CurseForge",
                 message=f"0 из {len(queue)} файлов",
             )
             installed = []
-            skipped = []
+            skipped: list[str] = []
+            existing_mods = index_installed_mods(payload.server_id)
             for index, file in enumerate(queue, start=1):
                 update_server_operation_progress(
                     payload.server_id,
@@ -452,23 +499,30 @@ def create_marketplace_router(
                         message=f"{index} из {len(queue)} файлов",
                     )
                     continue
-                content = download_curseforge_file(file)
-                try:
+                existing = installed_curseforge_file(existing_mods, file)
+                if existing:
+                    installed.append(existing)
                     update_server_operation_progress(
                         payload.server_id,
-                        current=index - 1,
+                        current=index,
                         total=len(queue),
                         current_item=file.file_name,
-                        message=f"Устанавливаю {index} из {len(queue)}",
+                        message=f"Уже установлен {index} из {len(queue)}",
                     )
-                    if file.file_name.endswith(".zip"):
-                        modpack_installed, modpack_skipped = install_curseforge_modpack(payload.server_id, content)
-                        installed.extend(modpack_installed)
-                        skipped.extend(modpack_skipped)
-                    else:
-                        installed.append(install_curseforge_jar(payload.server_id, file, content))
-                except Exception as error:
-                    skipped.append(f"{file.file_name}: {error}")
+                    continue
+                content = download_curseforge_file(file)
+                is_modpack_archive = file.file_name.endswith(".zip") or "modpacks" in [version.lower() for version in file.game_versions]
+                if is_modpack_archive:
+                    modpack_installed, modpack_skipped = install_curseforge_modpack(payload.server_id, content)
+                    installed.extend(modpack_installed)
+                    skipped.extend(modpack_skipped)
+                else:
+                    try:
+                        installed_mod = install_curseforge_jar(payload.server_id, file, content)
+                        installed.append(installed_mod)
+                        existing_mods[installed_mod.filename] = installed_mod
+                    except Exception as error:
+                        skipped.append(f"{file.file_name}: {error}")
                 update_server_operation_progress(
                     payload.server_id,
                     current=index,
