@@ -36,6 +36,7 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
 fi
 
 cd "$APP_DIR"
+git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
 log "Fetching release tags"
 git fetch --tags --force --prune origin
 
