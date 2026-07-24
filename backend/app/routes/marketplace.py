@@ -29,7 +29,11 @@ from ..schemas import (
     ModInstallRequest,
     ModItem,
     SafeUpdateResult,
+    GameServer,
+    ServerOperationProgress,
+    ServerState,
 )
+from ..operation_state import server_operation_state, update_server_operation_progress
 from ..settings import CURSEFORGE_CLASS_IDS, CURSEFORGE_LOADER_TYPES, CURSEFORGE_SORT_FIELDS, MINECRAFT_GAME_ID
 
 
@@ -42,6 +46,7 @@ def create_marketplace_router(
     transform_curseforge_project: Callable[[dict, Literal["mods", "modpacks"]], CurseForgeProject],
     append_log: Callable[[str], None],
     agent_client,
+    get_server: Callable[[str], GameServer],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -233,26 +238,81 @@ def create_marketplace_router(
                 manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
                 raise HTTPException(status_code=400, detail="CurseForge manifest.json is invalid") from error
-            for item in manifest.get("files") or []:
-                if not isinstance(item, dict) or not item.get("required", True):
-                    continue
+            manifest_files = [
+                item
+                for item in manifest.get("files") or []
+                if isinstance(item, dict) and item.get("required", True)
+            ]
+        else:
+            manifest_files = []
+        embedded_mods = [
+            name
+            for name in sorted(names)
+            if name.startswith("mods/") and name.endswith(".jar")
+        ]
+        override_files = [
+            name
+            for prefix in ("overrides/", "serverfiles/")
+            for name in sorted(names)
+            if name.startswith(prefix) and not name.endswith("/")
+        ]
+        total_files = len(manifest_files) + len(embedded_mods) + len(override_files)
+        done = 0
+        update_server_operation_progress(
+            server_id,
+            current=0,
+            total=total_files,
+            current_item="manifest.json",
+            message=f"0 из {total_files} файлов",
+        )
+
+        for item in manifest_files:
                 project_id = int(item.get("projectID") or item.get("projectId") or 0)
                 file_id = int(item.get("fileID") or item.get("fileId") or 0)
                 if not project_id or not file_id:
+                    done += 1
                     continue
                 child = get_curseforge_file(project_id, file_id)
+                update_server_operation_progress(
+                    server_id,
+                    current=done,
+                    total=total_files,
+                    current_item=child.file_name,
+                    message=f"Скачиваю {done + 1} из {total_files}",
+                )
                 if child.restricted:
                     skipped.append(f"{child.file_name}: restricted download")
+                    done += 1
+                    update_server_operation_progress(
+                        server_id,
+                        current=done,
+                        total=total_files,
+                        current_item=child.file_name,
+                        message=f"{done} из {total_files} файлов",
+                    )
                     continue
                 try:
                     installed.append(install_curseforge_jar(server_id, child, download_curseforge_file(child)))
                 except Exception as error:
                     skipped.append(f"{child.file_name}: {error}")
+                done += 1
+                update_server_operation_progress(
+                    server_id,
+                    current=done,
+                    total=total_files,
+                    current_item=child.file_name,
+                    message=f"{done} из {total_files} файлов",
+                )
 
-        for name in sorted(names):
-            if not name.startswith("mods/") or not name.endswith(".jar"):
-                continue
+        for name in embedded_mods:
             jar_name = name.rsplit("/", 1)[-1]
+            update_server_operation_progress(
+                server_id,
+                current=done,
+                total=total_files,
+                current_item=jar_name,
+                message=f"Устанавливаю {done + 1} из {total_files}",
+            )
             try:
                 installed.append(
                     agent_client.install_mod(
@@ -266,26 +326,48 @@ def create_marketplace_router(
                 )
             except Exception as error:
                 skipped.append(f"{jar_name}: {error}")
-        for prefix in ("overrides/", "serverfiles/"):
-            for name in sorted(names):
-                if not name.startswith(prefix) or name.endswith("/"):
-                    continue
-                relative_path = name.removeprefix(prefix)
-                if not relative_path or relative_path.startswith("../") or "/../" in relative_path:
-                    continue
-                if relative_path.startswith("mods/") and relative_path.endswith(".jar"):
-                    continue
-                try:
-                    agent_client.write_file(
-                        server_id,
-                        FileWriteRequest(
-                            path=relative_path,
-                            content=base64.b64encode(archive.read(name)).decode("ascii"),
-                            encoding="base64",
-                        ),
-                    )
-                except Exception as error:
-                    skipped.append(f"{relative_path}: {error}")
+            done += 1
+            update_server_operation_progress(
+                server_id,
+                current=done,
+                total=total_files,
+                current_item=jar_name,
+                message=f"{done} из {total_files} файлов",
+            )
+        for name in override_files:
+            relative_path = name.removeprefix("overrides/").removeprefix("serverfiles/")
+            if not relative_path or relative_path.startswith("../") or "/../" in relative_path:
+                done += 1
+                continue
+            if relative_path.startswith("mods/") and relative_path.endswith(".jar"):
+                done += 1
+                continue
+            update_server_operation_progress(
+                server_id,
+                current=done,
+                total=total_files,
+                current_item=relative_path,
+                message=f"Копирую {done + 1} из {total_files}",
+            )
+            try:
+                agent_client.write_file(
+                    server_id,
+                    FileWriteRequest(
+                        path=relative_path,
+                        content=base64.b64encode(archive.read(name)).decode("ascii"),
+                        encoding="base64",
+                    ),
+                )
+            except Exception as error:
+                skipped.append(f"{relative_path}: {error}")
+            done += 1
+            update_server_operation_progress(
+                server_id,
+                current=done,
+                total=total_files,
+                current_item=relative_path,
+                message=f"{done} из {total_files} файлов",
+            )
         return installed, skipped
 
 
@@ -293,32 +375,75 @@ def create_marketplace_router(
     def install_curseforge_file(payload: CurseForgeInstallRequest) -> CurseForgeInstallResult:
         if not agent_client.configured:
             raise HTTPException(status_code=409, detail="Host agent is required for CurseForge install")
-        queue = [get_curseforge_file(payload.project_id, payload.file_id)]
-        if payload.include_dependencies:
-            queue.extend(curseforge_dependencies(payload.project_id, payload.file_id))
-        installed = []
-        skipped = []
-        for file in queue:
-            if file.restricted:
-                skipped.append(f"{file.file_name}: restricted download")
-                continue
-            content = download_curseforge_file(file)
-            try:
-                if file.file_name.endswith(".zip"):
-                    modpack_installed, modpack_skipped = install_curseforge_modpack(payload.server_id, content)
-                    installed.extend(modpack_installed)
-                    skipped.extend(modpack_skipped)
-                else:
-                    installed.append(install_curseforge_jar(payload.server_id, file, content))
-            except Exception as error:
-                skipped.append(f"{file.file_name}: {error}")
-        if installed:
-            try:
-                agent_client.refresh_manifest(payload.server_id)
-            except Exception as error:
-                skipped.append(f"manifest refresh: {error}")
-        append_log(f"{payload.server_id}: CurseForge installed {len(installed)}, skipped {len(skipped)}")
-        return CurseForgeInstallResult(ok=bool(installed), message=f"Installed {len(installed)} files", installed=installed, skipped=skipped)
+        get_server(payload.server_id)
+        initial_progress = ServerOperationProgress(label="Установка CurseForge", message="Готовлю список файлов")
+        with server_operation_state(payload.server_id, ServerState.installing, initial_progress):
+            queue = [get_curseforge_file(payload.project_id, payload.file_id)]
+            if payload.include_dependencies:
+                queue.extend(curseforge_dependencies(payload.project_id, payload.file_id))
+            update_server_operation_progress(
+                payload.server_id,
+                total=len(queue),
+                message=f"0 из {len(queue)} файлов",
+            )
+            installed = []
+            skipped = []
+            for index, file in enumerate(queue, start=1):
+                update_server_operation_progress(
+                    payload.server_id,
+                    current=index - 1,
+                    total=len(queue),
+                    current_item=file.file_name,
+                    message=f"Скачиваю {index} из {len(queue)}",
+                )
+                if file.restricted:
+                    skipped.append(f"{file.file_name}: restricted download")
+                    update_server_operation_progress(
+                        payload.server_id,
+                        current=index,
+                        total=len(queue),
+                        current_item=file.file_name,
+                        message=f"{index} из {len(queue)} файлов",
+                    )
+                    continue
+                content = download_curseforge_file(file)
+                try:
+                    update_server_operation_progress(
+                        payload.server_id,
+                        current=index - 1,
+                        total=len(queue),
+                        current_item=file.file_name,
+                        message=f"Устанавливаю {index} из {len(queue)}",
+                    )
+                    if file.file_name.endswith(".zip"):
+                        modpack_installed, modpack_skipped = install_curseforge_modpack(payload.server_id, content)
+                        installed.extend(modpack_installed)
+                        skipped.extend(modpack_skipped)
+                    else:
+                        installed.append(install_curseforge_jar(payload.server_id, file, content))
+                except Exception as error:
+                    skipped.append(f"{file.file_name}: {error}")
+                update_server_operation_progress(
+                    payload.server_id,
+                    current=index,
+                    total=len(queue),
+                    current_item=file.file_name,
+                    message=f"{index} из {len(queue)} файлов",
+                )
+            if installed:
+                try:
+                    update_server_operation_progress(
+                        payload.server_id,
+                        current=len(queue),
+                        total=len(queue),
+                        current_item="",
+                        message="Обновляю manifest сервера",
+                    )
+                    agent_client.refresh_manifest(payload.server_id)
+                except Exception as error:
+                    skipped.append(f"manifest refresh: {error}")
+            append_log(f"{payload.server_id}: CurseForge installed {len(installed)}, skipped {len(skipped)}")
+            return CurseForgeInstallResult(ok=bool(installed), message=f"Installed {len(installed)} files", installed=installed, skipped=skipped)
 
 
     def loader_for_manifest(value: str) -> Literal["any", "forge", "fabric", "quilt", "neoforge"]:

@@ -56,6 +56,17 @@ export interface GameServer {
   exit_code?: number | null;
   last_event?: string;
   warnings?: string[];
+  operation?: ServerOperationProgress | null;
+}
+
+export interface ServerOperationProgress {
+  kind: "curseforge_install";
+  label: string;
+  current: number;
+  total: number;
+  percent: number;
+  current_item: string;
+  message: string;
 }
 
 export interface ServerActionResult {

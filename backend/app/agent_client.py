@@ -62,6 +62,10 @@ class AgentClient:
         self.require_configured()
         return httpx.post(f"{self.base_url}{path}", headers=self.headers(), json=json, timeout=240)
 
+    def post_multipart(self, path: str, *, data: dict[str, str], files: dict) -> httpx.Response:
+        self.require_configured()
+        return httpx.post(f"{self.base_url}{path}", headers=self.headers(), data=data, files=files, timeout=None)
+
     def put(self, path: str, json: dict | None = None) -> httpx.Response:
         self.require_configured()
         return httpx.put(f"{self.base_url}{path}", headers=self.headers(), json=json, timeout=30)
@@ -260,6 +264,23 @@ class AgentClient:
 
     def import_server(self, payload: ImportServerRequest) -> ActionResult:
         response = self.post("/servers/import", json=payload.model_dump())
+        response.raise_for_status()
+        return ActionResult(**response.json())
+
+    def import_server_archive(self, payload: ImportServerRequest, filename: str, fileobj) -> ActionResult:
+        response = self.post_multipart(
+            "/servers/import/archive",
+            data={
+                "name": payload.name,
+                "min_ram": payload.min_ram,
+                "max_ram": payload.max_ram,
+                "java_runtime": payload.java_runtime,
+                "jvm_args": payload.jvm_args,
+                "cpu_limit": str(payload.cpu_limit),
+                "loader_version": payload.loader_version,
+            },
+            files={"archive": (filename, fileobj, "application/octet-stream")},
+        )
         response.raise_for_status()
         return ActionResult(**response.json())
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 import shutil
+import tarfile
+import zipfile
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -9,13 +11,14 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from .activity import append_action_log
+from .config import SERVER_ROOT
 from .loaders import write_systemd_unit
 from .manifest import save_manifest
 from .minecraft import allocate_port, host_primary_ip, normalize_cpu_limit, normalize_jvm_args, normalize_ram, required_java_major, server_type_label
 from .mods import scan_installed_mods
 from .processes import apply_server_permissions, run, service_state
 from .schemas import AgentActionResult, AgentServer, ImportServerPreview, ImportServerRequest, StoredServer
-from .security import managed_server_path, server_base_path
+from .security import ensure_child_path, is_relative_path, managed_server_path, server_base_path
 from .storage import load_server_store, save_server_store, slugify
 
 
@@ -141,7 +144,7 @@ def import_existing_server(
 
     if request.keep_current_path:
         target_root = source_root
-        managed = False
+        managed = is_relative_path(target_root, SERVER_ROOT)
     else:
         target_root = managed_server_path(server_id)
         if target_root.exists():
@@ -190,3 +193,102 @@ def import_existing_server(
     if service_state(service) != "running":
         message += ", unit created but startup needs review"
     return AgentActionResult(ok=True, message=message, server=server_snapshot(server.id))
+
+
+def safe_archive_member_path(root: Path, member_name: str) -> Path | None:
+    cleaned = member_name.strip().lstrip("/")
+    if not cleaned or cleaned == ".":
+        return None
+    parts = Path(cleaned).parts
+    if any(part in {"", ".", ".."} for part in parts):
+        return None
+    return ensure_child_path(root, *parts)
+
+
+def extract_server_archive(archive_path: Path, target_root: Path) -> None:
+    target_root.mkdir(parents=True, exist_ok=True)
+    lower_name = archive_path.name.lower()
+    if lower_name.endswith(".zip"):
+        try:
+            with zipfile.ZipFile(archive_path) as archive:
+                for member in archive.infolist():
+                    destination = safe_archive_member_path(target_root, member.filename)
+                    if destination is None:
+                        continue
+                    if member.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                        continue
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(member) as source, destination.open("wb") as output:
+                        shutil.copyfileobj(source, output, length=1024 * 1024)
+        except zipfile.BadZipFile as error:
+            raise HTTPException(status_code=400, detail="Uploaded ZIP archive is invalid") from error
+        return
+
+    mode = "r:gz" if lower_name.endswith((".tar.gz", ".tgz")) else "r:"
+    if not lower_name.endswith((".tar", ".tar.gz", ".tgz")):
+        raise HTTPException(status_code=400, detail="Only .tar, .tar.gz, .tgz and .zip server archives are supported")
+
+    try:
+        with tarfile.open(archive_path, mode) as archive:
+            for member in archive.getmembers():
+                destination = safe_archive_member_path(target_root, member.name)
+                if destination is None:
+                    continue
+                if member.isdir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                if not member.isfile():
+                    continue
+                source = archive.extractfile(member)
+                if source is None:
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+    except tarfile.TarError as error:
+        raise HTTPException(status_code=400, detail="Uploaded TAR archive is invalid") from error
+
+
+def flatten_single_archive_root(target_root: Path) -> None:
+    direct_files = [path for path in target_root.iterdir() if path.is_file()]
+    direct_dirs = [path for path in target_root.iterdir() if path.is_dir()]
+    if direct_files or len(direct_dirs) != 1:
+        return
+    source_root = direct_dirs[0]
+    if not (source_root / "server.properties").exists() and not list(source_root.glob("*.jar")) and not (source_root / "run.sh").exists():
+        return
+    temp_root = target_root.with_name(f"{target_root.name}.flattening")
+    if temp_root.exists():
+        shutil.rmtree(temp_root)
+    source_root.rename(temp_root)
+    shutil.rmtree(target_root)
+    temp_root.rename(target_root)
+
+
+def import_server_archive(
+    archive_path: Path,
+    request: ImportServerRequest,
+    *,
+    server_snapshot: Callable[[str], AgentServer],
+) -> AgentActionResult:
+    store = load_server_store()
+    archive_stem = archive_path.name.removesuffix(".tar.gz").removesuffix(".tgz").removesuffix(".tar").removesuffix(".zip")
+    base_id = slugify(request.name or archive_stem)
+    server_id = base_id
+    counter = 2
+    while server_id in store:
+        server_id = f"{base_id}-{counter}"
+        counter += 1
+    target_root = managed_server_path(server_id)
+    if target_root.exists():
+        raise HTTPException(status_code=409, detail="Managed target directory already exists")
+
+    try:
+        extract_server_archive(archive_path, target_root)
+        flatten_single_archive_root(target_root)
+        archive_request = request.model_copy(update={"path": str(target_root), "keep_current_path": True})
+        return import_existing_server(archive_request, server_snapshot=server_snapshot)
+    except Exception:
+        shutil.rmtree(target_root, ignore_errors=True)
+        raise

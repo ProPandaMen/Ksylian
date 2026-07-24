@@ -27,6 +27,16 @@ class ServerAction(str, Enum):
     backup = "backup"
 
 
+class ServerOperationProgress(BaseModel):
+    kind: Literal["curseforge_install"] = "curseforge_install"
+    label: str = "Установка"
+    current: int = 0
+    total: int = 0
+    percent: int = 0
+    current_item: str = ""
+    message: str = ""
+
+
 class GameServer(BaseModel):
     id: str
     name: str
@@ -41,6 +51,7 @@ class GameServer(BaseModel):
     exit_code: int | None = None
     last_event: str = ""
     warnings: list[str] = Field(default_factory=list)
+    operation: ServerOperationProgress | None = None
 
 
 class BackupItem(BaseModel):

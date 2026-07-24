@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .agent_client import AgentClient
+from .operation_state import apply_server_operation_states
 from .schemas import (
     AgentStatus,
     BackupItem,
@@ -178,7 +179,7 @@ def require_agent_available() -> None:
 
 def load_agent_servers() -> list[GameServer] | None:
     try:
-        return agent_client.servers()
+        return apply_server_operation_states(agent_client.servers())
     except Exception as error:
         append_log(f"agent unavailable: {error}")
         return None
@@ -670,4 +671,5 @@ app.include_router(create_marketplace_router(
     transform_curseforge_project=transform_curseforge_project,
     append_log=append_log,
     agent_client=agent_client,
+    get_server=get_server,
 ))

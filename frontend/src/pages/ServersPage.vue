@@ -116,6 +116,16 @@ function openNewServerPage() {
                 <span>{{ server.pack }}</span>
                 <span>Minecraft {{ server.version }}</span>
               </div>
+              <div v-if="server.operation" class="server-install-progress" aria-label="Прогресс установки">
+                <div>
+                  <strong>{{ server.operation.label }}</strong>
+                  <span>{{ server.operation.message || `${server.operation.current} из ${server.operation.total}` }}</span>
+                </div>
+                <div class="server-install-track">
+                  <span :style="{ width: `${server.operation.percent}%` }"></span>
+                </div>
+                <p v-if="server.operation.current_item">{{ server.operation.current_item }}</p>
+              </div>
             </div>
           </div>
 

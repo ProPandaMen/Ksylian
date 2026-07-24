@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import shutil
 import threading
+import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 
+from ..config import DATA_DIR
 from ..schemas import (
     AgentActionResult,
     AgentServer,
@@ -63,6 +65,7 @@ def create_servers_router(**deps) -> APIRouter:
     host_primary_ip = deps["host_primary_ip"]
     install_mod = deps["install_mod"]
     import_build = deps["import_build"]
+    import_server_archive = deps["import_server_archive"]
     import_existing_server = deps["import_existing_server"]
     list_server_files = deps["list_server_files"]
     list_players = deps["list_players"]
@@ -101,6 +104,7 @@ def create_servers_router(**deps) -> APIRouter:
     service_state = deps["service_state"]
     slugify = deps["slugify"]
     systemctl_issue_can_be_ignored = deps["systemctl_issue_can_be_ignored"]
+    SYSTEMD_DIR = deps["SYSTEMD_DIR"]
     to_agent_server = deps["to_agent_server"]
     update_server_files = deps["update_server_files"]
     write_server_file = deps["write_server_file"]
@@ -175,6 +179,43 @@ def create_servers_router(**deps) -> APIRouter:
     ) -> AgentActionResult:
         require_token(x_ksylian_token)
         return import_existing_server(payload, server_snapshot=to_agent_server)
+
+    @router.post("/servers/import/archive", response_model=AgentActionResult)
+    async def import_server_from_archive(
+        name: str = Form(default=""),
+        min_ram: str = Form(default="1G"),
+        max_ram: str = Form(default="2G"),
+        java_runtime: str = Form(default="auto"),
+        jvm_args: str = Form(default=""),
+        cpu_limit: int = Form(default=100),
+        loader_version: str = Form(default=""),
+        archive: UploadFile = File(...),
+        x_ksylian_token: str | None = Header(default=None),
+    ) -> AgentActionResult:
+        require_token(x_ksylian_token)
+        upload_dir = DATA_DIR / "imports"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        suffix = "".join(Path(archive.filename or "server.tar").suffixes)[-16:] or ".tar"
+        archive_path = upload_dir / f"{uuid.uuid4().hex}{suffix}"
+        try:
+            with archive_path.open("wb") as output:
+                while chunk := await archive.read(1024 * 1024):
+                    output.write(chunk)
+            request = ImportServerRequest(
+                name=name,
+                path=str(archive_path),
+                keep_current_path=False,
+                min_ram=min_ram,
+                max_ram=max_ram,
+                java_runtime=java_runtime,
+                jvm_args=jvm_args,
+                cpu_limit=cpu_limit,
+                loader_version=loader_version,
+            )
+            return import_server_archive(archive_path, request, server_snapshot=to_agent_server)
+        finally:
+            await archive.close()
+            archive_path.unlink(missing_ok=True)
 
 
     @router.get("/loaders/{loader_type}/versions", response_model=list[str])

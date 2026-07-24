@@ -85,6 +85,61 @@
   font-weight: 800;
 }
 
+.server-install-progress {
+  display: grid;
+  gap: 6px;
+  max-width: 520px;
+  margin-top: 4px;
+}
+
+.server-install-progress > div:first-child {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.server-install-progress strong,
+.server-install-progress span,
+.server-install-progress p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-install-progress strong {
+  color: color-mix(in srgb, var(--app-accent) 68%, var(--app-text));
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.server-install-progress span,
+.server-install-progress p {
+  color: var(--app-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.server-install-progress p {
+  margin: 0;
+}
+
+.server-install-track {
+  overflow: hidden;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-text) 9%, transparent);
+}
+
+.server-install-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-accent-light) 50%, var(--app-accent)));
+  transition: width 220ms ease;
+}
+
 .server-state {
   flex: 0 0 auto;
   width: 13px;

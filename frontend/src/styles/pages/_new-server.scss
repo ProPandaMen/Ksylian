@@ -218,6 +218,38 @@
   cursor: wait;
 }
 
+.new-server-fields .new-server-file-field {
+  align-items: start;
+}
+
+.new-server-file-field input[type="file"] {
+  display: block;
+  min-height: 50px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.new-server-file-field input[type="file"]::file-selector-button {
+  min-height: 34px;
+  margin-right: 12px;
+  padding: 0 12px;
+  color: var(--app-accent);
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-accent-light) 10%, var(--app-surface-raised));
+  font-weight: 900;
+}
+
+.new-server-file-field small {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  margin-top: -8px;
+  color: var(--app-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .new-server-fields .new-server-checkbox-field input {
   justify-self: start;
   width: 22px;
@@ -257,6 +289,39 @@
 .version-error {
   color: var(--app-danger);
   font-weight: 800;
+}
+
+.archive-upload-progress {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.archive-upload-progress div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--app-muted);
+  font-weight: 900;
+}
+
+.archive-upload-progress strong {
+  color: var(--app-text);
+}
+
+.archive-upload-progress > span {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-text) 9%, transparent);
+}
+
+.archive-upload-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-accent-light) 55%, var(--app-accent)));
+  transition: width 180ms ease;
 }
 
 .new-server-summary {

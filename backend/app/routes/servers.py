@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 
 from ..auth import user_from_token
@@ -136,6 +136,40 @@ def create_servers_router(
         except Exception as error:
             append_log(f"agent import failed for {payload.path}: {error}")
             raise HTTPException(status_code=502, detail="Host agent import failed") from error
+
+    @router.post("/api/servers/import/archive", response_model=ActionResult)
+    async def import_server_archive(
+        name: str = Form(default=""),
+        min_ram: str = Form(default="1G"),
+        max_ram: str = Form(default="2G"),
+        java_runtime: str = Form(default="auto"),
+        jvm_args: str = Form(default=""),
+        cpu_limit: int = Form(default=100),
+        loader_version: str = Form(default=""),
+        archive: UploadFile = File(...),
+    ) -> ActionResult:
+        if not AGENT_URL:
+            raise HTTPException(status_code=409, detail="Host agent is required for server import")
+        payload = ImportServerRequest(
+            name=name,
+            path="",
+            keep_current_path=False,
+            min_ram=min_ram,
+            max_ram=max_ram,
+            java_runtime=java_runtime,
+            jvm_args=jvm_args,
+            cpu_limit=cpu_limit,
+            loader_version=loader_version,
+        )
+        try:
+            result = agent_client.import_server_archive(payload, archive.filename or "server.tar", archive.file)
+            append_log(result.message)
+            return result
+        except Exception as error:
+            append_log(f"agent archive import failed for {archive.filename}: {error}")
+            raise HTTPException(status_code=502, detail="Host agent archive import failed") from error
+        finally:
+            await archive.close()
 
 
     @router.delete("/api/servers/{server_id}")

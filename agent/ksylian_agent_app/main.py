@@ -104,7 +104,7 @@ from .manifest import (
     read_manifest,
     save_manifest,
 )
-from .imports import import_existing_server, preview_existing_server
+from .imports import import_existing_server, import_server_archive, preview_existing_server
 from .safe_updates import safe_update_modpack
 from .players import list_players, run_player_action
 
@@ -343,6 +343,7 @@ app.include_router(create_servers_router(
     install_mod=install_mod,
     import_build=import_build,
     import_existing_server=import_existing_server,
+    import_server_archive=import_server_archive,
     list_server_files=list_server_files,
     list_players=list_players,
     load_server_or_404=load_server_or_404,
@@ -387,4 +388,5 @@ app.include_router(create_servers_router(
     disabled_server_ids=disabled_server_ids,
     SERVER_LOADERS=SERVER_LOADERS,
     BACKUP_DIR=BACKUP_DIR,
+    SYSTEMD_DIR=SYSTEMD_DIR,
 ))
