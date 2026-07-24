@@ -480,7 +480,7 @@ def update_server_files(server: StoredServer) -> StoredServer:
 
 def write_systemd_unit(server: StoredServer) -> None:
     unit_path = SYSTEMD_DIR / server.service
-    start_command = server.start_command or start_command_for_server(server, java_binary(server.version, server.java_runtime))
+    start_command = start_command_with_current_java(server)
     server_path = server_base_path(server)
     max_ram = normalize_ram(server.max_ram, "2G")
     cpu_quota = f"{normalize_cpu_limit(server.cpu_limit)}%"
@@ -521,6 +521,16 @@ def write_systemd_unit(server: StoredServer) -> None:
     enable = run(["systemctl", "enable", server.service], timeout=30)
     if enable.returncode != 0:
         raise HTTPException(status_code=500, detail=enable.stderr.strip() or "systemctl enable failed")
+
+
+def start_command_with_current_java(server: StoredServer) -> list[str]:
+    java = java_binary(server.version, server.java_runtime)
+    if server.start_command:
+        command = list(server.start_command)
+        if command and Path(command[0]).name == "java":
+            command[0] = java
+        return command
+    return start_command_for_server(server, java)
 
 
 def ensure_server_provisioned(server: StoredServer) -> StoredServer:

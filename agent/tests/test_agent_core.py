@@ -15,8 +15,9 @@ from ksylian_agent_app.backups import backup_manifest, backup_manifest_path
 from ksylian_agent_app.hashing import file_digest
 from ksylian_agent_app.imports import preview_existing_server
 import ksylian_agent_app.manifest as manifest_module
+import ksylian_agent_app.minecraft as minecraft_module
 from ksylian_agent_app.manifest import save_manifest
-from ksylian_agent_app.minecraft import normalize_cpu_limit, normalize_ram, ram_to_bytes
+from ksylian_agent_app.minecraft import java_binary, normalize_cpu_limit, normalize_ram, ram_to_bytes
 from ksylian_agent_app.mods import mod_metadata_from_fabric, mod_metadata_from_toml, parse_mod_toml_fallback
 from ksylian_agent_app.mod_sources import write_mod_source
 from ksylian_agent_app.players import normalize_player_name, parse_online_players, player_action_command
@@ -47,6 +48,18 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(ram_to_bytes("512M"), 512 * 1024**2)
         self.assertEqual(normalize_cpu_limit(1), 10)
         self.assertEqual(normalize_cpu_limit(999), 400)
+
+    def test_java_auto_prefers_required_major_over_newer_runtime(self) -> None:
+        previous_candidates = minecraft_module.java_candidates
+        previous_major = minecraft_module.java_major_version
+        minecraft_module.java_candidates = lambda _required, _selected="auto": ["/usr/bin/java", "/usr/lib/jvm/java-17/bin/java"]
+        minecraft_module.java_major_version = lambda binary: 25 if binary == "/usr/bin/java" else 17
+
+        try:
+            self.assertEqual(java_binary("1.18.2", "auto"), "/usr/lib/jvm/java-17/bin/java")
+        finally:
+            minecraft_module.java_candidates = previous_candidates
+            minecraft_module.java_major_version = previous_major
 
 
 class PathSafetyTests(unittest.TestCase):

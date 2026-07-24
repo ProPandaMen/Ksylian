@@ -247,17 +247,29 @@ def java_candidates(required_major: int, selected_runtime: str = "auto") -> list
         selected_value = os.getenv(f"KSYLIAN_JAVA_{selected_runtime}", "")
         if selected_value:
             candidates.append(selected_value)
+        candidates.extend(common_java_paths(int(selected_runtime)))
     env_value = os.getenv(f"KSYLIAN_JAVA_{required_major}", "")
     if env_value:
         candidates.append(env_value)
-    for major in (21, 17, 8):
+    candidates.extend(common_java_paths(required_major))
+    for major in (required_major, 21, 17, 8):
         env_candidate = os.getenv(f"KSYLIAN_JAVA_{major}", "")
         if env_candidate:
             candidates.append(env_candidate)
+        candidates.extend(common_java_paths(major))
     default = shutil.which("java")
     if default:
         candidates.append(default)
     return list(dict.fromkeys(candidates))
+
+
+def common_java_paths(major: int) -> list[str]:
+    return [
+        f"/usr/lib/jvm/java-{major}-openjdk-amd64/bin/java",
+        f"/usr/lib/jvm/java-1.{major}.0-openjdk-amd64/bin/java",
+        f"/usr/lib/jvm/temurin-{major}-jdk-amd64/bin/java",
+        f"/usr/lib/jvm/jdk-{major}/bin/java",
+    ]
 
 
 def java_binary(minecraft_version: str = "", selected_runtime: str = "auto") -> str:
@@ -265,11 +277,16 @@ def java_binary(minecraft_version: str = "", selected_runtime: str = "auto") -> 
     if selected_runtime in {"8", "17", "21"}:
         required_major = max(required_major, int(selected_runtime))
     checked: list[str] = []
+    compatible: str | None = None
     for candidate in java_candidates(required_major, selected_runtime):
         major = java_major_version(candidate)
         checked.append(f"{candidate} ({major or 'unknown'})")
-        if major and major >= required_major:
+        if major == required_major:
             return candidate
+        if major and major > required_major and compatible is None:
+            compatible = candidate
+    if compatible and selected_runtime in {"21"}:
+        return compatible
     if not checked:
         raise HTTPException(status_code=500, detail="Java is not installed on this host")
     raise HTTPException(
