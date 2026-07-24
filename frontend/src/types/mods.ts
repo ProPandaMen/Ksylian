@@ -88,6 +88,11 @@ export interface CurseForgeFilesPayload {
   has_api_key: boolean;
 }
 
+export interface CurseForgeModpackSummary {
+  mod_count: number;
+  available: boolean;
+}
+
 export interface CurseForgeInstallResult {
   ok: boolean;
   message: string;

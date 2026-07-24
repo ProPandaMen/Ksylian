@@ -9,6 +9,7 @@ import type {
   CurseForgeFile,
   CurseForgeFilesPayload,
   CurseForgeInstallResult,
+  CurseForgeModpackSummary,
   CurseForgeProject,
   CurseForgeSearchPayload,
   GameServer,
@@ -33,6 +34,7 @@ const selectedFile = ref<CurseForgeFile | null>(null);
 const projects = ref<CurseForgeProject[]>([]);
 const files = ref<CurseForgeFile[]>([]);
 const dependencies = ref<CurseForgeFile[]>([]);
+const modpackSummary = ref<CurseForgeModpackSummary | null>(null);
 const minecraftVersions = ref<MinecraftVersionsPayload>({
   latest_release: "",
   latest_snapshot: "",
@@ -42,6 +44,7 @@ const selectedServerId = ref("");
 const isSearching = ref(false);
 const isVersionsLoading = ref(false);
 const isFilesLoading = ref(false);
+const isModpackSummaryLoading = ref(false);
 const isInstalling = ref(false);
 const isCreatingFromModpack = ref(false);
 const modpackCreateStage = ref("");
@@ -59,6 +62,18 @@ const selectedVersion = computed(() => {
 });
 const releaseVersions = computed(() => minecraftVersions.value.versions.filter((version) => version.type === "release"));
 const minecraftVersionLabel = computed(() => minecraftVersion.value || "Любая версия");
+const modpackModCountLabel = computed(() => {
+  if (kind.value !== "modpacks") {
+    return "";
+  }
+  if (isModpackSummaryLoading.value) {
+    return "считаю моды...";
+  }
+  if (!modpackSummary.value?.available) {
+    return "";
+  }
+  return `${modpackSummary.value.mod_count.toLocaleString()} модов`;
+});
 
 async function loadMinecraftVersions() {
   isVersionsLoading.value = true;
@@ -141,6 +156,24 @@ async function loadDependencies(file: CurseForgeFile | null) {
   }
 }
 
+async function loadModpackSummary(file: CurseForgeFile | null) {
+  modpackSummary.value = null;
+  if (kind.value !== "modpacks" || !selectedProject.value || !file) {
+    return;
+  }
+  isModpackSummaryLoading.value = true;
+  try {
+    modpackSummary.value = await requestJson<CurseForgeModpackSummary>(
+      `/api/curseforge/projects/${selectedProject.value.id}/files/${file.id}/summary`,
+    );
+  } catch (error) {
+    modpackSummary.value = null;
+    console.error(error);
+  } finally {
+    isModpackSummaryLoading.value = false;
+  }
+}
+
 async function installSelectedFile() {
   if (!selectedProject.value || !selectedFile.value || !selectedServerId.value) {
     return;
@@ -199,6 +232,7 @@ function closeProject() {
   files.value = [];
   selectedFile.value = null;
   dependencies.value = [];
+  modpackSummary.value = null;
   installMessage.value = "";
 }
 
@@ -289,6 +323,7 @@ function closeVersionPickerOnOutsideClick(event: PointerEvent) {
 
 watch(selectedProject, loadFiles);
 watch(selectedFile, loadDependencies);
+watch(selectedFile, loadModpackSummary);
 watch(kind, () => {
   closeProject();
   if (hasApiKey.value) {
@@ -445,6 +480,7 @@ onBeforeUnmount(() => {
                 <h3>{{ selectedProject.name }}</h3>
                 <div class="project-badges">
                   <span>{{ selectedProject.downloads.toLocaleString() }} загрузок</span>
+                  <span v-if="modpackModCountLabel">{{ modpackModCountLabel }}</span>
                   <span>{{ selectedProject.loaders.join(', ') || 'loader не указан' }}</span>
                   <span>{{ selectedVersion || selectedProject.game_versions.slice(0, 2).join(', ') || 'версия не указана' }}</span>
                 </div>
@@ -475,6 +511,10 @@ onBeforeUnmount(() => {
             <div>
               <dt>Версия</dt>
               <dd>{{ selectedVersion || selectedProject.game_versions.slice(0, 3).join(', ') || 'не указана' }}</dd>
+            </div>
+            <div v-if="kind === 'modpacks'">
+              <dt>Моды</dt>
+              <dd>{{ modpackModCountLabel || 'нет данных' }}</dd>
             </div>
             <div>
               <dt>Зависимости</dt>

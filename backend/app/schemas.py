@@ -271,6 +271,11 @@ class CurseForgeFilesPayload(BaseModel):
     has_api_key: bool
 
 
+class CurseForgeModpackSummary(BaseModel):
+    mod_count: int = 0
+    available: bool = False
+
+
 class CurseForgeInstallRequest(BaseModel):
     server_id: str
     project_id: int

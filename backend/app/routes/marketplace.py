@@ -18,6 +18,7 @@ from ..schemas import (
     CurseForgeFilesPayload,
     CurseForgeInstallRequest,
     CurseForgeInstallResult,
+    CurseForgeModpackSummary,
     CurseForgeProject,
     CurseForgeSearchPayload,
     FileItem,
@@ -49,6 +50,7 @@ def create_marketplace_router(
     get_server: Callable[[str], GameServer],
 ) -> APIRouter:
     router = APIRouter()
+    modpack_summary_cache: dict[tuple[int, int], CurseForgeModpackSummary] = {}
 
     @router.get("/api/mods", response_model=list[ModItem])
     def list_mods() -> list[ModItem]:
@@ -209,6 +211,50 @@ def create_marketplace_router(
         if len(response.content) > 128 * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"{file.file_name} is too large")
         return response.content
+
+
+    def summarize_curseforge_modpack(file: CurseForgeFile) -> CurseForgeModpackSummary:
+        if file.restricted:
+            return CurseForgeModpackSummary()
+        cache_key = (file.mod_id, file.id)
+        if cache_key in modpack_summary_cache:
+            return modpack_summary_cache[cache_key]
+        try:
+            archive = zipfile.ZipFile(io.BytesIO(download_curseforge_file(file)))
+            names = set(archive.namelist())
+            manifest_files = []
+            if "manifest.json" in names:
+                manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+                manifest_files = [
+                    item
+                    for item in manifest.get("files") or []
+                    if isinstance(item, dict) and item.get("required", True)
+                ]
+            embedded_mods = [
+                name
+                for name in names
+                if name.startswith("mods/") and name.endswith(".jar")
+            ]
+            override_mods = [
+                name
+                for prefix in ("overrides/mods/", "serverfiles/mods/")
+                for name in names
+                if name.startswith(prefix) and name.endswith(".jar")
+            ]
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, zipfile.BadZipFile, HTTPException):
+            summary = CurseForgeModpackSummary()
+        else:
+            summary = CurseForgeModpackSummary(
+                mod_count=len(manifest_files) + len(embedded_mods) + len(override_mods),
+                available=True,
+            )
+        modpack_summary_cache[cache_key] = summary
+        return summary
+
+
+    @router.get("/api/curseforge/projects/{project_id}/files/{file_id}/summary", response_model=CurseForgeModpackSummary)
+    def curseforge_modpack_summary(project_id: int, file_id: int) -> CurseForgeModpackSummary:
+        return summarize_curseforge_modpack(get_curseforge_file(project_id, file_id))
 
 
     def install_curseforge_jar(server_id: str, file: CurseForgeFile, content: bytes):
