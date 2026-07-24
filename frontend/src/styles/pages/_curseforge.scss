@@ -253,6 +253,11 @@
   flex-wrap: wrap;
 }
 
+.catalog-section > .catalog-pagination {
+  justify-content: center;
+  padding-top: 4px;
+}
+
 .catalog-results {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

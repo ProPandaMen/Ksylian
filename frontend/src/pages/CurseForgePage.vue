@@ -336,17 +336,6 @@ onBeforeUnmount(() => {
           <span v-if="totalCount">{{ visibleFrom }}–{{ visibleTo }} из {{ totalCount.toLocaleString() }}</span>
           <span v-else>{{ isSearching ? 'Загружаю каталог' : 'Нет результатов' }}</span>
         </div>
-        <div class="catalog-pagination">
-          <button class="ghost-button compact" type="button" :disabled="page <= 1 || isSearching" @click="changePage(page - 1)">
-            <ChevronLeft :size="18" />
-            <span>Назад</span>
-          </button>
-          <span>Страница {{ page }} / {{ totalPages }}</span>
-          <button class="ghost-button compact" type="button" :disabled="page >= totalPages || isSearching" @click="changePage(page + 1)">
-            <span>Вперёд</span>
-            <ChevronRight :size="18" />
-          </button>
-        </div>
       </div>
 
       <div class="catalog-results">
@@ -366,6 +355,18 @@ onBeforeUnmount(() => {
           </div>
         </button>
         <div v-if="!projects.length && !isSearching" class="project-card muted">Нет результатов</div>
+      </div>
+
+      <div v-if="totalCount" class="catalog-pagination">
+        <button class="ghost-button compact" type="button" :disabled="page <= 1 || isSearching" @click="changePage(page - 1)">
+          <ChevronLeft :size="18" />
+          <span>Назад</span>
+        </button>
+        <span>Страница {{ page }} / {{ totalPages }}</span>
+        <button class="ghost-button compact" type="button" :disabled="page >= totalPages || isSearching" @click="changePage(page + 1)">
+          <span>Вперёд</span>
+          <ChevronRight :size="18" />
+        </button>
       </div>
     </section>
 
