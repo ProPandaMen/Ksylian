@@ -58,6 +58,12 @@ export interface GameServer {
   warnings?: string[];
 }
 
+export interface ServerActionResult {
+  ok: boolean;
+  message: string;
+  server: GameServer;
+}
+
 export interface CrashReportItem {
   name: string;
   size: string;

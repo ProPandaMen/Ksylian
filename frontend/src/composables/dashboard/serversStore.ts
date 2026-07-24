@@ -140,8 +140,14 @@ export function useServerDashboardActions() {
   async function runServerAction(serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "rollback" | "backup") {
     const { showToast } = useToasts();
     try {
-      await serverRequests.action(serverId, action);
+      const result = await serverRequests.action(serverId, action);
       await loadDashboard(serverId);
+      const updatedServer = servers.value.find((server) => server.id === serverId);
+      const warning = updatedServer?.warnings?.[0] || result.server.warnings?.[0] || "";
+      showToast(result.message || "Действие выполнено", warning ? "info" : "success");
+      if (warning) {
+        showToast(warning, "info");
+      }
     } catch (error) {
       showToast("Не удалось выполнить действие", "error");
       console.error(error);

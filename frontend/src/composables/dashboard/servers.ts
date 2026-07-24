@@ -6,6 +6,7 @@ import type {
   GameServer,
   NewServerDraft,
   RconCommandResult,
+  ServerActionResult,
   ServerConfigPayload,
 } from "../../types";
 
@@ -20,7 +21,7 @@ export function useServerRequests() {
       body: JSON.stringify({ content }),
     }),
     action: (serverId: string, action: "start" | "restart" | "stop" | "kill" | "update" | "rollback" | "backup") =>
-      requestJson(`/api/servers/${serverId}/actions/${action}`, { method: "POST" }),
+      requestJson<ServerActionResult>(`/api/servers/${serverId}/actions/${action}`, { method: "POST" }),
     rconCommand: (serverId: string, command: string) => requestJson<RconCommandResult>(`/api/servers/${serverId}/rcon/command`, {
       method: "POST",
       body: JSON.stringify({ command }),
