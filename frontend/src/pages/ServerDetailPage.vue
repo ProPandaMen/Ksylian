@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useDashboardStore } from "../composables/useDashboardStore";
 import ServerBackupsTab from "./server-detail/ServerBackupsTab.vue";
@@ -15,6 +15,7 @@ import { serverDetailTabs, type ServerDetailTab } from "./serverDetailTabs";
 const route = useRoute();
 const store = useDashboardStore();
 const activeServerDetailTab = ref<ServerDetailTab>("overview");
+let refreshTimer: number | null = null;
 
 async function loadCurrentTabData() {
   const serverId = typeof route.params.serverId === "string" ? route.params.serverId : "";
@@ -44,10 +45,38 @@ function selectServerDetailTab(tabId: ServerDetailTab) {
   activeServerDetailTab.value = tabId;
 }
 
+async function refreshServerDetail() {
+  const serverId = typeof route.params.serverId === "string" ? route.params.serverId : "";
+  if (!serverId) {
+    return;
+  }
+  await store.loadDashboard(serverId);
+}
+
+function syncRefreshTimer() {
+  const server = store.selectedServer.value;
+  const shouldRefresh = Boolean(
+    server
+    && (
+      server.operation
+      || ["installing", "starting", "stopping", "updating", "backing_up"].includes(server.state)
+    ),
+  );
+
+  if (shouldRefresh && refreshTimer === null) {
+    refreshTimer = window.setInterval(refreshServerDetail, 2500);
+  }
+  if (!shouldRefresh && refreshTimer !== null) {
+    window.clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
 watch(
   () => route.params.serverId,
   async () => {
     await loadCurrentTabData();
+    syncRefreshTimer();
   },
 );
 
@@ -58,7 +87,21 @@ watch(
   },
 );
 
-onMounted(loadCurrentTabData);
+watch(
+  () => [store.selectedServer.value?.state, store.selectedServer.value?.operation?.percent],
+  syncRefreshTimer,
+);
+
+onMounted(async () => {
+  await loadCurrentTabData();
+  syncRefreshTimer();
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer);
+  }
+});
 </script>
 
 <template>

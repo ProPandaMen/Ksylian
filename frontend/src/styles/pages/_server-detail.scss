@@ -152,6 +152,58 @@
   font-size: 0.9rem;
 }
 
+.server-operation-panel .server-detail-section-head strong {
+  color: var(--app-accent);
+  font-size: 1.1rem;
+  font-weight: 950;
+}
+
+.server-operation-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.server-operation-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.server-operation-meta span,
+.server-operation-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-operation-meta span {
+  color: var(--app-muted);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.server-operation-meta strong {
+  color: var(--app-text);
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.server-operation-panel .server-install-track.indeterminate span {
+  animation: server-operation-slide 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes server-operation-slide {
+  from {
+    transform: translateX(-35%);
+  }
+
+  to {
+    transform: translateX(150%);
+  }
+}
+
 .crash-report-list {
   display: grid;
   gap: 0;

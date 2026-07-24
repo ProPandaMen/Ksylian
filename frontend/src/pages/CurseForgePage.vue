@@ -264,6 +264,10 @@ async function createServerFromModpack() {
     return;
   }
 
+  const project = selectedProject.value;
+  const file = selectedFile.value;
+  const serverType = inferServerType();
+  const serverVersion = selectedVersion.value || minecraftVersion.value || project.game_versions[0] || "1.20.1";
   isCreatingFromModpack.value = true;
   installMessage.value = "";
   try {
@@ -271,10 +275,10 @@ async function createServerFromModpack() {
     const created = await requestJson<GameServer>("/api/servers", {
       method: "POST",
       body: JSON.stringify({
-        name: selectedProject.value.name,
-        type: inferServerType(),
-        pack: selectedProject.value.name,
-        version: selectedVersion.value || minecraftVersion.value || selectedProject.value.game_versions[0] || "1.20.1",
+        name: project.name,
+        type: serverType,
+        pack: project.name,
+        version: serverVersion,
         min_ram: "2G",
         max_ram: "6G",
         java_runtime: "auto",
@@ -282,29 +286,16 @@ async function createServerFromModpack() {
         cpu_limit: 200,
         loader_version: "",
         installer_version: "",
-        install_fabric_api: inferServerType() === "fabric",
+        install_fabric_api: serverType === "fabric",
         address: "",
       }),
     });
 
-    modpackCreateStage.value = "Готовлю сервер...";
-    await waitForServerReady(created.id);
-
-    modpackCreateStage.value = "Устанавливаю сборку...";
-    const result = await requestJson<CurseForgeInstallResult>("/api/curseforge/install", {
-      method: "POST",
-      body: JSON.stringify({
-        server_id: created.id,
-        project_id: selectedProject.value.id,
-        file_id: selectedFile.value.id,
-        include_dependencies: true,
-      }),
-    });
     await store.loadDashboard(created.id);
-    await store.loadServerMods(created.id);
-    showToast(`Сервер ${created.name} создан по сборке`, "success");
-    installMessage.value = `${result.installed.length} файлов установлено, ${result.skipped.length} пропущено`;
+    closeProject();
     await router.push(`/servers/${created.id}`);
+    showToast(`Сервер ${created.name} создан, сборка устанавливается`, "success");
+    installModpackOnServer(created, project, file);
   } catch (error) {
     installMessage.value = "Не удалось создать сервер по сборке";
     showToast("Не удалось создать сервер по сборке", "error");
@@ -312,6 +303,29 @@ async function createServerFromModpack() {
   } finally {
     modpackCreateStage.value = "";
     isCreatingFromModpack.value = false;
+  }
+}
+
+async function installModpackOnServer(created: GameServer, project: CurseForgeProject, file: CurseForgeFile) {
+  try {
+    await waitForServerReady(created.id);
+    const result = await requestJson<CurseForgeInstallResult>("/api/curseforge/install", {
+      method: "POST",
+      body: JSON.stringify({
+        server_id: created.id,
+        project_id: project.id,
+        file_id: file.id,
+        include_dependencies: true,
+      }),
+    });
+    await store.loadDashboard(created.id);
+    await store.loadServerMods(created.id);
+    showToast(`Сервер ${created.name} создан по сборке`, "success");
+    installMessage.value = `${result.installed.length} файлов установлено, ${result.skipped.length} пропущено`;
+  } catch (error) {
+    await store.loadDashboard(created.id);
+    showToast(`Не удалось установить сборку ${project.name}`, "error");
+    console.error(error);
   }
 }
 

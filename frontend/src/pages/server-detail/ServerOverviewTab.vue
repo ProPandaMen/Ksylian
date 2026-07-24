@@ -1,12 +1,32 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { CircleStop, Cpu, HardDrive, ListRestart, MemoryStick, Play, RefreshCw, Users } from "@lucide/vue";
 import { stateLabels, useDashboardStore } from "../../composables/useDashboardStore";
 
 const store = useDashboardStore();
+const busyStates = new Set(["installing", "starting", "stopping", "updating", "backing_up"]);
+const serverOperation = computed(() => store.selectedServer.value.operation);
+const isServerBusy = computed(() => busyStates.has(store.selectedServer.value.state));
 </script>
 
 <template>
   <section class="server-tab-panel">
+      <section v-if="serverOperation || isServerBusy" class="server-detail-section server-operation-panel">
+        <div class="server-detail-section-head">
+          <h3>{{ serverOperation?.label || 'Подготовка сервера' }}</h3>
+          <strong>{{ serverOperation ? `${serverOperation.percent}%` : stateLabels[store.selectedServer.value.state] }}</strong>
+        </div>
+        <div class="server-operation-body">
+          <div class="server-install-track" :class="{ indeterminate: !serverOperation }">
+            <span :style="{ width: serverOperation ? `${serverOperation.percent}%` : '42%' }"></span>
+          </div>
+          <div class="server-operation-meta">
+            <span>{{ serverOperation?.message || 'Готовлю базовые файлы и service unit' }}</span>
+            <strong v-if="serverOperation?.current_item">{{ serverOperation.current_item }}</strong>
+          </div>
+        </div>
+      </section>
+
       <section class="server-detail-section">
         <div class="server-detail-section-head">
           <h3>Управление</h3>
