@@ -594,9 +594,14 @@ def transform_curseforge_project(item: dict, kind: Literal["mods", "modpacks"]) 
 
 def get_server(server_id: str) -> GameServer:
     server = servers.get(server_id)
-    if server is None:
-        raise HTTPException(status_code=404, detail="Server not found")
-    return server
+    if server is not None:
+        return server
+    agent_servers = load_agent_servers()
+    if agent_servers is not None:
+        for agent_server in agent_servers:
+            if agent_server.id == server_id:
+                return agent_server
+    raise HTTPException(status_code=404, detail="Server not found")
 
 
 @app.get("/health")
